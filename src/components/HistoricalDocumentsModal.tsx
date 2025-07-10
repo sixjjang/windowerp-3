@@ -23,7 +23,7 @@ const years = Array.from(
   { length: 10 },
   (_, i) => new Date().getFullYear() - i
 );
-const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:4000';
+const API_BASE = 'https://us-central1-windowerp-3.cloudfunctions.net';
 
 const HistoricalDocumentsModal: React.FC<Props> = ({ open, onClose }) => {
   const [selectedYear, setSelectedYear] = useState<number>(years[0]);

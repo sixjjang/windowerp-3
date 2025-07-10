@@ -112,17 +112,16 @@ export default function LoginPage() {
     setRegSuccess('');
     setRegLoading(true);
     try {
-      const formData = new FormData();
-      formData.append('username', regId);
-      formData.append('password', regPw);
-      formData.append('name', regName);
-      if (regProfileImage) {
-        formData.append('profileImage', regProfileImage);
-      }
-
       const res = await fetch(`${API_BASE}/register`, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: regId,
+          password: regPw,
+          name: regName,
+        }),
       });
       if (!res.ok) {
         const msg = await res.text();

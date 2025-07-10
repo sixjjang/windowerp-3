@@ -571,13 +571,8 @@ const OrderManagement: React.FC = () => {
 
     const fetchCompanyInfo = async () => {
       try {
-        // NAS 서버 연결 시도 (선택적)
-        const apiUrl =
-          process.env.NODE_ENV === 'development'
-            ? 'http://localhost:4000'
-            : process.env.REACT_APP_API_URL ||
-              process.env.REACT_APP_API_BASE ||
-              'http://sixjjang.synology.me:4000';
+        // Firebase Functions 사용
+        const apiUrl = 'https://us-central1-windowerp-3.cloudfunctions.net';
         const response = await fetch(`${apiUrl}/company-info`);
         if (response.ok) {
           const data = await response.json();

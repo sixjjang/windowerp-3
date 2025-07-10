@@ -1,0 +1,67 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // 사용자 인증 확인 함수
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // 관리자 권한 확인 함수
+    function isAdmin() {
+      return isAuthenticated() && 
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // 직원 권한 확인 함수
+    function isStaff() {
+      return isAuthenticated() && 
+             (firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'staff' ||
+              firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+    
+    // 파일 크기 제한 (10MB)
+    function isValidFileSize() {
+      return request.resource.size < 10 * 1024 * 1024;
+    }
+    
+    // 허용된 파일 타입 확인
+    function isValidFileType() {
+      return request.resource.contentType.matches('image/.*') ||
+             request.resource.contentType.matches('application/pdf') ||
+             request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') ||
+             request.resource.contentType.matches('application/vnd.ms-excel');
+    }
+    
+    // 프로필 이미지
+    match /profiles/{userId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+                   request.auth.uid == userId && 
+                   isValidFileSize() && 
+                   request.resource.contentType.matches('image/.*');
+    }
+    
+    // 과거자료 파일
+    match /historical/{type}/{year}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+                   isValidFileSize() && 
+                   isValidFileType();
+    }
+    
+    // 일반 업로드 파일
+    match /uploads/{userId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+                   request.auth.uid == userId && 
+                   isValidFileSize() && 
+                   isValidFileType();
+    }
+    
+    // 관리자 전용 파일
+    match /admin/{fileName} {
+      allow read: if isAuthenticated() && isStaff();
+      allow write: if isAuthenticated() && isAdmin();
+    }
+  }
+} 

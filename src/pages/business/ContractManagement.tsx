@@ -785,7 +785,7 @@ const ContractManagement: React.FC = () => {
           try {
             console.log('실측일정 스케줄 저장 시작:', measurementEvent);
 
-            const response = await fetch('http://localhost:4000/schedules', {
+            const response = await fetch('https://us-central1-windowerp-3.cloudfunctions.net/schedules', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(measurementEvent),

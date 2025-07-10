@@ -9,18 +9,19 @@ module.exports = {
     env: {
       NODE_ENV: 'production',
       PORT: 4000,
-      DATABASE_PATH: './database.db',
-      JWT_SECRET: 'windowerp-2024-secure-jwt-secret-key-for-production'
+      JWT_SECRET: process.env.JWT_SECRET || 'windowerp-2024-secure-jwt-secret-key-for-production',
+      DATABASE_PATH: './database.db'
     },
     env_production: {
       NODE_ENV: 'production',
       PORT: 4000,
-      DATABASE_PATH: './database.db',
-      JWT_SECRET: 'windowerp-2024-secure-jwt-secret-key-for-production'
+      JWT_SECRET: process.env.JWT_SECRET || 'windowerp-2024-secure-jwt-secret-key-for-production',
+      DATABASE_PATH: './database.db'
     },
-    log_file: './logs/combined.log',
+    // 외부 접근을 위한 설정
+    error_file: './logs/err.log',
     out_file: './logs/out.log',
-    error_file: './logs/error.log',
-    log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+    log_file: './logs/combined.log',
+    time: true
   }]
 }; 

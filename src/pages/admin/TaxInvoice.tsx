@@ -36,10 +36,7 @@ interface TaxInvoice {
   updatedAt: string;
 }
 
-const API_BASE =
-  process.env.NODE_ENV === 'development'
-    ? 'http://localhost:4000'
-    : process.env.REACT_APP_API_BASE || 'http://sixjjang.synology.me:4000';
+const API_BASE = 'https://us-central1-windowerp-3.cloudfunctions.net';
 
 export default function TaxInvoice() {
   const theme = useTheme();
