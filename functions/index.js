@@ -223,7 +223,104 @@ exports.me = functions.https.onRequest(async (req, res) => {
 
 // ===== 일정 관리 함수들 =====
 
-// 일정 목록 조회
+// 일정 목록 조회 (HTTP Request)
+exports.getSchedulesHttp = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    try {
+      const { startDate, endDate, type } = req.query;
+      let query = db.collection('schedules');
+      
+      if (startDate && endDate) {
+        query = query.where('date', '>=', startDate).where('date', '<=', endDate);
+      }
+      
+      if (type) {
+        query = query.where('type', '==', type);
+      }
+      
+      const snapshot = await query.orderBy('date', 'asc').get();
+      const schedules = [];
+      
+      snapshot.forEach(doc => {
+        schedules.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      res.json(schedules);
+    } catch (error) {
+      console.error('일정 조회 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 일정 생성 (HTTP Request)
+exports.createScheduleHttp = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const scheduleData = {
+        ...req.body,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+      
+      const docRef = await db.collection('schedules').add(scheduleData);
+      
+      res.status(201).json({
+        message: '일정이 생성되었습니다.',
+        scheduleId: docRef.id
+      });
+    } catch (error) {
+      console.error('일정 생성 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 일정 수정 (HTTP Request)
+exports.updateScheduleHttp = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'PUT') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const scheduleId = req.params.id;
+      const updateData = {
+        ...req.body,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+      
+      await db.collection('schedules').doc(scheduleId).update(updateData);
+      
+      res.json({ message: '일정이 수정되었습니다.' });
+    } catch (error) {
+      console.error('일정 수정 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 일정 삭제 (HTTP Request)
+exports.deleteScheduleHttp = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const scheduleId = req.params.id;
+      await db.collection('schedules').doc(scheduleId).delete();
+      
+      res.json({ message: '일정이 삭제되었습니다.' });
+    } catch (error) {
+      console.error('일정 삭제 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 일정 목록 조회 (Callable Function)
 exports.getSchedules = functions.https.onCall(async (data, context) => {
   try {
     if (!context.auth) {
@@ -336,6 +433,27 @@ exports.createEstimate = functions.https.onCall(async (data, context) => {
     console.error('견적서 생성 오류:', error);
     throw new functions.https.HttpsError('internal', error.message);
   }
+});
+
+// ===== WebSocket 연결 =====
+
+// WebSocket 연결 (HTTP Request로 시뮬레이션)
+exports.ws = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    // WebSocket 업그레이드 요청 처리
+    if (req.headers.upgrade && req.headers.upgrade.toLowerCase() === 'websocket') {
+      res.writeHead(426, { 'Upgrade': 'WebSocket' });
+      res.end('WebSocket upgrade required');
+      return;
+    }
+    
+    // 일반 HTTP 요청의 경우 연결 상태 반환
+    res.json({
+      status: 'connected',
+      message: 'WebSocket endpoint is available',
+      timestamp: new Date().toISOString()
+    });
+  });
 });
 
 // ===== 실시간 알림 함수 =====

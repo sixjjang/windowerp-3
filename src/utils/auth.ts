@@ -10,4 +10,4 @@ export const getAuthHeaders = () => {
 };
 
 export const API_BASE = 'https://us-central1-windowerp-3.cloudfunctions.net';
-export const WS_BASE = 'wss://us-central1-windowerp-3.cloudfunctions.net';
+export const WS_BASE = 'wss://us-central1-windowerp-3.cloudfunctions.net/ws';
