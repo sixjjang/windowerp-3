@@ -33,7 +33,7 @@ jobs:
       uses: FirebaseExtended/action-hosting-deploy@v0
       with:
         repoToken: '${{ secrets.GITHUB_TOKEN }}'
-        firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+        firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_WINDOWERP_3 }}'
         channelId: live
         projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
     
@@ -42,6 +42,6 @@ jobs:
       uses: FirebaseExtended/action-hosting-deploy@v0
       with:
         repoToken: '${{ secrets.GITHUB_TOKEN }}'
-        firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+        firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_WINDOWERP_3 }}'
         channelId: pr-${{ github.event.number }}
         projectId: ${{ secrets.FIREBASE_PROJECT_ID }} 
