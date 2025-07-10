@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#FF6B9D" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="윈도우갤러리 ERP" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="윈도우갤러리 ERP" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="msapplication-tap-highlight" content="no" />
+    <meta
+      name="description"
+      content="윈도우갤러리 ERP 시스템 - 창문 및 커튼 관리 솔루션"
+    />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    </noscript>
+    <title>윈도우갤러리 ERP</title>
+    <style>
+      /* PWA 설치 안내 스타일 */
+      .pwa-install-prompt {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%);
+        color: white;
+        padding: 10px;
+        text-align: center;
+        z-index: 9999;
+        display: none;
+        font-family: 'Noto Sans KR', sans-serif;
+      }
+      .pwa-install-prompt.show {
+        display: block;
+      }
+      .pwa-install-prompt button {
+        background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: white;
+        padding: 5px 15px;
+        margin: 0 5px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-family: 'Noto Sans KR', sans-serif;
+      }
+      .pwa-install-prompt button:hover {
+        background: rgba(255, 255, 255, 0.3);
+      }
+      
+      /* 모바일 터치 최적화 */
+      * {
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        -khtml-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+      }
+      
+      /* 입력 필드는 선택 가능하도록 */
+      input, textarea, select {
+        -webkit-user-select: text;
+        -khtml-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+        user-select: text;
+      }
+      
+      /* 모바일에서 스크롤 부드럽게 */
+      html {
+        -webkit-overflow-scrolling: touch;
+      }
+      
+      /* iOS Safari에서 주소창 숨김 방지 */
+      body {
+        min-height: 100vh;
+        min-height: -webkit-fill-available;
+      }
+      
+      /* 안전 영역 대응 (iPhone X 이상) */
+      @supports (padding: max(0px)) {
+        .pwa-install-prompt {
+          padding-top: max(10px, env(safe-area-inset-top));
+          padding-left: max(10px, env(safe-area-inset-left));
+          padding-right: max(10px, env(safe-area-inset-right));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <div id="pwa-install-prompt" class="pwa-install-prompt">
+      <span>더 나은 경험을 위해 앱으로 설치하세요</span>
+      <button id="pwa-install-btn">설치</button>
+      <button id="pwa-dismiss-btn">나중에</button>
+    </div>
+  </body>
+</html> 
