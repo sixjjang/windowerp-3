@@ -757,7 +757,11 @@ const Schedule: React.FC = () => {
     }
 
     // 기존 일정에 추가
-    setEvents(prev => [...prev, ...eventsToAdd]);
+    const updatedEvents = [...events, ...eventsToAdd];
+    setEvents(updatedEvents);
+    
+    // localStorage 업데이트
+    localStorage.setItem('schedules', JSON.stringify(updatedEvents));
     setSnackbar({
       open: true,
       message: `${eventsToAdd.length}개의 일정이 등록되었습니다.`,
@@ -2088,7 +2092,26 @@ const Schedule: React.FC = () => {
       timestamp: new Date().toISOString(),
     };
 
-    setIntegratedEventComments(prev => [...prev, newComment]);
+    const updatedComments = [...integratedEventComments, newComment];
+    setIntegratedEventComments(updatedComments);
+    
+    // 현재 이벤트의 댓글도 업데이트
+    if (selectedEventForEdit) {
+      const updatedEvents = events.map(event =>
+        event.id === selectedEventForEdit.id
+          ? {
+              ...event,
+              comments: updatedComments,
+              updatedAt: new Date().toISOString(),
+            }
+          : event
+      );
+      setEvents(updatedEvents);
+      
+      // localStorage 업데이트
+      localStorage.setItem('schedules', JSON.stringify(updatedEvents));
+    }
+    
     setNewIntegratedComment('');
   };
 
@@ -3331,17 +3354,19 @@ const Schedule: React.FC = () => {
       emoji: newComment.match(/[😊👍❤️🎉🔥💯👏🙏😍🤔😅😢]/)?.[0] || undefined,
     };
 
-    setEvents(prev =>
-      prev.map(event =>
-        event.id === selectedEventForChat.id
-          ? {
-              ...event,
-              comments: [...(event.comments || []), comment],
-              updatedAt: new Date().toISOString(),
-            }
-          : event
-      )
+    const updatedEvents = events.map(event =>
+      event.id === selectedEventForChat.id
+        ? {
+            ...event,
+            comments: [...(event.comments || []), comment],
+            updatedAt: new Date().toISOString(),
+          }
+        : event
     );
+    setEvents(updatedEvents);
+    
+    // localStorage 업데이트
+    localStorage.setItem('schedules', JSON.stringify(updatedEvents));
 
     // 댓글 작성 알림 (WebSocket으로 실시간 전송)
     // createChatNotification(
@@ -3365,34 +3390,37 @@ const Schedule: React.FC = () => {
 
   // 알림 관리
   const handleNotificationToggle = (eventId: string, type: string) => {
-    setEvents(prev =>
-      prev.map(event => {
-        if (event.id === eventId) {
-          const notifications = event.notifications || [];
-          const existingIndex = notifications.findIndex(n => n.type === type);
+    const updatedEvents = events.map(event => {
+      if (event.id === eventId) {
+        const notifications = event.notifications || [];
+        const existingIndex = notifications.findIndex(n => n.type === type);
 
-          if (existingIndex >= 0) {
-            notifications[existingIndex].isEnabled =
-              !notifications[existingIndex].isEnabled;
-          } else {
-            notifications.push({
-              id: Date.now().toString(),
-              eventId,
-              type: type as any,
-              isEnabled: true,
-              message: `일정 알림: ${event.title}`,
-            });
-          }
-
-          return {
-            ...event,
-            notifications,
-            updatedAt: new Date().toISOString(),
-          };
+        if (existingIndex >= 0) {
+          notifications[existingIndex].isEnabled =
+            !notifications[existingIndex].isEnabled;
+        } else {
+          notifications.push({
+            id: Date.now().toString(),
+            eventId,
+            type: type as any,
+            isEnabled: true,
+            message: `일정 알림: ${event.title}`,
+          });
         }
-        return event;
-      })
-    );
+
+        return {
+          ...event,
+          notifications,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      return event;
+    });
+    
+    setEvents(updatedEvents);
+    
+    // localStorage 업데이트
+    localStorage.setItem('schedules', JSON.stringify(updatedEvents));
   };
 
   // 공유 기능
@@ -3412,17 +3440,19 @@ const Schedule: React.FC = () => {
       sharedAt: new Date().toISOString(),
     };
 
-    setEvents(prev =>
-      prev.map(event =>
-        event.id === selectedEventForShare.id
-          ? {
-              ...event,
-              shares: [...(event.shares || []), share],
-              updatedAt: new Date().toISOString(),
-            }
-          : event
-      )
+    const updatedEvents = events.map(event =>
+      event.id === selectedEventForShare.id
+        ? {
+            ...event,
+            shares: [...(event.shares || []), share],
+            updatedAt: new Date().toISOString(),
+          }
+        : event
     );
+    setEvents(updatedEvents);
+    
+    // localStorage 업데이트
+    localStorage.setItem('schedules', JSON.stringify(updatedEvents));
 
     setShareDialogOpen(false);
     setSelectedEventForShare(null);
