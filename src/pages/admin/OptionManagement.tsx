@@ -1567,24 +1567,77 @@ const OptionManagement: React.FC = () => {
                 />
               </Grid>
               <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  label="적용타입"
-                  name="note"
-                  value={selectedOption.note}
-                  onChange={handleInputChange}
-                  placeholder="폭당, m당, 추가, 포함, m2당 중 선택"
-                  size={isMobile ? 'medium' : 'small'}
-                  sx={{
-                    ...(isMobile && {
-                      '& .MuiInputBase-input': {
-                        fontSize: '1rem',
-                        padding: '16px 14px',
-                      },
-                    }),
-                  }}
-                />
+                <FormControl fullWidth size={isMobile ? 'medium' : 'small'}>
+                  <InputLabel>적용타입</InputLabel>
+                  <Select
+                    name="note"
+                    value={selectedOption.note}
+                    onChange={(e) => {
+                      const { name, value } = e.target;
+                      const newOption = {
+                        ...selectedOption,
+                        [name]: value,
+                      };
+                      setSelectedOption(newOption);
+                      
+                      // 에러 메시지 초기화
+                      if (errorMessage) {
+                        setErrorMessage('');
+                      }
+                    }}
+                    label="적용타입"
+                    sx={{
+                      ...(isMobile && {
+                        '& .MuiSelect-select': {
+                          fontSize: '1rem',
+                          padding: '16px 14px',
+                        },
+                      }),
+                    }}
+                  >
+                    <MenuItem value="폭당">폭당</MenuItem>
+                    <MenuItem value="m당">m당</MenuItem>
+                    <MenuItem value="추가">추가</MenuItem>
+                    <MenuItem value="포함">포함</MenuItem>
+                    <MenuItem value="m2당">m2당</MenuItem>
+                    <MenuItem value="5%">5%</MenuItem>
+                    <MenuItem value="10%">10%</MenuItem>
+                    <MenuItem value="15%">15%</MenuItem>
+                    <MenuItem value="20%">20%</MenuItem>
+                    <MenuItem value="25%">25%</MenuItem>
+                    <MenuItem value="30%">30%</MenuItem>
+                    <MenuItem value="직접입력">직접입력</MenuItem>
+                  </Select>
+                </FormControl>
               </Grid>
+              {selectedOption.note === '직접입력' && (
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    fullWidth
+                    label="퍼센트 입력"
+                    name="customPercent"
+                    placeholder="예: 12%"
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value.endsWith('%') || value === '') {
+                        setSelectedOption(prev => ({
+                          ...prev,
+                          note: value
+                        }));
+                      }
+                    }}
+                    size={isMobile ? 'medium' : 'small'}
+                    sx={{
+                      ...(isMobile && {
+                        '& .MuiInputBase-input': {
+                          fontSize: '1rem',
+                          padding: '16px 14px',
+                        },
+                      }),
+                    }}
+                  />
+                </Grid>
+              )}
             </Grid>
           </Paper>
         </DialogContent>

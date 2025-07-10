@@ -104,7 +104,7 @@ interface OptionItem {
   salePrice: number;
   purchaseCost: number;
   details: string;
-  note: '폭당' | 'm당' | '추가' | '포함' | 'm2당';
+  note: '폭당' | 'm당' | '추가' | '포함' | 'm2당' | string; // % 적용타입을 위해 string으로 확장
   quantity?: number;
 }
 
@@ -3130,6 +3130,16 @@ const EstimateManagement: React.FC = () => {
     const salePrice = Number(option.salePrice) || 0;
     const quantity = Number(option.quantity) || 1;
 
+    // % 적용타입 처리
+    if (optionType && optionType.includes('%')) {
+      const percent = parseFloat(optionType.replace('%', ''));
+      if (!isNaN(percent)) {
+        // 제품의 판매금액에 퍼센트 적용
+        const productTotalPrice = Number(row.totalPrice) || 0;
+        return Math.round(productTotalPrice * (percent / 100));
+      }
+    }
+
     switch (optionType) {
       case '폭당':
         // 폭당: 단가 × 폭수
@@ -3164,6 +3174,16 @@ const EstimateManagement: React.FC = () => {
     const optionType = option.note;
     const purchaseCost = Number(option.purchaseCost) || 0;
     const quantity = Number(option.quantity) || 1;
+
+    // % 적용타입 처리
+    if (optionType && optionType.includes('%')) {
+      const percent = parseFloat(optionType.replace('%', ''));
+      if (!isNaN(percent)) {
+        // 제품의 입고금액에 퍼센트 적용
+        const productCost = Number(row.cost) || 0;
+        return Math.round(productCost * (percent / 100));
+      }
+    }
 
     switch (optionType) {
       case '폭당':
