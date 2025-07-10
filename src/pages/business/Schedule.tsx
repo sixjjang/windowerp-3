@@ -611,19 +611,27 @@ const Schedule: React.FC = () => {
   useEffect(() => {
     const loadSchedules = async () => {
       try {
+        // 먼저 localStorage에서 데이터 로드
+        const localSchedules = localStorage.getItem('schedules');
+        if (localSchedules) {
+          const localData = JSON.parse(localSchedules);
+          setEvents(localData);
+        }
+
+        // Firebase Functions에서 데이터 로드
         const response = await fetch(`${API_BASE}/schedules`);
         if (response.ok) {
           const data = await response.json();
           setEvents(data);
+          // localStorage 업데이트
+          localStorage.setItem('schedules', JSON.stringify(data));
         } else {
           console.error('스케줄 로드 실패:', response.statusText);
-          // 에러가 발생해도 빈 배열로 설정
-          setEvents([]);
+          // 에러가 발생해도 localStorage 데이터는 유지
         }
       } catch (error) {
         console.error('스케줄 로드 오류:', error);
-        // 에러가 발생해도 빈 배열로 설정
-        setEvents([]);
+        // 에러가 발생해도 localStorage 데이터는 유지
       }
     };
 
@@ -1763,7 +1771,12 @@ const Schedule: React.FC = () => {
             ...eventData,
             id: result.id,
           } as ScheduleEvent;
-          setEvents(prev => [...prev, newEventWithId]);
+          const updatedEvents = [...events, newEventWithId];
+          setEvents(updatedEvents);
+          
+          // localStorage에도 저장
+          localStorage.setItem('schedules', JSON.stringify(updatedEvents));
+          
           setSnackbar({
             open: true,
             message: '기간 일정이 추가되었습니다.',
@@ -1825,13 +1838,15 @@ const Schedule: React.FC = () => {
 
           if (editingEvent) {
             // 편집 모드: 기존 이벤트 업데이트
-            setEvents(prev =>
-              prev.map(event =>
-                event.id === editingEvent.id
-                  ? ({ ...event, ...eventData } as ScheduleEvent)
-                  : event
-              )
+            const updatedEvents = events.map(event =>
+              event.id === editingEvent.id
+                ? ({ ...event, ...eventData } as ScheduleEvent)
+                : event
             );
+            setEvents(updatedEvents);
+
+            // localStorage에도 저장
+            localStorage.setItem('schedules', JSON.stringify(updatedEvents));
 
             // 날짜가 변경되었는지 확인하고 currentDate 업데이트
             if (editingEvent.date !== eventData.date) {
@@ -1850,7 +1865,12 @@ const Schedule: React.FC = () => {
               ...eventData,
               id: result.id,
             } as ScheduleEvent;
-            setEvents(prev => [...prev, newEventWithId]);
+            const updatedEvents = [...events, newEventWithId];
+            setEvents(updatedEvents);
+            
+            // localStorage에도 저장
+            localStorage.setItem('schedules', JSON.stringify(updatedEvents));
+            
             setSnackbar({
               open: true,
               message: '새 일정이 추가되었습니다.',
@@ -1911,7 +1931,12 @@ const Schedule: React.FC = () => {
         });
 
         if (response.ok) {
-          setEvents(prev => prev.filter(event => event.id !== eventId));
+          const updatedEvents = events.filter(event => event.id !== eventId);
+          setEvents(updatedEvents);
+          
+          // localStorage 업데이트
+          localStorage.setItem('schedules', JSON.stringify(updatedEvents));
+          
           setSnackbar({
             open: true,
             message: '일정이 삭제되었습니다.',
