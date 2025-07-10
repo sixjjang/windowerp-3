@@ -257,10 +257,13 @@ function saveOptionTypes(types: string[]): void {
 
 // 옵션 유효성 검사 함수
 function validateOption(option: OptionItem): OptionValidation {
+  // % 적용타입일 때는 판매가가 필요 없음
+  const isPercentType = option.note && option.note.includes('%');
+  
   return {
     vendor: option.vendor.trim().length > 0,
     optionName: option.optionName.trim().length > 0,
-    salePrice: option.salePrice > 0,
+    salePrice: isPercentType ? true : option.salePrice > 0,
     optionType: option.optionType.trim().length > 0,
   };
 }
@@ -1502,7 +1505,7 @@ const OptionManagement: React.FC = () => {
               <Grid item xs={12} md={4}>
                 <TextField
                   fullWidth
-                  required
+                  required={!selectedOption.note?.includes('%')}
                   type="number"
                   label="판매가"
                   name="salePrice"
@@ -1513,7 +1516,13 @@ const OptionManagement: React.FC = () => {
                   }
                   onChange={handleInputChange}
                   error={!validation.salePrice}
-                  helperText={!validation.salePrice && '판매가를 입력해주세요'}
+                  helperText={
+                    !validation.salePrice && !selectedOption.note?.includes('%')
+                      ? '판매가를 입력해주세요'
+                      : selectedOption.note?.includes('%')
+                      ? '% 적용타입에서는 판매가가 필요 없습니다'
+                      : ''
+                  }
                   size={isMobile ? 'medium' : 'small'}
                   sx={{
                     ...(isMobile && {
@@ -1580,6 +1589,17 @@ const OptionManagement: React.FC = () => {
                       };
                       setSelectedOption(newOption);
                       
+                      // 실시간 유효성 검사
+                      const currentTabType = getCurrentTabType();
+                      const optionWithType = {
+                        ...newOption,
+                        optionType: currentTabType,
+                      };
+                      setValidation(prev => ({
+                        ...prev,
+                        salePrice: validateOption(optionWithType).salePrice,
+                      }));
+                      
                       // 에러 메시지 초기화
                       if (errorMessage) {
                         setErrorMessage('');
@@ -1620,9 +1640,21 @@ const OptionManagement: React.FC = () => {
                     onChange={(e) => {
                       const value = e.target.value;
                       if (value.endsWith('%') || value === '') {
-                        setSelectedOption(prev => ({
-                          ...prev,
+                        const newOption = {
+                          ...selectedOption,
                           note: value
+                        };
+                        setSelectedOption(newOption);
+                        
+                        // 실시간 유효성 검사
+                        const currentTabType = getCurrentTabType();
+                        const optionWithType = {
+                          ...newOption,
+                          optionType: currentTabType,
+                        };
+                        setValidation(prev => ({
+                          ...prev,
+                          salePrice: validateOption(optionWithType).salePrice,
                         }));
                       }
                     }}
