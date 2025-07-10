@@ -484,8 +484,14 @@ function getPurchaseTotal(item: OrderItem): number {
   // 속커튼-민자: 대폭민자원가 * 면적(m2)
   if (item.curtainType === '속커튼' && item.pleatType === '민자') {
     const areaNum = Number(item.area);
-    const largePlainCost = (item as any).largePlainCost || item.purchaseCost;
-    return largePlainCost && areaNum ? Math.round(largePlainCost * areaNum) : 0;
+    let costToUse = (item as any).largePlainCost;
+    
+    // 대폭민자원가가 없으면 입고원가의 70% 사용
+    if (!costToUse) {
+      costToUse = item.purchaseCost ? item.purchaseCost * 0.7 : 0;
+    }
+    
+    return costToUse && areaNum ? Math.round(costToUse * areaNum) : 0;
   }
   if (item.curtainType === '속커튼' && item.pleatType === '나비') {
     const areaNum = Number(item.area);

@@ -393,9 +393,17 @@ const getRowValue = (row: any, key: string) => {
     // 속커튼 민자: largePlainPrice * area
     if (row.curtainType === '속커튼' && row.pleatType === '민자') {
       const areaNum = Number(row.area);
-      const largePlainPrice = row.largePlainPrice || row.salePrice;
-      if (typeof largePlainPrice === 'number' && areaNum) {
-        return Math.round(largePlainPrice * areaNum).toLocaleString();
+      let priceToUse = row.largePlainPrice;
+      
+      // 대폭민자단가가 없으면 판매단가와 입고원가의 70% 중 높은 값 사용
+      if (!priceToUse) {
+        const salePrice70 = row.salePrice ? row.salePrice * 0.7 : 0;
+        const purchaseCost70 = row.purchaseCost ? row.purchaseCost * 0.7 : 0;
+        priceToUse = Math.max(salePrice70, purchaseCost70);
+      }
+      
+      if (typeof priceToUse === 'number' && areaNum) {
+        return Math.round(priceToUse * areaNum).toLocaleString();
       }
     }
     // 속커튼 나비: salePrice * area

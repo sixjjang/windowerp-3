@@ -986,9 +986,17 @@ const getTotalPrice = (row: any, area: number) => {
   // 3. 속커튼 민자: 대폭민자단가 * 면적(m2)
   if (row.curtainType === '속커튼' && row.pleatType === '민자') {
     const areaNum = Number(area);
-    const largePlainPrice = row.largePlainPrice || row.salePrice;
-    return largePlainPrice && areaNum
-      ? Math.round(largePlainPrice * areaNum)
+    let priceToUse = row.largePlainPrice;
+    
+    // 대폭민자단가가 없으면 판매단가와 입고원가의 70% 중 높은 값 사용
+    if (!priceToUse) {
+      const salePrice70 = row.salePrice ? row.salePrice * 0.7 : 0;
+      const purchaseCost70 = row.purchaseCost ? row.purchaseCost * 0.7 : 0;
+      priceToUse = Math.max(salePrice70, purchaseCost70);
+    }
+    
+    return priceToUse && areaNum
+      ? Math.round(priceToUse * areaNum)
       : '';
   }
   // 4. 속커튼 나비: 제품등록 판매단가 * 면적(m2)
@@ -1024,9 +1032,15 @@ const getPurchaseTotal = (row: any, area: number) => {
   // 속커튼-민자: 대폭민자원가 * 면적(m2)
   if (row.curtainType === '속커튼' && row.pleatType === '민자') {
     const areaNum = Number(area);
-    const largePlainCost = row.largePlainCost || row.purchaseCost;
-    return largePlainCost && areaNum
-      ? Math.round(largePlainCost * areaNum)
+    let costToUse = row.largePlainCost;
+    
+    // 대폭민자원가가 없으면 입고원가의 70% 사용
+    if (!costToUse) {
+      costToUse = row.purchaseCost ? row.purchaseCost * 0.7 : 0;
+    }
+    
+    return costToUse && areaNum
+      ? Math.round(costToUse * areaNum)
       : '';
   }
   if (row.curtainType === '속커튼' && row.pleatType === '나비') {
