@@ -223,7 +223,7 @@ exports.me = functions.https.onRequest(async (req, res) => {
 
 // ===== 일정 관리 함수들 =====
 
-// 일정 목록 조회 (HTTP Request)
+// 일정 목록 조회 (HTTP Request) - /getSchedulesHttp
 exports.getSchedulesHttp = functions.https.onRequest(async (req, res) => {
   return corsHandler(req, res, async () => {
     try {
@@ -256,7 +256,104 @@ exports.getSchedulesHttp = functions.https.onRequest(async (req, res) => {
   });
 });
 
-// 일정 생성 (HTTP Request)
+// 일정 목록 조회 (HTTP Request) - /schedules (기본 엔드포인트)
+exports.schedules = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    try {
+      const { startDate, endDate, type } = req.query;
+      let query = db.collection('schedules');
+      
+      if (startDate && endDate) {
+        query = query.where('date', '>=', startDate).where('date', '<=', endDate);
+      }
+      
+      if (type) {
+        query = query.where('type', '==', type);
+      }
+      
+      const snapshot = await query.orderBy('date', 'asc').get();
+      const schedules = [];
+      
+      snapshot.forEach(doc => {
+        schedules.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      res.json(schedules);
+    } catch (error) {
+      console.error('일정 조회 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 일정 생성 (HTTP Request) - /schedules (POST)
+exports.schedulesPost = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const scheduleData = {
+        ...req.body,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+      
+      const docRef = await db.collection('schedules').add(scheduleData);
+      
+      res.status(201).json({
+        message: '일정이 생성되었습니다.',
+        scheduleId: docRef.id
+      });
+    } catch (error) {
+      console.error('일정 생성 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 일정 수정 (HTTP Request) - /schedules/:id (PUT)
+exports.schedulesPut = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'PUT') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const scheduleId = req.params.id;
+      const updateData = {
+        ...req.body,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+      
+      await db.collection('schedules').doc(scheduleId).update(updateData);
+      
+      res.json({ message: '일정이 수정되었습니다.' });
+    } catch (error) {
+      console.error('일정 수정 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 일정 삭제 (HTTP Request) - /schedules/:id (DELETE)
+exports.schedulesDelete = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const scheduleId = req.params.id;
+      await db.collection('schedules').doc(scheduleId).delete();
+      
+      res.json({ message: '일정이 삭제되었습니다.' });
+    } catch (error) {
+      console.error('일정 삭제 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 일정 생성 (HTTP Request) - /createScheduleHttp
 exports.createScheduleHttp = functions.https.onRequest(async (req, res) => {
   return corsHandler(req, res, async () => {
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
@@ -514,9 +611,94 @@ exports.generateUploadUrl = functions.https.onCall(async (data, context) => {
   }
 });
 
+// ===== 사용자 관리 HTTP 엔드포인트 =====
+
+// 사용자 목록 조회 (HTTP Request) - /users
+exports.users = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    try {
+      const snapshot = await db.collection('users').get();
+      const users = [];
+      
+      snapshot.forEach(doc => {
+        const userData = doc.data();
+        delete userData.password; // 비밀번호 제외
+        users.push({
+          id: doc.id,
+          ...userData
+        });
+      });
+      
+      res.json(users);
+    } catch (error) {
+      console.error('사용자 목록 조회 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 사용자 승인 (HTTP Request) - /users/:id/approve
+exports.usersApprove = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const userId = req.params.id;
+      await db.collection('users').doc(userId).update({
+        isApproved: true,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      
+      res.json({ message: '사용자가 승인되었습니다.' });
+    } catch (error) {
+      console.error('사용자 승인 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 사용자 역할 변경 (HTTP Request) - /users/:id/role
+exports.usersRole = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const userId = req.params.id;
+      const { role } = req.body;
+      
+      await db.collection('users').doc(userId).update({
+        role: role,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      
+      res.json({ message: '사용자 역할이 변경되었습니다.' });
+    } catch (error) {
+      console.error('사용자 역할 변경 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 사용자 삭제 (HTTP Request) - /users/:id
+exports.usersDelete = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const userId = req.params.id;
+      await db.collection('users').doc(userId).delete();
+      
+      res.json({ message: '사용자가 삭제되었습니다.' });
+    } catch (error) {
+      console.error('사용자 삭제 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
 // ===== 관리자 함수들 =====
 
-// 사용자 승인
+// 사용자 승인 (Callable Function)
 exports.approveUser = functions.https.onCall(async (data, context) => {
   try {
     if (!context.auth) {

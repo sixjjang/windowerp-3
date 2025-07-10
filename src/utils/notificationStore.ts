@@ -76,7 +76,7 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 const WS_BASE =
   process.env.NODE_ENV === 'development'
     ? 'ws://localhost:4001'
-    : process.env.REACT_APP_WS_BASE || 'ws://sixjjang.synology.me:4001';
+    : process.env.REACT_APP_WS_BASE || 'wss://us-central1-windowerp-3.cloudfunctions.net/ws';
 
 // WebSocket 연결 함수
 export const connectNotificationWebSocket = (userId: string) => {
