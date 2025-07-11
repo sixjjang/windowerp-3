@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE } from '../../utils/auth';
 import {
   Grid,
   Paper,
@@ -125,7 +126,6 @@ interface TaxInvoice {
   updatedAt: string;
 }
 
-const API_BASE = 'https://us-central1-windowerp-3.cloudfunctions.net';
 
 const getCurrentMonth = () => {
   const now = new Date();

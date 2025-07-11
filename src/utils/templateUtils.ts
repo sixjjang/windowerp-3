@@ -1,13 +1,12 @@
 import { EstimateTemplate, TemplateRoom, ProjectSimilarity } from '../types';
-import { getAuthHeaders } from './auth';
+import { getAuthHeaders, API_BASE } from './auth';
 
 const TEMPLATES_STORAGE_KEY = 'erp_estimate_templates';
-const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 // 템플릿 로드 (백엔드 연동)
 export const loadTemplates = async (): Promise<EstimateTemplate[]> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/templates`, {
+    const response = await fetch(`${API_BASE}/templates`, {
       headers: getAuthHeaders(),
     });
     if (!response.ok) {
@@ -31,7 +30,7 @@ export const saveTemplates = async (
   templates: EstimateTemplate[]
 ): Promise<void> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/templates`, {
+    const response = await fetch(`${API_BASE}/templates`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(templates),

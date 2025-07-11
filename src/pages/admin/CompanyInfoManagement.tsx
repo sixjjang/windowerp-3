@@ -30,9 +30,7 @@ import {
   Edit as EditIcon,
   Visibility as ViewIcon,
 } from '@mui/icons-material';
-import { getAuthHeaders } from '../../utils/auth';
-
-const API_URL = 'https://us-central1-windowerp-3.cloudfunctions.net';
+import { API_BASE, getAuthHeaders } from '../../utils/auth';
 
 interface CompanyInfo {
   id: number;
@@ -109,7 +107,7 @@ const CompanyInfoManagement = () => {
   const fetchCompanyInfo = async () => {
     try {
       console.log('회사 정보 불러오기 시작');
-      const response = await fetch(`${API_URL}/company-info`);
+      const response = await fetch(`${API_BASE}/companyInfo`);
       console.log('API 응답 상태:', response.status);
 
       if (response.ok) {
@@ -188,7 +186,7 @@ const CompanyInfoManagement = () => {
         return;
       }
 
-      const response = await fetch(`${API_URL}/company-info`, {
+      const response = await fetch(`${API_BASE}/companyInfo`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(infos),

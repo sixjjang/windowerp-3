@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE } from '../../utils/auth';
 import {
   Box,
   Typography,
@@ -36,7 +37,6 @@ interface TaxInvoice {
   updatedAt: string;
 }
 
-const API_BASE = 'https://us-central1-windowerp-3.cloudfunctions.net';
 
 export default function TaxInvoice() {
   const theme = useTheme();

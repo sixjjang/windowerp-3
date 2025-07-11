@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE } from '../../utils/auth';
 import {
   Box,
   Typography,
@@ -149,7 +150,6 @@ interface ProfitAnalysis {
   updatedAt: string;
 }
 
-const API_BASE = 'https://us-central1-windowerp-3.cloudfunctions.net';
 
 const getUnique = (arr: string[]) => Array.from(new Set(arr));
 
