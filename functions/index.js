@@ -812,35 +812,45 @@ exports.companyInfoUpdate = functions.https.onRequest(async (req, res) => {
 
 // 과거자료 목록 조회 (HTTP Request) - /historical-data/list
 exports.historicalDataList = functions.https.onRequest(async (req, res) => {
-  return corsHandler(req, res, async () => {
-    try {
-      const { type, year } = req.query;
-      
-      if (!type || !year) {
-        return res.status(400).json({ error: 'type과 year 파라미터가 필요합니다.' });
-      }
-
-      // Firestore에서 과거자료 조회
-      const snapshot = await db.collection('historical-data')
-        .where('type', '==', type)
-        .where('year', '==', parseInt(year))
-        .orderBy('uploadDate', 'desc')
-        .get();
-
-      const records = [];
-      snapshot.forEach(doc => {
-        records.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-
-      res.json(records);
-    } catch (error) {
-      console.error('과거자료 목록 조회 오류:', error);
-      res.status(500).json({ error: error.message });
+  // CORS 헤더를 명시적으로 설정
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
+  try {
+    const { type, year } = req.query;
+    
+    if (!type || !year) {
+      return res.status(400).json({ error: 'type과 year 파라미터가 필요합니다.' });
     }
-  });
+
+    // Firestore에서 과거자료 조회
+    const snapshot = await db.collection('historical-data')
+      .where('type', '==', type)
+      .where('year', '==', parseInt(year))
+      .orderBy('uploadDate', 'desc')
+      .get();
+
+    const records = [];
+    snapshot.forEach(doc => {
+      records.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+
+    res.json(records);
+  } catch (error) {
+    console.error('과거자료 목록 조회 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Multer 설정
@@ -862,174 +872,224 @@ const upload = multer({
 
 // 과거자료 업로드 (HTTP Request) - /historical-data/upload
 exports.historicalDataUpload = functions.https.onRequest(async (req, res) => {
-  return corsHandler(req, res, async () => {
-    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
-    
-    try {
-      // multer를 사용한 파일 업로드 처리
-      upload.single('file')(req, res, async (err) => {
-        if (err) {
-          console.error('파일 업로드 오류:', err);
-          return res.status(400).json({ error: err.message });
+  // CORS 헤더를 명시적으로 설정
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
+  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+  
+  try {
+    // multer를 사용한 파일 업로드 처리
+    upload.single('file')(req, res, async (err) => {
+      if (err) {
+        console.error('파일 업로드 오류:', err);
+        return res.status(400).json({ error: err.message });
+      }
+
+      const { type, year, sheetName } = req.body;
+      
+      if (!type || !year) {
+        return res.status(400).json({ error: 'type과 year가 필요합니다.' });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: '파일이 필요합니다.' });
+      }
+
+      // Firebase Storage에 파일 업로드
+      const bucket = admin.storage().bucket();
+      const fileName = `historical-data/${type}/${year}/${uuidv4()}_${req.file.originalname}`;
+      const file = bucket.file(fileName);
+
+      await file.save(req.file.buffer, {
+        metadata: {
+          contentType: req.file.mimetype,
         }
-
-        const { type, year, sheetName } = req.body;
-        
-        if (!type || !year) {
-          return res.status(400).json({ error: 'type과 year가 필요합니다.' });
-        }
-
-        if (!req.file) {
-          return res.status(400).json({ error: '파일이 필요합니다.' });
-        }
-
-        // Firebase Storage에 파일 업로드
-        const bucket = admin.storage().bucket();
-        const fileName = `historical-data/${type}/${year}/${uuidv4()}_${req.file.originalname}`;
-        const file = bucket.file(fileName);
-
-        await file.save(req.file.buffer, {
-          metadata: {
-            contentType: req.file.mimetype,
-          }
-        });
-
-        // Firestore에 메타데이터 저장
-        const recordData = {
-          type: type,
-          year: parseInt(year),
-          filename: fileName,
-          originalName: req.file.originalname,
-          uploadDate: new Date().toISOString(),
-          fileSize: req.file.size,
-          sheetName: sheetName || 'Sheet1',
-          mimeType: req.file.mimetype
-        };
-
-        const docRef = await db.collection('historical-data').add(recordData);
-        
-        res.json({ 
-          message: '과거자료가 업로드되었습니다.',
-          id: docRef.id,
-          fileName: fileName
-        });
       });
-    } catch (error) {
-      console.error('과거자료 업로드 오류:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
+
+      // Firestore에 메타데이터 저장
+      const recordData = {
+        type: type,
+        year: parseInt(year),
+        filename: fileName,
+        originalName: req.file.originalname,
+        uploadDate: new Date().toISOString(),
+        fileSize: req.file.size,
+        sheetName: sheetName || 'Sheet1',
+        mimeType: req.file.mimetype
+      };
+
+      const docRef = await db.collection('historical-data').add(recordData);
+      
+      res.json({ 
+        message: '과거자료가 업로드되었습니다.',
+        id: docRef.id,
+        fileName: fileName
+      });
+    });
+  } catch (error) {
+    console.error('과거자료 업로드 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 과거자료 검색 (HTTP Request) - /historical-data/search
 exports.historicalDataSearch = functions.https.onRequest(async (req, res) => {
-  return corsHandler(req, res, async () => {
-    try {
-      const { type, year, keyword } = req.query;
-      
-      if (!type || !year || !keyword) {
-        return res.status(400).json({ error: 'type, year, keyword 파라미터가 필요합니다.' });
-      }
-
-      // Firestore에서 검색 (실제로는 더 정교한 검색 로직 필요)
-      const snapshot = await db.collection('historical-data')
-        .where('type', '==', type)
-        .where('year', '==', parseInt(year))
-        .get();
-
-      const results = [];
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.filename.toLowerCase().includes(keyword.toLowerCase()) ||
-            data.originalName.toLowerCase().includes(keyword.toLowerCase())) {
-          results.push({
-            id: doc.id,
-            ...data
-          });
-        }
-      });
-
-      res.json({ results });
-    } catch (error) {
-      console.error('과거자료 검색 오류:', error);
-      res.status(500).json({ error: error.message });
+  // CORS 헤더를 명시적으로 설정
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
+  try {
+    const { type, year, keyword } = req.query;
+    
+    if (!type || !year || !keyword) {
+      return res.status(400).json({ error: 'type, year, keyword 파라미터가 필요합니다.' });
     }
-  });
+
+    // Firestore에서 검색 (실제로는 더 정교한 검색 로직 필요)
+    const snapshot = await db.collection('historical-data')
+      .where('type', '==', type)
+      .where('year', '==', parseInt(year))
+      .get();
+
+    const results = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.filename.toLowerCase().includes(keyword.toLowerCase()) ||
+          data.originalName.toLowerCase().includes(keyword.toLowerCase())) {
+        results.push({
+          id: doc.id,
+          ...data
+        });
+      }
+    });
+
+    res.json({ results });
+  } catch (error) {
+    console.error('과거자료 검색 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 과거자료 전체 검색 (HTTP Request) - /historical-data/global-search
 exports.historicalDataGlobalSearch = functions.https.onRequest(async (req, res) => {
-  return corsHandler(req, res, async () => {
-    try {
-      const { keyword } = req.query;
-      
-      if (!keyword) {
-        return res.status(400).json({ error: 'keyword 파라미터가 필요합니다.' });
-      }
-
-      // Firestore에서 전체 검색
-      const snapshot = await db.collection('historical-data').get();
-
-      const results = [];
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.filename.toLowerCase().includes(keyword.toLowerCase()) ||
-            data.originalName.toLowerCase().includes(keyword.toLowerCase())) {
-          results.push({
-            id: doc.id,
-            ...data
-          });
-        }
-      });
-
-      res.json({ results });
-    } catch (error) {
-      console.error('과거자료 전체 검색 오류:', error);
-      res.status(500).json({ error: error.message });
+  // CORS 헤더를 명시적으로 설정
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
+  try {
+    const { keyword } = req.query;
+    
+    if (!keyword) {
+      return res.status(400).json({ error: 'keyword 파라미터가 필요합니다.' });
     }
-  });
+
+    // Firestore에서 전체 검색
+    const snapshot = await db.collection('historical-data').get();
+
+    const results = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.filename.toLowerCase().includes(keyword.toLowerCase()) ||
+          data.originalName.toLowerCase().includes(keyword.toLowerCase())) {
+        results.push({
+          id: doc.id,
+          ...data
+        });
+      }
+    });
+
+    res.json({ results });
+  } catch (error) {
+    console.error('과거자료 전체 검색 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 과거자료 미리보기 (HTTP Request) - /historical-data/:id/preview
 exports.historicalDataPreview = functions.https.onRequest(async (req, res) => {
-  return corsHandler(req, res, async () => {
-    try {
-      const recordId = req.params.id;
-      
-      const doc = await db.collection('historical-data').doc(recordId).get();
-      if (!doc.exists) {
-        return res.status(404).json({ error: '과거자료를 찾을 수 없습니다.' });
-      }
-
-      const data = doc.data();
-      // 실제로는 파일에서 데이터를 읽어와야 함
-      res.json({
-        id: doc.id,
-        ...data,
-        previewData: [['미리보기 데이터 예시']] // 실제 데이터로 교체 필요
-      });
-    } catch (error) {
-      console.error('과거자료 미리보기 오류:', error);
-      res.status(500).json({ error: error.message });
+  // CORS 헤더를 명시적으로 설정
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
+  try {
+    const recordId = req.params.id;
+    
+    const doc = await db.collection('historical-data').doc(recordId).get();
+    if (!doc.exists) {
+      return res.status(404).json({ error: '과거자료를 찾을 수 없습니다.' });
     }
-  });
+
+    const data = doc.data();
+    // 실제로는 파일에서 데이터를 읽어와야 함
+    res.json({
+      id: doc.id,
+      ...data,
+      previewData: [['미리보기 데이터 예시']] // 실제 데이터로 교체 필요
+    });
+  } catch (error) {
+    console.error('과거자료 미리보기 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 과거자료 삭제 (HTTP Request) - /historical-data/:id
 exports.historicalDataDelete = functions.https.onRequest(async (req, res) => {
-  return corsHandler(req, res, async () => {
-    if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+  // CORS 헤더를 명시적으로 설정
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
+  if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+  
+  try {
+    const recordId = req.params.id;
+    await db.collection('historical-data').doc(recordId).delete();
     
-    try {
-      const recordId = req.params.id;
-      await db.collection('historical-data').doc(recordId).delete();
-      
-      res.json({ message: '과거자료가 삭제되었습니다.' });
-    } catch (error) {
-      console.error('과거자료 삭제 오류:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
+    res.json({ message: '과거자료가 삭제되었습니다.' });
+  } catch (error) {
+    console.error('과거자료 삭제 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // ===== HTTP 함수들 (CORS 지원) =====
