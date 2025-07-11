@@ -75,7 +75,7 @@ import { findLastIndex } from 'lodash';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '../../utils/notificationStore';
 import { UserContext } from '../../components/Layout';
-import { estimateService, migrationService } from '../../utils/firebaseDataService';
+import { estimateService } from '../../utils/firebaseDataService';
 
 // 인쇄용 CSS 스타일
 const printStyles = `

@@ -37,7 +37,7 @@ import ProjectIcon from '@mui/icons-material/AccountTree';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import * as XLSX from 'xlsx';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
-import { customerService, migrationService } from '../../utils/firebaseDataService';
+import { customerService } from '../../utils/firebaseDataService';
 
 interface Project {
   id: string;
