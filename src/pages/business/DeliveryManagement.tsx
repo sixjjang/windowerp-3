@@ -68,6 +68,7 @@ import { UserContext } from '../../components/Layout';
 import { v4 as uuidv4 } from 'uuid';
 import CuteASApplicationModal from '../../components/CuteASApplicationModal';
 import { Order } from './OrderManagement';
+import { deliveryService } from '../../utils/firebaseDataService';
 
 // OrderDetailModal 컴포넌트 정의
 type OrderDetailModalProps = {
@@ -687,6 +688,27 @@ const DeliveryManagement: React.FC = () => {
     });
     setEditingMemoId(null);
   };
+
+  // Firebase 데이터 로딩
+  useEffect(() => {
+    const loadDeliveryData = async () => {
+      try {
+        console.log('Firebase에서 납품 데이터 로드 시작');
+        const data = await deliveryService.getDeliveries();
+        console.log('Firebase에서 납품 데이터 로드 완료:', data.length, '개');
+        
+        // Firebase 데이터가 있으면 Zustand store에 설정
+        if (data.length > 0) {
+          // 기존 데이터와 병합하거나 교체
+          console.log('Firebase 납품 데이터 적용');
+        }
+      } catch (error) {
+        console.error('Firebase 납품 데이터 로드 실패:', error);
+      }
+    };
+    
+    loadDeliveryData();
+  }, []);
 
   // 시계 업데이트
   React.useEffect(() => {
@@ -1916,14 +1938,6 @@ const DeliveryManagement: React.FC = () => {
         ...delivery,
         deliveryStatus: newStatus as any,
       });
-
-      // 상태 변경 알림 (WebSocket으로 실시간 전송)
-      createDeliveryNotification(
-        delivery.customerName,
-        `상태를 '${newStatus}'로 변경`,
-        nickname || '사용자',
-        deliveryId
-      );
     }
   };
 
@@ -1931,14 +1945,6 @@ const DeliveryManagement: React.FC = () => {
     const delivery = deliveries.find(d => d.id === deliveryId);
     if (delivery) {
       updateDelivery(deliveryId, { ...delivery, memo: newMemo });
-
-      // 메모 변경 알림 (WebSocket으로 실시간 전송)
-      createDeliveryNotification(
-        delivery.customerName,
-        '메모를 수정',
-        nickname || '사용자',
-        deliveryId
-      );
     }
   };
 

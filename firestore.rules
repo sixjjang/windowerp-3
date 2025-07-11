@@ -32,12 +32,14 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && isAdmin();
     }
     
-    // 일정 컬렉션
+    // 일정 컬렉션 (채팅 포함)
     match /schedules/{scheduleId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if isAuthenticated() && isStaff();
+      allow read, write: if true;
+      
+      // 일정별 댓글(채팅) 서브컬렉션
+      match /comments/{commentId} {
+        allow read, write: if true;
+      }
     }
     
     // 견적서 컬렉션
@@ -86,6 +88,110 @@ service cloud.firestore {
       allow create: if isAuthenticated();
       allow update: if isAuthenticated() && isStaff();
       allow delete: if isAuthenticated() && isAdmin();
+    }
+    
+    // 견적서 컬렉션
+    match /estimates/{estimateId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isStaff();
+    }
+    
+    // 고객 정보 컬렉션
+    match /customers/{customerId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isStaff();
+    }
+    
+    // 계약서 컬렉션
+    match /contracts/{contractId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isStaff();
+    }
+    
+    // 주문서 컬렉션
+    match /orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isStaff();
+    }
+    
+    // 제품 컬렉션
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isStaff();
+    }
+    
+    // 옵션 컬렉션
+    match /options/{optionId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isStaff();
+    }
+    
+    // 거래처 컬렉션
+    match /vendors/{vendorId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isStaff();
+    }
+    
+    // 회사 정보 컬렉션
+    match /companyInfo/{infoId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isStaff();
+    }
+    
+    // 회계 데이터 컬렉션
+    match /accounting/{accountingId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isStaff();
+    }
+    
+    // 통계 데이터 컬렉션
+    match /statistics/{statisticsId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isStaff();
+    }
+    
+    // 세금계산서 컬렉션
+    match /taxInvoices/{taxInvoiceId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isStaff();
+    }
+    
+    // 실측 데이터 컬렉션
+    match /measurements/{measurementId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isStaff();
+    }
+    
+    // 납품 관리 컬렉션
+    match /deliveries/{deliveryId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isStaff();
     }
     
     // 알림 컬렉션

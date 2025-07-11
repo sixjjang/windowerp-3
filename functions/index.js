@@ -1271,7 +1271,11 @@ exports.approveUser = functions.https.onRequest(async (req, res) => {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
   
   try {
-    const userId = req.params.id;
+    // Express 라우팅이 아니므로 URL에서 직접 추출
+    const matches = req.url.match(/\/users\/(.+)\/approve/);
+    const userId = matches && matches[1];
+    if (!userId) return res.status(400).json({ error: 'userId 파라미터 필요' });
+
     await db.collection('users').doc(userId).update({
       isApproved: true,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -1301,7 +1305,10 @@ exports.updateUserRole = functions.https.onRequest(async (req, res) => {
   if (req.method !== 'PUT') return res.status(405).send('Method Not Allowed');
   
   try {
-    const userId = req.params.id;
+    // Express 라우팅이 아니므로 URL에서 직접 추출
+    const matches = req.url.match(/\/users\/(.+)\/role/);
+    const userId = matches && matches[1];
+    if (!userId) return res.status(400).json({ error: 'userId 파라미터 필요' });
     const { role } = req.body;
     
     await db.collection('users').doc(userId).update({
@@ -2075,6 +2082,6 @@ exports.issueTaxInvoice = functions.https.onRequest(async (req, res) => {
   });
 });
 
-// register-staff 엔드포인트 alias 추가
-exports['register-staff'] = exports.registerUser;
+// register-staff 엔드포인트 alias 추가 (하이픈 제거)
+exports.registerStaff = exports.registerUser;
 

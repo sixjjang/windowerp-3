@@ -56,6 +56,7 @@ import {
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import { optionService } from '../../utils/firebaseDataService';
 
 interface OptionItem {
   id: number;
@@ -437,7 +438,7 @@ const OptionManagement: React.FC = () => {
   };
 
   // 옵션 추가/수정 핸들러 개선
-  const handleAddOption = () => {
+  const handleAddOption = async () => {
     const currentTabType = getCurrentTabType();
     const optionWithType = {
       ...selectedOption,
@@ -459,20 +460,39 @@ const OptionManagement: React.FC = () => {
       createdAt: editMode ? selectedOption.createdAt : new Date().toISOString(),
     };
 
-    setOptions(prev => {
-      const newOptions = [...prev];
-      if (editMode && editIndex !== null) {
-        const currentTabOptions = [...newOptions[tab]];
-        currentTabOptions[editIndex] = newOption;
-        newOptions[tab] = currentTabOptions;
-      } else {
-        if (!newOptions[tab]) {
-          newOptions[tab] = [];
+    const updatedOptions = options.map((arr, i) => {
+      if (i === tab) {
+        if (editMode && editIndex !== null) {
+          const currentTabOptions = [...arr];
+          currentTabOptions[editIndex] = newOption;
+          return currentTabOptions;
+        } else {
+          return [...arr, newOption];
         }
-        newOptions[tab] = [...newOptions[tab], newOption];
       }
-      return newOptions;
+      return arr;
     });
+
+    setOptions(updatedOptions);
+
+    // localStorage에 저장
+    saveOptions(updatedOptions);
+
+    // Firebase에 자동 저장
+    try {
+      console.log('Firebase에 옵션 데이터 저장 시작');
+      if (editMode && editIndex !== null) {
+        // 기존 옵션 업데이트
+        await optionService.updateOption(newOption.id.toString(), newOption);
+      } else {
+        // 새 옵션 저장
+        await optionService.saveOption(newOption);
+      }
+      console.log('Firebase에 옵션 데이터 저장 완료');
+    } catch (error) {
+      console.error('Firebase 저장 실패:', error);
+      alert('옵션 정보가 저장되었지만 Firebase 동기화에 실패했습니다. 인터넷 연결을 확인해주세요.');
+    }
 
     handleCloseModal();
   };

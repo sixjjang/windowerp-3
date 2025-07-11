@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { deliveryService } from './firebaseDataService';
 
 // =================================================================================
 // TYPES & INTERFACES
@@ -115,24 +116,55 @@ export const useDeliveryStore = create(
   persist<DeliveryStore>(
     (set, get) => ({
       deliveries: [],
-      addDelivery: delivery =>
-        set(state => ({ deliveries: [...state.deliveries, delivery] })),
-      removeDelivery: deliveryId =>
+      addDelivery: async (delivery) => {
+        set(state => ({ deliveries: [...state.deliveries, delivery] }));
+        
+        // Firebase에 저장
+        try {
+          await deliveryService.saveDelivery(delivery);
+          console.log('납품 Firebase 저장 성공:', delivery.id);
+        } catch (error) {
+          console.error('납품 Firebase 저장 실패:', error);
+        }
+      },
+      removeDelivery: async (deliveryId) => {
         set(state => ({
           deliveries: state.deliveries.filter(d => d.id !== deliveryId),
-        })),
-      updateDelivery: (deliveryId, updatedFields) =>
+        }));
+        
+        // Firebase에서 삭제
+        try {
+          await deliveryService.deleteDelivery(deliveryId);
+          console.log('납품 Firebase 삭제 성공:', deliveryId);
+        } catch (error) {
+          console.error('납품 Firebase 삭제 실패:', error);
+        }
+      },
+      updateDelivery: async (deliveryId, updatedFields) => {
+        const updatedDelivery = {
+          ...updatedFields,
+          updatedAt: new Date().toISOString(),
+        };
+        
         set(state => ({
           deliveries: state.deliveries.map(delivery =>
             delivery.id === deliveryId
               ? {
                   ...delivery,
-                  ...updatedFields,
-                  updatedAt: new Date().toISOString(),
+                  ...updatedDelivery,
                 }
               : delivery
           ),
-        })),
+        }));
+        
+        // Firebase에 업데이트
+        try {
+          await deliveryService.updateDelivery(deliveryId, updatedDelivery);
+          console.log('납품 Firebase 업데이트 성공:', deliveryId);
+        } catch (error) {
+          console.error('납품 Firebase 업데이트 실패:', error);
+        }
+      },
       updateDeliveryStatus: (deliveryId, status) => {
         set(state => ({
           deliveries: state.deliveries.map(delivery =>

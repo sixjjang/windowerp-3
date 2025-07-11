@@ -41,6 +41,9 @@ import {
   Edit as EditIcon,
 } from '@mui/icons-material';
 import * as XLSX from 'xlsx';
+import { db, storage } from '../../firebase/config';
+import { collection, addDoc, serverTimestamp, query, collection as fsCollection, where, getDocs, orderBy } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, ref as storageRef } from 'firebase/storage';
 
 interface HistoricalRecord {
   id: string;
@@ -108,11 +111,29 @@ const HistoricalDataManagement: React.FC = () => {
 
   const loadRecords = async () => {
     try {
-      const response = await fetch(
-        `${API_BASE}/historicalDataList?type=${selectedType}&year=${selectedYear}`
+      // Firestore에서 직접 historical-data 쿼리
+      const q = query(
+        fsCollection(db, 'historical-data'),
+        where('type', '==', selectedType),
+        where('year', '==', selectedYear),
+        orderBy('uploadDate', 'desc')
       );
-      const data = await response.json();
-      setRecords(Array.isArray(data) ? data : []);
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(doc => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          type: d.type || 'delivery',
+          year: d.year || 0,
+          filename: d.filename || '',
+          originalName: d.originalName || '',
+          uploadDate: d.uploadDate ? (d.uploadDate.toDate ? d.uploadDate.toDate().toISOString() : d.uploadDate) : '',
+          fileSize: d.fileSize || 0,
+          previewData: d.previewData,
+          merges: d.merges,
+        };
+      });
+      setRecords(data);
     } catch (error) {
       console.error('파일 목록 로드 실패:', error);
       setRecords([]);
@@ -204,27 +225,24 @@ const HistoricalDataManagement: React.FC = () => {
           // File 객체 생성
           const sheetFile = new File([blob], newFileName, { type: blob.type });
           
-          // 업로드
-          const formData = new FormData();
-          formData.append('file', sheetFile);
-          formData.append('type', selectedType);
-          formData.append('year', String(selectedYear));
-          formData.append('sheetName', sheetName); // 시트명 정보 추가
-          
-          console.log(`시트 ${sheetName} 업로드 시작...`);
-          
-          const response = await fetch(`${API_BASE}/historicalDataUpload`, {
-            method: 'POST',
-            body: formData,
+          // Storage에 직접 업로드
+          const storagePath = `historical-data/${selectedType}/${selectedYear}/${newFileName}`;
+          const storageRef = ref(storage, storagePath);
+          await uploadBytes(storageRef, sheetFile);
+
+          // Firestore에 메타데이터 저장
+          await addDoc(collection(db, 'historical-data'), {
+            type: selectedType,
+            year: selectedYear,
+            filename: storagePath,
+            originalName: newFileName,
+            sheetName,
+            uploadDate: serverTimestamp(),
+            fileSize: sheetFile.size,
+            mimeType: sheetFile.type,
           });
           
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: '알 수 없는 오류' }));
-            throw new Error(`시트 ${sheetName} 업로드 실패: ${response.status} - ${errorData.error || '알 수 없는 오류'}`);
-          }
-          
-          const result = await response.json();
-          console.log(`시트 ${sheetName} 업로드 성공:`, result);
+          console.log(`시트 ${sheetName} 업로드 성공:`, storagePath);
           successCount++;
           
         } catch (error) {
@@ -574,6 +592,17 @@ const HistoricalDataManagement: React.FC = () => {
     setEditYear(selectedYear);
   };
 
+  // Storage 파일 미리보기/다운로드
+  const handlePreviewFile = async (filename: string) => {
+    try {
+      const fileRef = storageRef(storage, filename);
+      const url = await getDownloadURL(fileRef);
+      window.open(url, '_blank');
+    } catch (e) {
+      alert('파일을 불러올 수 없습니다.');
+    }
+  };
+
   return (
     <Box
       sx={{
@@ -838,7 +867,9 @@ const HistoricalDataManagement: React.FC = () => {
                   }}
                 >
                   <TableCell sx={{ color: '#e0e6ed' }}>
-                    {record.originalName}
+                    <Button onClick={() => handlePreviewFile(record.filename)} size="small" color="info" variant="outlined">
+                      {record.originalName}
+                    </Button>
                   </TableCell>
                   <TableCell>
                     <Chip

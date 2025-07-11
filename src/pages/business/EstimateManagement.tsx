@@ -75,6 +75,7 @@ import { findLastIndex } from 'lodash';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '../../utils/notificationStore';
 import { UserContext } from '../../components/Layout';
+import { estimateService, migrationService } from '../../utils/firebaseDataService';
 
 // 인쇄용 CSS 스타일
 const printStyles = `
@@ -1746,21 +1747,39 @@ const EstimateManagement: React.FC = () => {
     );
   });
 
-  // 저장된 견적서 불러오기
-  const loadSavedEstimates = () => {
+  // 저장된 견적서 불러오기 (Firebase에서)
+  const loadSavedEstimates = async () => {
     try {
-      const savedData = localStorage.getItem('saved_estimates');
-      const estimates = savedData ? JSON.parse(savedData) : [];
-      console.log('저장된 견적서 로드:', estimates.length, '개');
+      console.log('Firebase에서 견적서 로드 시작');
+      const estimates = await estimateService.getEstimates();
+      console.log('Firebase에서 견적서 로드 완료:', estimates.length, '개');
       return estimates;
     } catch (error) {
-      console.error('저장된 견적서 로드 오류:', error);
-      return [];
+      console.error('Firebase에서 견적서 로드 오류:', error);
+      // Firebase 실패 시 localStorage에서 로드 (fallback)
+      try {
+        const savedData = localStorage.getItem('saved_estimates');
+        const estimates = savedData ? JSON.parse(savedData) : [];
+        console.log('localStorage에서 견적서 로드 (fallback):', estimates.length, '개');
+        return estimates;
+      } catch (localError) {
+        console.error('localStorage에서 견적서 로드 오류:', localError);
+        return [];
+      }
     }
   };
 
   // 저장된 견적서 필터링
-  const savedEstimates = loadSavedEstimates();
+  const [savedEstimates, setSavedEstimates] = useState<any[]>([]);
+  
+  // 견적서 로드
+  useEffect(() => {
+    const loadEstimates = async () => {
+      const estimates = await loadSavedEstimates();
+      setSavedEstimates(estimates);
+    };
+    loadEstimates();
+  }, []);
   const filteredSavedEstimates = savedEstimates.filter((estimate: any) => {
     const s = estimateSearch.trim().toLowerCase();
     if (!s) return true;
@@ -3581,15 +3600,12 @@ const EstimateManagement: React.FC = () => {
   };
 
   // 저장하기 핸들러 함수
-  const handleSaveEstimate = () => {
+  const handleSaveEstimate = async () => {
     try {
       const currentEstimate = estimates[activeTab];
-      const savedEstimates = JSON.parse(
-        localStorage.getItem('saved_estimates') || '[]'
-      );
-
+      
       console.log('현재 견적서:', currentEstimate);
-      console.log('기존 저장된 견적서:', savedEstimates.length, '개');
+      console.log('Firebase에 견적서 저장 시작');
 
       // Final 견적서인지 확인 (견적번호에 -final이 포함되어 있는지)
       const isFinalEstimate =
@@ -3807,12 +3823,27 @@ const EstimateManagement: React.FC = () => {
         console.log('새 견적서 저장:', finalEstimateName);
       }
 
+      // localStorage에 저장
       localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
       console.log(
-        '저장 완료. 총',
+        'localStorage 저장 완료. 총',
         savedEstimates.length,
         '개의 견적서가 저장됨'
       );
+
+      // Firebase에도 자동 저장
+      try {
+        console.log('Firebase에 견적서 저장 시작');
+        await estimateService.saveEstimate(estimateToSave);
+        console.log('Firebase 저장 완료:', finalEstimateName);
+      } catch (error) {
+        console.error('Firebase 저장 실패:', error);
+        // Firebase 저장 실패해도 localStorage는 성공했으므로 사용자에게 경고만 표시
+        setSnackbar({
+          open: true,
+          message: '견적서가 저장되었지만 Firebase 동기화에 실패했습니다. 인터넷 연결을 확인해주세요.',
+        });
+      }
 
       if (existingEstimate && !isNewEstimate) {
         alert(
@@ -4828,6 +4859,8 @@ const EstimateManagement: React.FC = () => {
     const newRailItems = railEditData.railItems.filter((_, i) => i !== index);
     setRailEditData({ ...railEditData, railItems: newRailItems });
   };
+
+
 
   // 제품 검색에서 제품 선택 시 editRow에 반영하는 핸들러
   const handleProductSelectForEdit = (product: any) => {
@@ -7709,6 +7742,7 @@ const EstimateManagement: React.FC = () => {
               >
                 {showSavedEstimates ? '숨기기' : '보기'}
               </Button>
+
             </Box>
           </Box>
           {showSavedEstimates && (

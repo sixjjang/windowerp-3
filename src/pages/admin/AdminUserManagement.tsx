@@ -26,6 +26,7 @@ import {
 import MenuPermissionSettings from '../../components/MenuPermissionSettings';
 // import ChatTargetSettings from '../../components/ChatTargetSettings';
 import { API_BASE } from '../../utils/auth';
+import { userService } from '../../utils/firebaseDataService';
 import {
   downloadEstimates,
   downloadContracts,
@@ -46,7 +47,7 @@ interface User {
   id: number;
   username: string;
   role: string;
-  isApproved: number;
+  isApproved: boolean;
   name?: string;
   email?: string;
   phone?: string;
@@ -127,12 +128,22 @@ const AdminUserManagement: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('token');
-      const res = await axios.get(`${API_BASE}/users`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setUsers(res.data);
+      console.log('Firebase에서 사용자 목록 로드 시작');
+      const data = await userService.getUsers();
+      console.log('Firebase에서 사용자 목록 로드 완료:', data.length, '개');
+      setUsers(data.map((item: any) => ({
+        id: Number(item.id),
+        username: item.username || '',
+        role: item.role || 'staff',
+        isApproved: item.isApproved || false,
+        name: item.name || '',
+        email: item.email || '',
+        phone: item.phone || '',
+        address: item.address || '',
+        accountNumber: item.accountNumber || '',
+      })));
     } catch (err: any) {
+      console.error('사용자 목록 조회 오류:', err);
       setError('사용자 목록을 불러오지 못했습니다.');
     } finally {
       setLoading(false);
@@ -162,15 +173,15 @@ const AdminUserManagement: React.FC = () => {
     e.preventDefault();
     setRegisterMsg('');
     try {
-      const token = localStorage.getItem('token');
-      await axios.post(`${API_BASE}/registerUser`, newUser, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      console.log('Firebase에 사용자 데이터 저장 시작');
+      await userService.saveUser(newUser);
+      console.log('Firebase에 사용자 데이터 저장 완료');
+      
       setRegisterMsg('직원 등록 성공!');
       setNewUser({ username: '', password: '', name: '', role: 'staff', email: '', phone: '', address: '', accountNumber: '' });
       fetchUsers();
     } catch (err: any) {
-      setRegisterMsg('직원 등록 실패: ' + (err.response?.data || err.message));
+      setRegisterMsg('직원 등록 실패: ' + err.message);
     }
   };
 
@@ -190,18 +201,21 @@ const AdminUserManagement: React.FC = () => {
   const handleApprove = async (id: number) => {
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`${API_BASE}/users/${id}/approve`, {}, {
+      const response = await axios.post(`${API_BASE}/users/${id}/approve`, {}, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      console.log('승인 응답:', response.data);
       fetchUsers();
-    } catch {}
+    } catch (error: any) {
+      console.error('승인 오류:', error.response?.data || error.message);
+    }
   };
 
   // 권한 변경
   const handleRoleChange = async (id: number, role: string) => {
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`${API_BASE}/users/${id}/role`, { role }, {
+      await axios.put(`${API_BASE}/users/${id}/role`, { role }, {
         headers: { Authorization: `Bearer ${token}` },
       });
       fetchUsers();
@@ -396,9 +410,9 @@ const AdminUserManagement: React.FC = () => {
                       <option value="guest">손님</option>
                     </select>
                   </td>
-                  <td style={{ textAlign: 'center' }}>{user.isApproved === 1 ? '승인' : '대기'}</td>
+                  <td style={{ textAlign: 'center' }}>{user.isApproved ? '승인' : '대기'}</td>
                   <td style={{ textAlign: 'center' }}>
-                    {user.isApproved !== 1 && (
+                    {!user.isApproved && (
                       <button onClick={() => handleApprove(user.id)} style={{ fontSize: '1rem', height: 32, padding: '0 12px' }}>승인</button>
                     )}
                     <button onClick={() => handleDelete(user.id)} style={{ marginLeft: 8, fontSize: '1rem', height: 32, padding: '0 12px' }}>삭제</button>

@@ -39,6 +39,7 @@ import * as XLSX from 'xlsx';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import type { DropResult } from 'react-beautiful-dnd';
 import { useLocation } from 'react-router-dom';
+import { productService } from '../../utils/firebaseDataService';
 
 interface Product {
   id: number;
@@ -358,26 +359,42 @@ const ProductManagement: React.FC = () => {
     setSelectedProduct(initialProduct);
   };
 
-  const handleAddProduct = () => {
+  const handleAddProduct = async () => {
+    let updatedProducts: Product[];
+    
     if (editMode && editIndex !== null) {
-      setProducts(prev => {
-        const updated = prev.map(p =>
-          p.id === selectedProduct.id ? { ...selectedProduct } : p
-        );
-        saveProducts(updated);
-        return updated;
-      });
+      updatedProducts = products.map(p =>
+        p.id === selectedProduct.id ? { ...selectedProduct } : p
+      );
+      setProducts(updatedProducts);
     } else {
-      setProducts(prev => {
-        const newProduct = {
-          ...selectedProduct,
-          id: prev.length ? prev[prev.length - 1].id + 1 : 1,
-        };
-        const updated = [...prev, newProduct];
-        saveProducts(updated);
-        return updated;
-      });
+      const newProduct = {
+        ...selectedProduct,
+        id: products.length ? products[products.length - 1].id + 1 : 1,
+      };
+      updatedProducts = [...products, newProduct];
+      setProducts(updatedProducts);
     }
+    
+    // localStorage에 저장
+    saveProducts(updatedProducts);
+    
+    // Firebase에 자동 저장
+    try {
+      console.log('Firebase에 제품 데이터 저장 시작');
+      if (editMode && editIndex !== null) {
+        // 기존 제품 업데이트
+        await productService.updateProduct(selectedProduct.id.toString(), selectedProduct);
+      } else {
+        // 새 제품 저장
+        await productService.saveProduct(selectedProduct);
+      }
+      console.log('Firebase에 제품 데이터 저장 완료');
+    } catch (error) {
+      console.error('Firebase 저장 실패:', error);
+      alert('제품 정보가 저장되었지만 Firebase 동기화에 실패했습니다. 인터넷 연결을 확인해주세요.');
+    }
+    
     handleCloseModal();
   };
 
@@ -490,6 +507,8 @@ const ProductManagement: React.FC = () => {
           saveProducts(updated);
           return updated;
         });
+        setCategoryTabValue(0); // 추가
+        setVendorTabValue(0); // 추가
         alert(`엑셀 업로드 완료!`);
       } else {
         alert('업로드할 수 있는 제품 데이터가 없습니다.');
@@ -631,6 +650,11 @@ const ProductManagement: React.FC = () => {
     p => p.category === selectedCategory && p.vendorName === selectedVendor
   );
 
+  // 2. filteredVendors가 바뀔 때 vendorTabValue를 0으로 리셋
+  useEffect(() => {
+    setVendorTabValue(0);
+  }, [filteredVendors.length]);
+
   return (
     <Grid container spacing={2}>
       <Grid item xs={12}>
@@ -726,7 +750,7 @@ const ProductManagement: React.FC = () => {
       </Grid>
       {filteredVendors.length > 0 && (
         <Grid item xs={12}>
-          <Paper sx={{ width: '100%', display: 'flex', alignItems: 'center', mb: 2 }}>
+          <Paper sx={{ width: '100%', display: 'flex', alignItems: 'center', mb: 2, overflowX: 'auto', whiteSpace: 'nowrap' }}>
             <Tabs
               value={vendorTabValue}
               onChange={handleVendorTabChange}
@@ -744,7 +768,7 @@ const ProductManagement: React.FC = () => {
           </Paper>
         </Grid>
       )}
-      {categoryOptions.length === 0 && (
+      {filteredVendors.length === 0 && (
         <Grid item xs={12}>
           <Paper sx={{ p: 4, textAlign: 'center' }}>
             <Typography variant="h6" color="text.secondary" gutterBottom>
@@ -897,6 +921,18 @@ const ProductManagement: React.FC = () => {
           </DragDropContext>
         </TableContainer>
       </Grid>
+      {currentProducts.length === 0 && filteredVendors.length > 0 && (
+        <Grid item xs={12}>
+          <Paper sx={{ p: 4, textAlign: 'center' }}>
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              선택한 거래처에 등록된 제품이 없습니다
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              엑셀 업로드 또는 제품 등록을 먼저 해주세요.
+            </Typography>
+          </Paper>
+        </Grid>
+      )}
       <Dialog
         open={isModalOpen}
         onClose={handleCloseModal}

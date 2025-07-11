@@ -62,6 +62,7 @@ import {
   ConstructionType,
 } from '../../utils/deliveryStore';
 import { Estimate, EstimateRow } from '../../types';
+import { orderService } from '../../utils/firebaseDataService';
 
 // 타입 정의를 직접 여기에 포함
 interface Contract {
@@ -185,42 +186,87 @@ const useOrderStore = create(
   persist<OrderStore>(
     (set, get) => ({
       orders: [],
-      addOrder: order => set(state => ({ orders: [...state.orders, order] })),
-      removeOrder: orderId =>
-        set(state => ({ orders: state.orders.filter(o => o.id !== orderId) })),
-      updateOrder: (orderId, updatedFields) =>
+      addOrder: async (order) => {
+        set(state => ({ orders: [...state.orders, order] }));
+        
+        // Firebase에 저장
+        try {
+          await orderService.saveOrder(order);
+          console.log('주문 Firebase 저장 성공:', order.id);
+        } catch (error) {
+          console.error('주문 Firebase 저장 실패:', error);
+        }
+      },
+      removeOrder: async (orderId) => {
+        set(state => ({ orders: state.orders.filter(o => o.id !== orderId) }));
+        
+        // Firebase에서 삭제
+        try {
+          await orderService.deleteOrder(orderId);
+          console.log('주문 Firebase 삭제 성공:', orderId);
+        } catch (error) {
+          console.error('주문 Firebase 삭제 실패:', error);
+        }
+      },
+      updateOrder: async (orderId, updatedFields) => {
+        const updatedOrder = {
+          ...updatedFields,
+          updatedAt: new Date().toISOString(),
+        };
+        
         set(state => ({
           orders: state.orders.map(order =>
             order.id === orderId
               ? {
                   ...order,
-                  ...updatedFields,
-                  updatedAt: new Date().toISOString(),
+                  ...updatedOrder,
                 }
               : order
           ),
-        })),
-      updateOrderItems: (orderId, items) => {
+        }));
+        
+        // Firebase에 업데이트
+        try {
+          await orderService.updateOrder(orderId, updatedOrder);
+          console.log('주문 Firebase 업데이트 성공:', orderId);
+        } catch (error) {
+          console.error('주문 Firebase 업데이트 실패:', error);
+        }
+      },
+      updateOrderItems: async (orderId, items) => {
+        const order = get().orders.find(o => o.id === orderId);
+        if (!order) return;
+        
+        const totalAmount = items.reduce(
+          (sum, item) => sum + item.quantity * item.unitPrice,
+          0
+        );
+        const taxAmount = Math.round(totalAmount * 0.1);
+        const updatedOrder = {
+          ...order,
+          items,
+          totalAmount,
+          taxAmount,
+          grandTotal: totalAmount + taxAmount,
+          updatedAt: new Date().toISOString(),
+        };
+        
         set(state => ({
           orders: state.orders.map(order => {
             if (order.id === orderId) {
-              const totalAmount = items.reduce(
-                (sum, item) => sum + item.quantity * item.unitPrice,
-                0
-              );
-              const taxAmount = Math.round(totalAmount * 0.1);
-              return {
-                ...order,
-                items,
-                totalAmount,
-                taxAmount,
-                grandTotal: totalAmount + taxAmount,
-                updatedAt: new Date().toISOString(),
-              };
+              return updatedOrder;
             }
             return order;
           }),
         }));
+        
+        // Firebase에 업데이트
+        try {
+          await orderService.updateOrder(orderId, updatedOrder);
+          console.log('주문 아이템 Firebase 업데이트 성공:', orderId);
+        } catch (error) {
+          console.error('주문 아이템 Firebase 업데이트 실패:', error);
+        }
       },
       setOrders: orders => set({ orders }),
     }),
@@ -524,10 +570,37 @@ const OrderManagement: React.FC = () => {
   const formalTemplateRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const savedContracts = localStorage.getItem('contracts');
-    if (savedContracts) setContracts(JSON.parse(savedContracts));
-    const savedEstimates = localStorage.getItem('approvedEstimatesList');
-    if (savedEstimates) setEstimates(JSON.parse(savedEstimates));
+    const loadData = async () => {
+      try {
+        console.log('Firebase에서 주문 데이터 로드 시작');
+        const data = await orderService.getOrders();
+        console.log('Firebase에서 주문 데이터 로드 완료:', data.length, '개');
+        
+        // Firebase 데이터를 Zustand store에 설정
+        if (data.length > 0) {
+          // 기존 localStorage 데이터와 병합
+          const savedContracts = localStorage.getItem('contracts');
+          if (savedContracts) setContracts(JSON.parse(savedContracts));
+          const savedEstimates = localStorage.getItem('approvedEstimatesList');
+          if (savedEstimates) setEstimates(JSON.parse(savedEstimates));
+        } else {
+          // Firebase에 데이터가 없으면 localStorage에서 로드
+          const savedContracts = localStorage.getItem('contracts');
+          if (savedContracts) setContracts(JSON.parse(savedContracts));
+          const savedEstimates = localStorage.getItem('approvedEstimatesList');
+          if (savedEstimates) setEstimates(JSON.parse(savedEstimates));
+        }
+      } catch (error) {
+        console.error('Firebase 데이터 로드 실패, localStorage 사용:', error);
+        // Firebase 실패 시 localStorage에서 로드
+        const savedContracts = localStorage.getItem('contracts');
+        if (savedContracts) setContracts(JSON.parse(savedContracts));
+        const savedEstimates = localStorage.getItem('approvedEstimatesList');
+        if (savedEstimates) setEstimates(JSON.parse(savedEstimates));
+      }
+    };
+    
+    loadData();
 
     const fetchCompanyInfo = async () => {
       try {

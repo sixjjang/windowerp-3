@@ -119,6 +119,20 @@ import InsertEmoticonIcon from '@mui/icons-material/InsertEmoticon';
 import TimeTreeIntegration from '../../components/TimeTreeIntegration';
 import { getTimeTreeSettings, syncWithTimeTree } from '../../utils/timetreeUtils';
 
+// Firestore 실시간 채팅을 위한 import 추가
+import { db } from '../../firebase/config';
+import { 
+  collection, 
+  doc, 
+  addDoc, 
+  onSnapshot, 
+  orderBy, 
+  query, 
+  serverTimestamp,
+  deleteDoc,
+  updateDoc
+} from 'firebase/firestore';
+
 // 새로운 인터페이스들
 interface ScheduleComment {
   id: string;
@@ -478,6 +492,11 @@ const Schedule: React.FC = () => {
   const [newIntegratedComment, setNewIntegratedComment] = useState('');
   const [integratedIsPeriodMode, setIntegratedIsPeriodMode] = useState(false);
 
+  // 실시간 채팅 관련 상태 추가
+  const [realTimeComments, setRealTimeComments] = useState<{ [eventId: string]: ScheduleComment[] }>({});
+  const [commentUnsubscribers, setCommentUnsubscribers] = useState<{ [eventId: string]: () => void }>({});
+  const [chatDataLoaded, setChatDataLoaded] = useState<{ [eventId: string]: boolean }>({});
+
   // 타임트리 연동 상태
   const [timeTreeDialogOpen, setTimeTreeDialogOpen] = useState(false);
   const [timeTreeSettings] = useState(getTimeTreeSettings());
@@ -527,6 +546,108 @@ const Schedule: React.FC = () => {
     fetchCurrentUserAndPermissions();
   }, []);
 
+  // 실시간 댓글 구독 함수 (개선됨)
+  const subscribeToComments = (eventId: string) => {
+    // 이미 로드된 경우 스킵
+    if (chatDataLoaded[eventId]) {
+      return;
+    }
+
+    // 기존 구독이 있으면 해제
+    if (commentUnsubscribers[eventId]) {
+      commentUnsubscribers[eventId]();
+    }
+
+    console.log(`채팅 데이터 구독 시작: ${eventId}`);
+
+    const commentsRef = collection(db, 'schedules', eventId, 'comments');
+    const q = query(commentsRef, orderBy('timestamp', 'asc'));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const comments: ScheduleComment[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        comments.push({
+          id: doc.id,
+          eventId: data.eventId,
+          userId: data.userId,
+          userName: data.userName,
+          userAvatar: data.userAvatar,
+          message: data.message,
+          timestamp: data.timestamp?.toDate?.()?.toISOString() || data.timestamp,
+          attachments: data.attachments || [],
+          emoji: data.emoji,
+        });
+      });
+      
+      console.log(`채팅 데이터 업데이트: ${eventId}`, comments.length);
+      
+      setRealTimeComments(prev => ({
+        ...prev,
+        [eventId]: comments
+      }));
+
+      // Firebase에 데이터가 제대로 저장되었는지 확인
+      console.log(`Firebase에서 채팅 데이터 로드 완료: ${eventId}`, {
+        commentCount: comments.length,
+        comments: comments.map(c => ({ id: c.id, message: c.message.substring(0, 50) }))
+      });
+
+      // 로드 완료 표시
+      setChatDataLoaded(prev => ({
+        ...prev,
+        [eventId]: true
+      }));
+    }, (error) => {
+      console.error('댓글 구독 오류:', error);
+      console.error('Firebase 인증 상태 확인 필요');
+    });
+
+    // 구독 해제 함수 저장
+    setCommentUnsubscribers(prev => ({
+      ...prev,
+      [eventId]: unsubscribe
+    }));
+  };
+
+  // 모든 일정의 채팅 데이터 자동 로딩 (Firebase에서 직접 로드)
+  useEffect(() => {
+    if (events.length > 0) {
+      console.log('모든 일정의 채팅 데이터 로딩 시작:', events.length);
+      
+      // 모든 이벤트에 대해 Firestore 구독 시작
+      events.forEach(event => {
+        if (!chatDataLoaded[event.id]) {
+          subscribeToComments(event.id);
+        }
+      });
+    }
+  }, [events, chatDataLoaded]);
+
+  // 채팅 다이얼로그가 열릴 때 실시간 구독 시작 (기존 로직 유지)
+  useEffect(() => {
+    if (selectedEventForChat && !chatDataLoaded[selectedEventForChat.id]) {
+      subscribeToComments(selectedEventForChat.id);
+    }
+  }, [selectedEventForChat]);
+
+  // 통합 모달이 열릴 때도 실시간 댓글 구독 시작 (기존 로직 유지)
+  useEffect(() => {
+    if (selectedEventForEdit && integratedEventDialogOpen && !chatDataLoaded[selectedEventForEdit.id]) {
+      subscribeToComments(selectedEventForEdit.id);
+    }
+  }, [selectedEventForEdit, integratedEventDialogOpen]);
+
+  // 컴포넌트 언마운트 시 모든 구독 해제
+  useEffect(() => {
+    return () => {
+      console.log('컴포넌트 언마운트 - 모든 채팅 구독 해제');
+      Object.values(commentUnsubscribers).forEach(unsubscribe => {
+        if (unsubscribe) unsubscribe();
+      });
+    };
+  }, [commentUnsubscribers]);
+
   // 납품관리 메모 변경 시 스케줄 업데이트
   useEffect(() => {
     // 납품관리 메모가 변경될 때마다 스케줄의 description 업데이트
@@ -552,43 +673,47 @@ const Schedule: React.FC = () => {
     updateScheduleDescriptions();
   }, [deliveries]); // deliveries가 변경될 때마다 실행
 
-  // 실측 다이얼로그가 열릴 때 견적번호 자동 연결
+  // 실측 다이얼로그가 열릴 때 Firebase 구독 시작 및 견적번호 자동 연결
   useEffect(() => {
-    if (
-      measurementDialogOpen &&
-      currentMeasurementEvent &&
-      !currentMeasurementEvent.estimateNo
-    ) {
-      const savedEstimates = JSON.parse(
-        localStorage.getItem('saved_estimates') || '[]'
-      );
-      const recentEstimates = savedEstimates
-        .filter(
-          (est: any) =>
-            est.status === '계약완료' ||
-            est.status === '진행' ||
-            est.status === 'signed'
-        )
-        .sort(
-          (a: any, b: any) =>
-            new Date(b.savedAt || b.estimateDate || 0).getTime() -
-            new Date(a.savedAt || a.estimateDate || 0).getTime()
+    if (measurementDialogOpen && currentMeasurementEvent) {
+      // Firebase 구독 시작
+      if (!chatDataLoaded[currentMeasurementEvent.id]) {
+        subscribeToComments(currentMeasurementEvent.id);
+      }
+      
+      // 견적번호 자동 연결
+      if (!currentMeasurementEvent.estimateNo) {
+        const savedEstimates = JSON.parse(
+          localStorage.getItem('saved_estimates') || '[]'
         );
-
-      const latestEstimate = recentEstimates[0];
-      if (latestEstimate) {
-        const updatedEvent = {
-          ...currentMeasurementEvent,
-          estimateNo: latestEstimate.estimateNo,
-          updatedAt: new Date().toISOString(),
-        };
-        setEvents(prev =>
-          prev.map(event =>
-            event.id === currentMeasurementEvent.id ? updatedEvent : event
+        const recentEstimates = savedEstimates
+          .filter(
+            (est: any) =>
+              est.status === '계약완료' ||
+              est.status === '진행' ||
+              est.status === 'signed'
           )
-        );
-        setCurrentMeasurementEvent(updatedEvent);
-        console.log('견적번호 자동 연결:', latestEstimate.estimateNo);
+          .sort(
+            (a: any, b: any) =>
+              new Date(b.savedAt || b.estimateDate || 0).getTime() -
+              new Date(a.savedAt || a.estimateDate || 0).getTime()
+          );
+
+        const latestEstimate = recentEstimates[0];
+        if (latestEstimate) {
+          const updatedEvent = {
+            ...currentMeasurementEvent,
+            estimateNo: latestEstimate.estimateNo,
+            updatedAt: new Date().toISOString(),
+          };
+          setEvents(prev =>
+            prev.map(event =>
+              event.id === currentMeasurementEvent.id ? updatedEvent : event
+            )
+          );
+          setCurrentMeasurementEvent(updatedEvent);
+          console.log('견적번호 자동 연결:', latestEstimate.estimateNo);
+        }
       }
     }
   }, [measurementDialogOpen, currentMeasurementEvent]);
@@ -2122,39 +2247,55 @@ const Schedule: React.FC = () => {
   };
 
   // 통합 모달에서 댓글 추가
-  const handleIntegratedCommentSubmit = () => {
+  const handleIntegratedCommentSubmit = async () => {
     if (!newIntegratedComment || !newIntegratedComment.trim() || !selectedEventForEdit) return;
 
-    const newComment: ScheduleComment = {
-      id: Date.now().toString(),
-      eventId: selectedEventForEdit.id,
-      userId: 'current_user',
-      userName: userName || '사용자',
-      message: newIntegratedComment,
-      timestamp: new Date().toISOString(),
-    };
+    try {
+      console.log('Firebase에 댓글 저장 시작:', {
+        eventId: selectedEventForEdit.id,
+        message: newIntegratedComment.trim(),
+        userName: userName || '사용자'
+      });
 
-    const updatedComments = [...integratedEventComments, newComment];
-    setIntegratedEventComments(updatedComments);
-    
-    // 현재 이벤트의 댓글도 업데이트
-    if (selectedEventForEdit) {
-      const updatedEvents = events.map(event =>
-        event.id === selectedEventForEdit.id
-          ? {
-              ...event,
-              comments: updatedComments,
-              updatedAt: new Date().toISOString(),
-            }
-          : event
-      );
-      setEvents(updatedEvents);
+      // Firestore에 댓글 저장 (실시간 동기화)
+      const commentsRef = collection(db, 'schedules', selectedEventForEdit.id, 'comments');
       
-      // localStorage 업데이트
-      localStorage.setItem('schedules', JSON.stringify(updatedEvents));
+      // emoji 필드 처리 (undefined 제거)
+      const emojiMatch = newIntegratedComment.match(/[😊👍❤️🎉🔥💯👏🙏😍🤔😅😢]/);
+      const commentData: any = {
+        eventId: selectedEventForEdit.id,
+        userId: currentUser?.id?.toString() || 'current_user',
+        userName: userName || '사용자',
+        userAvatar: currentUser?.username || '',
+        message: newIntegratedComment.trim(),
+        timestamp: serverTimestamp(),
+      };
+      
+      // emoji가 있을 때만 필드 추가
+      if (emojiMatch && emojiMatch[0]) {
+        commentData.emoji = emojiMatch[0];
+      }
+      
+      const docRef = await addDoc(commentsRef, commentData);
+
+      console.log('Firebase에 댓글 저장 완료:', docRef.id);
+
+      // 입력 필드 초기화
+      setNewIntegratedComment('');
+      
+      setSnackbar({
+        open: true,
+        message: '댓글이 실시간으로 전송되었습니다.',
+        severity: 'success',
+      });
+    } catch (error) {
+      console.error('댓글 저장 실패:', error);
+      setSnackbar({
+        open: true,
+        message: '댓글 전송에 실패했습니다.',
+        severity: 'error',
+      });
     }
-    
-    setNewIntegratedComment('');
   };
 
   // 실측 이벤트 편집 시 MeasurementForm 표시
@@ -3372,7 +3513,7 @@ const Schedule: React.FC = () => {
   // 새로운 기능들을 위한 핸들러들
 
   // 채팅/댓글
-  const handleCommentSubmit = () => {
+  const handleCommentSubmit = async () => {
     if (!newComment || !newComment.trim() || !selectedEventForChat) return;
     
     // 채팅 권한 체크
@@ -3385,45 +3526,54 @@ const Schedule: React.FC = () => {
       return;
     }
 
-    const comment: ScheduleComment = {
-      id: Date.now().toString(),
-      eventId: selectedEventForChat.id,
-      userId: 'current_user',
-      userName: userName || '사용자',
-      message: newComment,
-      timestamp: new Date().toISOString(),
-      attachments: commentAttachments.map(file => URL.createObjectURL(file)),
-      emoji: newComment.match(/[😊👍❤️🎉🔥💯👏🙏😍🤔😅😢]/)?.[0] || undefined,
-    };
+    try {
+      console.log('Firebase에 댓글 저장 시작:', {
+        eventId: selectedEventForChat.id,
+        message: newComment.trim(),
+        userName: userName || '사용자'
+      });
 
-    const updatedEvents = events.map(event =>
-      event.id === selectedEventForChat.id
-        ? {
-            ...event,
-            comments: [...(event.comments || []), comment],
-            updatedAt: new Date().toISOString(),
-          }
-        : event
-    );
-    setEvents(updatedEvents);
-    
-    // localStorage 업데이트
-    localStorage.setItem('schedules', JSON.stringify(updatedEvents));
+      // Firestore에 댓글 저장 (실시간 동기화)
+      const commentsRef = collection(db, 'schedules', selectedEventForChat.id, 'comments');
+      
+      // emoji 필드 처리 (undefined 제거)
+      const emojiMatch = newComment.match(/[😊👍❤️🎉🔥💯👏🙏😍🤔😅😢]/);
+      const commentData: any = {
+        eventId: selectedEventForChat.id,
+        userId: currentUser?.id?.toString() || 'current_user',
+        userName: userName || '사용자',
+        userAvatar: currentUser?.username || '',
+        message: newComment.trim(),
+        timestamp: serverTimestamp(),
+        attachments: commentAttachments.map(file => URL.createObjectURL(file)),
+      };
+      
+      // emoji가 있을 때만 필드 추가
+      if (emojiMatch && emojiMatch[0]) {
+        commentData.emoji = emojiMatch[0];
+      }
+      
+      const docRef = await addDoc(commentsRef, commentData);
 
-    // 댓글 작성 알림 (WebSocket으로 실시간 전송)
-    // createChatNotification(
-    //   nickname || userName || '사용자',
-    //   newComment,
-    //   selectedEventForChat.id
-    // );
+      console.log('Firebase에 댓글 저장 완료:', docRef.id);
 
-    setNewComment('');
-    setCommentAttachments([]);
-    setSnackbar({
-      open: true,
-      message: '댓글이 추가되었습니다.',
-      severity: 'success',
-    });
+      // 입력 필드 초기화
+      setNewComment('');
+      setCommentAttachments([]);
+      
+      setSnackbar({
+        open: true,
+        message: '댓글이 실시간으로 전송되었습니다.',
+        severity: 'success',
+      });
+    } catch (error) {
+      console.error('댓글 저장 실패:', error);
+      setSnackbar({
+        open: true,
+        message: '댓글 전송에 실패했습니다.',
+        severity: 'error',
+      });
+    }
   };
 
   const handleFileUpload = (files: FileList) => {
@@ -3626,8 +3776,8 @@ const Schedule: React.FC = () => {
       setUserDialogOpen(true);
       return;
     }
-    // 기존 메시지 전송 로직에서 userName을 메시지에 포함
-    // ...
+    // 실시간 댓글 전송 (handleCommentSubmit과 동일)
+    handleCommentSubmit();
   };
 
   // 메모 관련 핸들러
@@ -6603,9 +6753,9 @@ const Schedule: React.FC = () => {
                       }}
                     >
                       {currentMeasurementEvent &&
-                      currentMeasurementEvent.comments &&
-                      currentMeasurementEvent.comments.length > 0 ? (
-                        currentMeasurementEvent.comments.map((comment: any, idx: number) => {
+                      realTimeComments[currentMeasurementEvent.id] &&
+                      realTimeComments[currentMeasurementEvent.id].length > 0 ? (
+                        realTimeComments[currentMeasurementEvent.id].map((comment: ScheduleComment, idx: number) => {
                           const isMine = comment.userName === userName;
                           return (
                             <Box key={comment.id} sx={{
@@ -6774,7 +6924,7 @@ const Schedule: React.FC = () => {
                               </Box>
                             ),
                           }}
-                          onKeyPress={e => {
+                          onKeyPress={async e => {
                             if (e.key === 'Enter' && !e.shiftKey) {
                               e.preventDefault();
                               if (
@@ -6789,57 +6939,45 @@ const Schedule: React.FC = () => {
                                   });
                                   return;
                                 }
-                                const comment: ScheduleComment = {
-                                  id: Date.now().toString(),
+                                                              // Firebase Firestore에 실측 채팅 메시지 저장
+                              try {
+                                console.log('Firebase에 실측 채팅 메시지 저장 시작:', {
+                                  eventId: currentMeasurementEvent.id,
+                                  message: newComment.trim(),
+                                  userName: userName || '사용자'
+                                });
+
+                                const commentsRef = collection(db, 'schedules', currentMeasurementEvent.id, 'comments');
+                                
+                                // emoji 필드 처리 (undefined 제거)
+                                const emojiMatch = newComment.match(/[😊👍❤️🎉🔥💯👏🙏😍🤔😅😢]/);
+                                const commentData: any = {
                                   eventId: currentMeasurementEvent.id,
                                   userId: 'current_user',
                                   userName: userName || '사용자',
-                                  message: newComment,
-                                  timestamp: new Date().toISOString(),
-                                  attachments: commentAttachments.map(file =>
-                                    URL.createObjectURL(file)
-                                  ),
-                                  emoji:
-                                    newComment.match(
-                                      /[😊👍❤️🎉🔥👏🙏😍🤔😅😢]/
-                                    )?.[0] || undefined,
+                                  userAvatar: '',
+                                  message: newComment.trim(),
+                                  timestamp: serverTimestamp(),
+                                  attachments: commentAttachments.map(file => URL.createObjectURL(file)),
                                 };
-                                console.log('실측 채팅 메시지 전송 (Enter):', {
-                                  eventId: currentMeasurementEvent.id,
-                                  eventTitle: currentMeasurementEvent.title,
-                                  message: newComment,
-                                  comment,
-                                  allEvents: events.map(e => ({
-                                    id: e.id,
-                                    title: e.title,
-                                    commentsCount: e.comments?.length || 0,
-                                  })),
+                                
+                                // emoji가 있을 때만 필드 추가
+                                if (emojiMatch && emojiMatch[0]) {
+                                  commentData.emoji = emojiMatch[0];
+                                }
+                                
+                                const docRef = await addDoc(commentsRef, commentData);
+
+                                console.log('Firebase에 실측 채팅 메시지 저장 완료:', docRef.id);
+                              } catch (error) {
+                                console.error('실측 채팅 메시지 저장 실패:', error);
+                                setSnackbar({
+                                  open: true,
+                                  message: '메시지 전송에 실패했습니다.',
+                                  severity: 'error',
                                 });
-                                setEvents(prev => {
-                                  const updatedEvents = prev.map(e =>
-                                    e.id === currentMeasurementEvent.id
-                                      ? {
-                                          ...e,
-                                          comments: [
-                                            ...(e.comments || []),
-                                            comment,
-                                          ],
-                                          updatedAt: new Date().toISOString(),
-                                        }
-                                      : e
-                                  );
-                                  // 실측 다이얼로그의 currentMeasurementEvent도 동기화
-                                  const updatedCurrent = updatedEvents.find(
-                                    e => e.id === currentMeasurementEvent?.id
-                                  );
-                                  if (updatedCurrent)
-                                    setCurrentMeasurementEvent(updatedCurrent);
-                                  localStorage.setItem(
-                                    'schedules',
-                                    JSON.stringify(updatedEvents)
-                                  );
-                                  return updatedEvents;
-                                });
+                                return;
+                              }
                                 setNewComment('');
                                 setCommentAttachments([]);
                                 setSnackbar({
@@ -6869,7 +7007,7 @@ const Schedule: React.FC = () => {
                         />
                         {/* 전송 버튼 */}
                         <IconButton
-                          onClick={() => {
+                          onClick={async () => {
                             if (
                               newComment.trim() ||
                               commentAttachments.length > 0
@@ -6900,57 +7038,45 @@ const Schedule: React.FC = () => {
                                 return;
                               }
 
-                              const comment: ScheduleComment = {
-                                id: Date.now().toString(),
-                                eventId: currentMeasurementEvent.id,
-                                userId: 'current_user',
-                                userName: userName || '사용자',
-                                message: newComment,
-                                timestamp: new Date().toISOString(),
-                                attachments: commentAttachments.map(file =>
-                                  URL.createObjectURL(file)
-                                ),
-                                emoji:
-                                  newComment.match(
-                                    /[😊👍❤️🎉🔥💯👏🙏😍🤔😅😢]/
-                                  )?.[0] || undefined,
-                              };
-                              console.log('실측 채팅 메시지 전송 (버튼):', {
-                                eventId: currentMeasurementEvent.id,
-                                eventTitle: currentMeasurementEvent.title,
-                                message: newComment,
-                                comment,
-                                allEvents: events.map(e => ({
-                                  id: e.id,
-                                  title: e.title,
-                                  commentsCount: e.comments?.length || 0,
-                                })),
-                              });
-                              setEvents(prev => {
-                                const updatedEvents = prev.map(e =>
-                                  e.id === currentMeasurementEvent.id
-                                    ? {
-                                        ...e,
-                                        comments: [
-                                          ...(e.comments || []),
-                                          comment,
-                                        ],
-                                        updatedAt: new Date().toISOString(),
-                                      }
-                                    : e
-                                );
-                                // 실측 다이얼로그의 currentMeasurementEvent도 동기화
-                                const updatedCurrent = updatedEvents.find(
-                                  e => e.id === currentMeasurementEvent?.id
-                                );
-                                if (updatedCurrent)
-                                  setCurrentMeasurementEvent(updatedCurrent);
-                                localStorage.setItem(
-                                  'schedules',
-                                  JSON.stringify(updatedEvents)
-                                );
-                                return updatedEvents;
-                              });
+                              // Firebase Firestore에 실측 채팅 메시지 저장
+                              try {
+                                console.log('Firebase에 실측 채팅 메시지 저장 시작 (버튼):', {
+                                  eventId: currentMeasurementEvent.id,
+                                  message: newComment.trim(),
+                                  userName: userName || '사용자'
+                                });
+
+                                const commentsRef = collection(db, 'schedules', currentMeasurementEvent.id, 'comments');
+                                
+                                // emoji 필드 처리 (undefined 제거)
+                                const emojiMatch = newComment.match(/[😊👍❤️🎉🔥💯👏🙏😍🤔😅😢]/);
+                                const commentData: any = {
+                                  eventId: currentMeasurementEvent.id,
+                                  userId: 'current_user',
+                                  userName: userName || '사용자',
+                                  userAvatar: '',
+                                  message: newComment.trim(),
+                                  timestamp: serverTimestamp(),
+                                  attachments: commentAttachments.map(file => URL.createObjectURL(file)),
+                                };
+                                
+                                // emoji가 있을 때만 필드 추가
+                                if (emojiMatch && emojiMatch[0]) {
+                                  commentData.emoji = emojiMatch[0];
+                                }
+                                
+                                const docRef = await addDoc(commentsRef, commentData);
+
+                                console.log('Firebase에 실측 채팅 메시지 저장 완료 (버튼):', docRef.id);
+                              } catch (error) {
+                                console.error('실측 채팅 메시지 저장 실패 (버튼):', error);
+                                setSnackbar({
+                                  open: true,
+                                  message: '메시지 전송에 실패했습니다.',
+                                  severity: 'error',
+                                });
+                                return;
+                              }
                               setNewComment('');
                               setCommentAttachments([]);
                               setSnackbar({
@@ -7858,12 +7984,12 @@ const Schedule: React.FC = () => {
                   display: 'flex', flexDirection: 'column',
                   gap: 2,
                 }}>
-                  {integratedEventComments.length === 0 ? (
+                  {(realTimeComments[selectedEventForEdit?.id || ''] || []).length === 0 ? (
                     <Typography variant="body2" sx={{ color: '#b0b8c1', textAlign: 'center', mt: 4 }}>
                       아직 댓글이 없습니다.
                     </Typography>
                   ) : (
-                    integratedEventComments.map((comment: ScheduleComment) => {
+                    (realTimeComments[selectedEventForEdit?.id || ''] || []).map((comment: ScheduleComment) => {
                       // 안전한 체크 추가
                       if (!comment || !comment.userName || !comment.message || !comment.timestamp) {
                         return null;

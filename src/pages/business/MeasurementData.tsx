@@ -46,6 +46,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { MeasurementRowData } from '../../components/MeasurementForm';
 import { API_BASE } from '../../utils/auth';
+import { measurementService } from '../../utils/firebaseDataService';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -160,35 +161,33 @@ const MeasurementData: React.FC = () => {
 
   const loadMeasurementEvents = async () => {
     try {
-      const response = await fetch(`${API_BASE}/schedules`);
-      if (response.ok) {
-        const events = await response.json();
-        const measurementEvents = events.filter(
-          (event: any) =>
-            event.type === '실측' &&
-            event.measurementData &&
-            event.measurementData.length > 0
-        );
+      console.log('Firebase에서 실측 데이터 로드 시작');
+      const data = await measurementService.getMeasurements();
+      console.log('Firebase에서 실측 데이터 로드 완료:', data.length, '개');
+      
+      const measurementEvents = data.filter(
+        (event: any) =>
+          event.type === '실측' &&
+          event.measurementData &&
+          event.measurementData.length > 0
+      );
 
-        // 견적서 정보와 연결하여 프로젝트 타입 정보 추가
-        const savedEstimates = JSON.parse(
-          localStorage.getItem('saved_estimates') || '[]'
+      // 견적서 정보와 연결하여 프로젝트 타입 정보 추가
+      const savedEstimates = JSON.parse(
+        localStorage.getItem('saved_estimates') || '[]'
+      );
+      const enrichedEvents = measurementEvents.map((event: any) => {
+        const relatedEstimate = savedEstimates.find(
+          (est: any) => est.estimateNo === event.estimateNo
         );
-        const enrichedEvents = measurementEvents.map((event: any) => {
-          const relatedEstimate = savedEstimates.find(
-            (est: any) => est.estimateNo === event.estimateNo
-          );
-          return {
-            ...event,
-            projectType: relatedEstimate?.type || '-',
-            projectName: relatedEstimate?.projectName || '-',
-          };
-        });
+        return {
+          ...event,
+          projectType: relatedEstimate?.type || '-',
+          projectName: relatedEstimate?.projectName || '-',
+        };
+      });
 
-        setMeasurementEvents(enrichedEvents);
-      } else {
-        setMeasurementEvents([]);
-      }
+      setMeasurementEvents(enrichedEvents);
     } catch (error) {
       console.error('실측 이벤트 로드 오류:', error);
       setMeasurementEvents([]);
@@ -391,7 +390,7 @@ const MeasurementData: React.FC = () => {
     });
   };
 
-  const handleSaveProjectMeasurement = () => {
+  const handleSaveProjectMeasurement = async () => {
     if (
       !newProject.projectType ||
       !newProject.space ||
@@ -420,34 +419,52 @@ const MeasurementData: React.FC = () => {
       updatedAt: new Date().toISOString(),
     };
 
-    if (editingProject) {
-      // 편집 모드
-      const updatedProjects = projectMeasurements.map(p =>
-        p.id === editingProject.id ? projectMeasurement : p
-      );
-      setProjectMeasurements(updatedProjects);
-      localStorage.setItem(
-        'project_measurements',
-        JSON.stringify(updatedProjects)
-      );
+    try {
+      if (editingProject) {
+        // 편집 모드
+        const updatedProjects = projectMeasurements.map(p =>
+          p.id === editingProject.id ? projectMeasurement : p
+        );
+        setProjectMeasurements(updatedProjects);
+        localStorage.setItem(
+          'project_measurements',
+          JSON.stringify(updatedProjects)
+        );
+        
+        // Firebase에 업데이트
+        await measurementService.updateMeasurement(editingProject.id, projectMeasurement);
+        
+        setSnackbar({
+          open: true,
+          message: '프로젝트 실측정보가 수정되었습니다.',
+          severity: 'success',
+        });
+      } else {
+        // 추가 모드
+        const updatedProjects = [...projectMeasurements, projectMeasurement];
+        setProjectMeasurements(updatedProjects);
+        localStorage.setItem(
+          'project_measurements',
+          JSON.stringify(updatedProjects)
+        );
+        
+        // Firebase에 저장
+        await measurementService.saveMeasurement(projectMeasurement);
+        
+        setSnackbar({
+          open: true,
+          message: '프로젝트 실측정보가 추가되었습니다.',
+          severity: 'success',
+        });
+      }
+    } catch (error) {
+      console.error('Firebase 저장 실패:', error);
       setSnackbar({
         open: true,
-        message: '프로젝트 실측정보가 수정되었습니다.',
-        severity: 'success',
+        message: '저장 중 오류가 발생했습니다. 다시 시도해주세요.',
+        severity: 'error',
       });
-    } else {
-      // 추가 모드
-      const updatedProjects = [...projectMeasurements, projectMeasurement];
-      setProjectMeasurements(updatedProjects);
-      localStorage.setItem(
-        'project_measurements',
-        JSON.stringify(updatedProjects)
-      );
-      setSnackbar({
-        open: true,
-        message: '프로젝트 실측정보가 추가되었습니다.',
-        severity: 'success',
-      });
+      return;
     }
 
     // 폴더 구조 업데이트
@@ -479,7 +496,7 @@ const MeasurementData: React.FC = () => {
     setProjectDialogOpen(true);
   };
 
-  const handleDeleteProject = (projectId: string) => {
+  const handleDeleteProject = async (projectId: string) => {
     const project = projectMeasurements.find(p => p.id === projectId);
     if (!project) return;
 
@@ -493,15 +510,28 @@ const MeasurementData: React.FC = () => {
     }
 
     if (window.confirm('이 프로젝트 실측정보를 삭제하시겠습니까?')) {
-      const updatedProjects = projectMeasurements.filter(
-        p => p.id !== projectId
-      );
-      setProjectMeasurements(updatedProjects);
-      localStorage.setItem(
-        'project_measurements',
-        JSON.stringify(updatedProjects)
-      );
-      loadProjectMeasurements(); // 폴더 구조 업데이트
+      try {
+        const updatedProjects = projectMeasurements.filter(
+          p => p.id !== projectId
+        );
+        setProjectMeasurements(updatedProjects);
+        localStorage.setItem(
+          'project_measurements',
+          JSON.stringify(updatedProjects)
+        );
+        
+        // Firebase에서 삭제
+        await measurementService.deleteMeasurement(projectId);
+        
+        loadProjectMeasurements(); // 폴더 구조 업데이트
+      } catch (error) {
+        console.error('Firebase 삭제 실패:', error);
+        setSnackbar({
+          open: true,
+          message: '삭제 중 오류가 발생했습니다. 다시 시도해주세요.',
+          severity: 'error',
+        });
+      }
     }
   };
 

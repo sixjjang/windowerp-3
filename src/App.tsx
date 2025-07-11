@@ -1,36 +1,50 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, CssBaseline, Box } from '@mui/material';
 import { windowGalleryTheme } from './theme/theme';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
-import EstimateManagement from './pages/business/EstimateManagement';
-import ContractManagement from './pages/business/ContractManagement';
-import OrderManagement from './pages/business/OrderManagement';
-import DeliveryManagement from './pages/business/DeliveryManagement';
 import Schedule from './pages/business/Schedule';
-import MeasurementData from './pages/business/MeasurementData';
-import HistoricalDataManagement from './pages/business/HistoricalDataManagement';
+import EstimateManagement from './pages/business/EstimateManagement';
+import DeliveryManagement from './pages/business/DeliveryManagement';
+import OrderManagement from './pages/business/OrderManagement';
+import ProductManagement from './pages/business/ProductManagement';
+import AdminUserManagement from './pages/admin/AdminUserManagement';
 import CustomerManagement from './pages/admin/CustomerManagement';
-import ProductManagement from './pages/admin/ProductManagement';
+import VendorManagement from './pages/admin/VendorManagement';
+import ProductManagementAdmin from './pages/admin/ProductManagement';
 import OptionManagement from './pages/admin/OptionManagement';
 import FormulaManagement from './pages/admin/FormulaManagement';
 import CompanyInfoManagement from './pages/admin/CompanyInfoManagement';
-import VendorManagement from './pages/admin/VendorManagement';
 import Accounting from './pages/admin/Accounting';
 import Statistics from './pages/admin/Statistics';
 import TaxInvoice from './pages/admin/TaxInvoice';
-import TestHistorical from './pages/TestHistorical';
-
-import AdminUserManagement from './pages/admin/AdminUserManagement';
-import CurtainSimulatorIframe from './pages/business/CurtainSimulatorIframe';
+import ContractManagement from './pages/business/ContractManagement';
+import MeasurementData from './pages/business/MeasurementData';
+import HistoricalDataManagement from './pages/business/HistoricalDataManagement';
 import TimeTreeCallback from './pages/TimeTreeCallback';
-
-// 글로벌 스타일 추가
+import TestHistorical from './pages/TestHistorical';
 import './styles/global.css';
 
 function App() {
+  // 접근성 문제 해결: aria-hidden 제거
+  useEffect(() => {
+    const rootElement = document.getElementById('root');
+    if (rootElement && rootElement.getAttribute('aria-hidden') === 'true') {
+      rootElement.removeAttribute('aria-hidden');
+    }
+    
+    // 주기적으로 확인 (동적으로 설정될 수 있으므로)
+    const interval = setInterval(() => {
+      if (rootElement && rootElement.getAttribute('aria-hidden') === 'true') {
+        rootElement.removeAttribute('aria-hidden');
+      }
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <ThemeProvider theme={windowGalleryTheme}>
       <CssBaseline />
@@ -82,10 +96,6 @@ function App() {
             <Route path="tax-invoice" element={<TaxInvoice />} />
             <Route path="test-historical" element={<TestHistorical />} />
             <Route path="admin/users" element={<AdminUserManagement />} />
-            <Route
-              path="curtain-simulator"
-              element={<CurtainSimulatorIframe />}
-            />
             <Route
               path="business/contract-management"
               element={<ContractManagement />}

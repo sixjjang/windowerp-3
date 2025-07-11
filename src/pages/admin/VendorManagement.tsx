@@ -28,6 +28,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import * as XLSX from 'xlsx';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import type { SelectChangeEvent } from '@mui/material/Select';
+import { vendorService } from '../../utils/firebaseDataService';
 
 interface Vendor {
   id: number;
@@ -214,24 +215,44 @@ const VendorManagement: React.FC = () => {
     setSelectedVendor(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleAddVendor = () => {
+  const handleAddVendor = async () => {
+    let updatedVendors: Vendor[];
+    
     if (editMode && editIndex !== null) {
-      setVendors(prev =>
-        prev.map((v, idx) =>
-          idx === editIndex ? { ...selectedVendor, id: v.id } : v
-        )
+      updatedVendors = vendors.map((v, idx) =>
+        idx === editIndex ? { ...selectedVendor, id: v.id } : v
       );
+      setVendors(updatedVendors);
       setEditMode(false);
       setEditIndex(null);
     } else {
-      setVendors(prev => [
-        ...prev,
-        {
-          ...selectedVendor,
-          id: prev.length ? prev[prev.length - 1].id + 1 : 1,
-        },
-      ]);
+      const newVendor = {
+        ...selectedVendor,
+        id: vendors.length ? vendors[vendors.length - 1].id + 1 : 1,
+      };
+      updatedVendors = [...vendors, newVendor];
+      setVendors(updatedVendors);
     }
+    
+    // localStorage에 저장
+    saveVendors(updatedVendors);
+    
+    // Firebase에 자동 저장
+    try {
+      console.log('Firebase에 거래처 데이터 저장 시작');
+      if (editMode && editIndex !== null) {
+        // 기존 거래처 업데이트
+        await vendorService.updateVendor(selectedVendor.id.toString(), selectedVendor);
+      } else {
+        // 새 거래처 저장
+        await vendorService.saveVendor(selectedVendor);
+      }
+      console.log('Firebase에 거래처 데이터 저장 완료');
+    } catch (error) {
+      console.error('Firebase 저장 실패:', error);
+      alert('거래처 정보가 저장되었지만 Firebase 동기화에 실패했습니다. 인터넷 연결을 확인해주세요.');
+    }
+    
     setSelectedVendor(initialVendor);
   };
 

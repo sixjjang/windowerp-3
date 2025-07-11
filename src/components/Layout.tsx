@@ -69,8 +69,6 @@ import {
   useNotificationStore,
   initializeNotificationStore,
   requestNotificationPermission,
-  connectNotificationWebSocket,
-  disconnectNotificationWebSocket,
 } from '../utils/notificationStore';
 import { API_BASE } from '../utils/auth';
 
@@ -614,14 +612,8 @@ const Layout: React.FC = () => {
 
   // WebSocket 연결
   useEffect(() => {
-    if (userId) {
-      connectNotificationWebSocket(userId);
-    }
-
-    return () => {
-      disconnectNotificationWebSocket();
-    };
-  }, [userId]);
+    // WebSocket 관련 코드 전체 제거
+  }, []);
 
   // 알림 시스템 초기화
   useEffect(() => {

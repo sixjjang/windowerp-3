@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE } from '../../utils/auth';
+import { taxInvoiceService } from '../../utils/firebaseDataService';
 import {
   Box,
   Typography,
@@ -64,10 +65,19 @@ export default function TaxInvoice() {
   const loadInvoices = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/taxInvoices`);
-      if (!response.ok) throw new Error('데이터 로드 실패');
-      const data = await response.json();
-      setInvoices(data);
+      console.log('Firebase에서 세금계산서 데이터 로드 시작');
+      const data = await taxInvoiceService.getTaxInvoices();
+      console.log('Firebase에서 세금계산서 데이터 로드 완료:', data.length, '개');
+      setInvoices(data.map((item: any) => ({
+        id: Number(item.id),
+        type: item.type || '세금계산서',
+        partner: item.partner || '',
+        amount: item.amount || 0,
+        date: item.date || new Date().toISOString().slice(0, 10),
+        status: item.status || '대기',
+        createdAt: item.createdAt || new Date().toISOString(),
+        updatedAt: item.updatedAt || new Date().toISOString(),
+      })));
     } catch (error) {
       console.error('세금계산서 로드 오류:', error);
       setSnackbar({
@@ -122,12 +132,10 @@ export default function TaxInvoice() {
 
   const handleSave = async () => {
     try {
-      const response = await fetch(`${API_BASE}/saveTaxInvoice`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      if (!response.ok) throw new Error('등록 실패');
+      // Firebase에 저장
+      console.log('Firebase에 세금계산서 데이터 저장 시작');
+      await taxInvoiceService.saveTaxInvoice(form);
+      console.log('Firebase에 세금계산서 데이터 저장 완료');
 
       setSnackbar({
         open: true,

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE } from '../../utils/auth';
+import { statisticsService } from '../../utils/firebaseDataService';
 import {
   Box,
   Typography,
@@ -478,12 +479,10 @@ export default function Statistics() {
 
   const handleSave = async () => {
     try {
-      const response = await fetch(`${API_BASE}/saveSalesRecord`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      if (!response.ok) throw new Error('등록 실패');
+      // Firebase에 저장
+      console.log('Firebase에 통계 데이터 저장 시작');
+      await statisticsService.saveStatistics(form);
+      console.log('Firebase에 통계 데이터 저장 완료');
 
       setSnackbar({
         open: true,

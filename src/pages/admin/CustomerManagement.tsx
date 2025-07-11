@@ -37,6 +37,7 @@ import ProjectIcon from '@mui/icons-material/AccountTree';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import * as XLSX from 'xlsx';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { customerService, migrationService } from '../../utils/firebaseDataService';
 
 interface Project {
   id: string;
@@ -132,29 +133,53 @@ const sortKeys: (keyof Customer)[] = [
 
 const CUSTOMER_STORAGE_KEY = 'customerList';
 
-function loadCustomers() {
+async function loadCustomers() {
   try {
-    const customerData = localStorage.getItem(CUSTOMER_STORAGE_KEY);
-    if (!customerData) return [];
-
-    const parsed = JSON.parse(customerData);
-    if (!Array.isArray(parsed)) return [];
-
-    // 기존 데이터 구조를 새로운 구조로 마이그레이션
-    return parsed.map((customer: any) => ({
-      ...customer,
-      projects: customer.projects || [],
-      createdAt: customer.createdAt || new Date().toISOString(),
-      updatedAt: customer.updatedAt || new Date().toISOString(),
-    }));
+    console.log('Firebase에서 고객 데이터 로드 시작');
+    const customers = await customerService.getCustomers();
+    console.log('Firebase에서 고객 데이터 로드 완료:', customers.length, '개');
+    return customers;
   } catch (error) {
-    console.error('Error loading customers:', error);
-    return [];
+    console.error('Firebase에서 고객 데이터 로드 실패:', error);
+    // Firebase 실패 시 localStorage에서 로드 (fallback)
+    try {
+      const customerData = localStorage.getItem(CUSTOMER_STORAGE_KEY);
+      if (!customerData) return [];
+
+      const parsed = JSON.parse(customerData);
+      if (!Array.isArray(parsed)) return [];
+
+      return parsed.map((customer: any) => ({
+        ...customer,
+        projects: customer.projects || [],
+        createdAt: customer.createdAt || new Date().toISOString(),
+        updatedAt: customer.updatedAt || new Date().toISOString(),
+      }));
+    } catch (localError) {
+      console.error('localStorage에서 고객 데이터 로드 실패:', localError);
+      return [];
+    }
   }
 }
 
-function saveCustomers(customers: Customer[]) {
-  localStorage.setItem(CUSTOMER_STORAGE_KEY, JSON.stringify(customers));
+async function saveCustomers(customers: Customer[]) {
+  try {
+    // Firebase에 저장
+    for (const customer of customers) {
+      if (customer.id && typeof customer.id === 'string') {
+        // 기존 고객 업데이트
+        await customerService.updateCustomer(customer.id, customer);
+      } else {
+        // 새 고객 저장
+        await customerService.saveCustomer(customer);
+      }
+    }
+    console.log('Firebase에 고객 데이터 저장 완료');
+  } catch (error) {
+    console.error('Firebase에 고객 데이터 저장 실패:', error);
+    // Firebase 실패 시 localStorage에 저장 (fallback)
+    localStorage.setItem(CUSTOMER_STORAGE_KEY, JSON.stringify(customers));
+  }
 }
 
 // 고객명 + 연락처 + 프로젝트 타입 중복 체크 함수
@@ -229,12 +254,16 @@ const CustomerManagement: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
-  const [customers, setCustomers] = useState<Customer[]>(() => {
-    const loadedCustomers = loadCustomers();
-    return loadedCustomers && Array.isArray(loadedCustomers)
-      ? loadedCustomers
-      : [];
-  });
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  
+  // 고객 데이터 로드
+  useEffect(() => {
+    const loadCustomerData = async () => {
+      const loadedCustomers = await loadCustomers();
+      setCustomers(loadedCustomers && Array.isArray(loadedCustomers) ? loadedCustomers : []);
+    };
+    loadCustomerData();
+  }, []);
   const [selectedCustomer, setSelectedCustomer] =
     useState<Customer>(initialCustomer);
   const [editMode, setEditMode] = useState(false);
@@ -308,7 +337,7 @@ const CustomerManagement: React.FC = () => {
     setSelectedCustomer(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleAddCustomer = () => {
+  const handleAddCustomer = async () => {
     if (!selectedCustomer.name.trim() || !selectedCustomer.tel.trim()) {
       alert('고객명과 연락처는 필수 입력 항목입니다.');
       return;
@@ -323,9 +352,11 @@ const CustomerManagement: React.FC = () => {
       selectedCustomer.tel
     );
 
+    let updatedCustomers: Customer[];
+
     if (editMode && editIndex !== null) {
       // 수정 모드
-      const updatedCustomers = [...currentCustomers];
+      updatedCustomers = [...currentCustomers];
       updatedCustomers[editIndex] = {
         ...selectedCustomer,
         updatedAt: new Date().toISOString(),
@@ -336,7 +367,7 @@ const CustomerManagement: React.FC = () => {
       setSelectedCustomer(initialCustomer);
     } else if (existingCustomer) {
       // 기존 고객이 있는 경우 - 프로젝트 정보만 추가하거나 업데이트
-      const updatedCustomers = currentCustomers.map(customer => {
+      updatedCustomers = currentCustomers.map(customer => {
         if (customer.id === existingCustomer.id) {
           return {
             ...customer,
@@ -363,9 +394,20 @@ const CustomerManagement: React.FC = () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      setCustomers([...currentCustomers, newCustomer]);
+      updatedCustomers = [...currentCustomers, newCustomer];
+      setCustomers(updatedCustomers);
       setSelectedCustomer(initialCustomer);
       alert('새로운 고객이 추가되었습니다.');
+    }
+
+    // Firebase에 자동 저장
+    try {
+      console.log('Firebase에 고객 데이터 저장 시작');
+      await saveCustomers(updatedCustomers);
+      console.log('Firebase에 고객 데이터 저장 완료');
+    } catch (error) {
+      console.error('Firebase 저장 실패:', error);
+      alert('고객 정보가 저장되었지만 Firebase 동기화에 실패했습니다. 인터넷 연결을 확인해주세요.');
     }
   };
 
@@ -514,9 +556,15 @@ const CustomerManagement: React.FC = () => {
 
   // 견적관리에서 자동 저장된 고객들 새로고침
   const handleRefreshFromEstimates = () => {
-    setCustomers(loadCustomers());
+    const loadCustomerData = async () => {
+      const loadedCustomers = await loadCustomers();
+      setCustomers(loadedCustomers);
+    };
+    loadCustomerData();
     alert('견적관리에서 자동 저장된 고객들을 불러왔습니다.');
   };
+
+
 
   // 정렬 핸들러
   const handleSort = (key: keyof Customer) => {
@@ -603,6 +651,7 @@ const CustomerManagement: React.FC = () => {
           >
             견적관리 고객 새로고침
           </Button>
+
           <TextField
             placeholder="검색 (고객명, 주소, 연락처, 프로젝트명 등)"
             value={search}
