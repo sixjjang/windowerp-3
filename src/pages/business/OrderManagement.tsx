@@ -579,17 +579,27 @@ const OrderManagement: React.FC = () => {
       try {
         // Firebase Functions 사용
         const apiUrl = 'https://us-central1-windowerp-3.cloudfunctions.net';
-        const response = await fetch(`${apiUrl}/company-info`);
+        const response = await fetch(`${apiUrl}/companyInfo`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          mode: 'cors',
+        });
+        
         if (response.ok) {
           const data = await response.json();
           setCompanyInfo(data);
+          console.log('✅ 회사 정보 로드 성공:', data);
           return;
+        } else {
+          console.warn('⚠️ 회사 정보 응답 오류:', response.status, response.statusText);
         }
       } catch (error) {
-        console.log('NAS 서버 연결 실패, 기본값 사용:', error);
+        console.log('❌ Firebase Functions 연결 실패, 기본값 사용:', error);
       }
 
-      // 기본값 설정 (NAS 연결 실패 시)
+      // 기본값 설정 (연결 실패 시)
       setCompanyInfo({
         name: '회사명',
         address: '회사주소',

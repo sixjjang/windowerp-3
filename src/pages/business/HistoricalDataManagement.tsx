@@ -108,7 +108,7 @@ const HistoricalDataManagement: React.FC = () => {
   const loadRecords = async () => {
     try {
       const response = await fetch(
-        `${API_BASE}/historical-data/list?type=${selectedType}&year=${selectedYear}`
+        `${API_BASE}/historicalDataList?type=${selectedType}&year=${selectedYear}`
       );
       const data = await response.json();
       setRecords(Array.isArray(data) ? data : []);
@@ -204,7 +204,7 @@ const HistoricalDataManagement: React.FC = () => {
         formData.append('year', String(selectedYear));
         formData.append('sheetName', sheetName); // 시트명 정보 추가
         
-        await fetch(`${API_BASE}/historical-data/upload`, {
+        await fetch(`${API_BASE}/historicalDataUpload`, {
           method: 'POST',
           body: formData,
         });
@@ -257,7 +257,7 @@ const HistoricalDataManagement: React.FC = () => {
 
     try {
       const response = await fetch(
-        `${API_BASE}/historical-data/search?type=${selectedType}&year=${searchYear}&keyword=${encodeURIComponent(searchKeyword)}`
+        `${API_BASE}/historicalDataSearch?type=${selectedType}&year=${searchYear}&keyword=${encodeURIComponent(searchKeyword)}`
       );
       const data = await response.json();
       setRecords(data.results || []);
@@ -271,7 +271,7 @@ const HistoricalDataManagement: React.FC = () => {
 
     try {
       const response = await fetch(
-        `${API_BASE}/historical-data/global-search?keyword=${encodeURIComponent(globalSearch)}`
+        `${API_BASE}/historicalDataGlobalSearch?keyword=${encodeURIComponent(globalSearch)}`
       );
       const data = await response.json();
       setRecords(data.results || []);
@@ -283,7 +283,7 @@ const HistoricalDataManagement: React.FC = () => {
   const handlePreview = async (record: HistoricalRecord) => {
     try {
       const response = await fetch(
-        `${API_BASE}/historical-data/${record.id}/preview`
+        `${API_BASE}/historicalDataPreview?id=${record.id}`
       );
       const data = await response.json();
       setSelectedRecord({
@@ -301,7 +301,7 @@ const HistoricalDataManagement: React.FC = () => {
     if (!window.confirm('정말 삭제하시겠습니까?')) return;
 
     try {
-      await fetch(`${API_BASE}/historical-data/${record.id}`, {
+      await fetch(`${API_BASE}/historicalDataDelete?id=${record.id}`, {
         method: 'DELETE',
       });
       loadRecords();
