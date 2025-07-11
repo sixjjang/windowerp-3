@@ -111,7 +111,7 @@ export default function HistoricalDocuments({
   // 문서 목록 로드
   const loadDocuments = async () => {
     try {
-      const response = await fetch(`${API_BASE}/historical-documents`);
+      const response = await fetch(`${API_BASE}/historicalDataList?type=delivery&year=${new Date().getFullYear()}`);
       if (!response.ok) throw new Error('문서 목록 로드 실패');
       const data = await response.json();
       setDocuments(data);
@@ -157,7 +157,7 @@ export default function HistoricalDocuments({
 
     try {
       const response = await fetch(
-        `${API_BASE}/historical-documents/search?keyword=${encodeURIComponent(searchKeyword)}`
+        `${API_BASE}/historicalDataGlobalSearch?keyword=${encodeURIComponent(searchKeyword)}`
       );
       if (!response.ok) throw new Error('검색 실패');
       const data = await response.json();
@@ -175,11 +175,11 @@ export default function HistoricalDocuments({
   // 문서 상세 조회
   const handleViewDocument = async (id: number) => {
     try {
-      const response = await fetch(`${API_BASE}/historical-documents/${id}`);
+      const response = await fetch(`${API_BASE}/historicalDataPreview?id=${id}`);
       if (!response.ok) throw new Error('문서 조회 실패');
       const data = await response.json();
       setSelectedDocument(data);
-      setCurrentSheet(data.sheets[0] || '');
+      setCurrentSheet(data.sheets?.[0] || '');
       setViewMode('document');
     } catch (error) {
       console.error('문서 조회 오류:', error);
@@ -196,7 +196,7 @@ export default function HistoricalDocuments({
     if (!window.confirm('정말 삭제하시겠습니까?')) return;
 
     try {
-      const response = await fetch(`${API_BASE}/historical-documents/${id}`, {
+      const response = await fetch(`${API_BASE}/historicalDataDelete?id=${id}`, {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('삭제 실패');

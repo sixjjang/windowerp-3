@@ -251,8 +251,8 @@ const Accounting: React.FC = () => {
     setLoading(true);
     try {
       const url = month
-        ? `${API_BASE}/fixed-expenses?month=${month}`
-        : `${API_BASE}/fixed-expenses`;
+        ? `${API_BASE}/fixedExpenses?month=${month}`
+        : `${API_BASE}/fixedExpenses`;
       const response = await fetch(url);
       if (!response.ok) throw new Error('데이터 로드 실패');
       const data = await response.json();
@@ -294,7 +294,7 @@ const Accounting: React.FC = () => {
   const loadProfitAnalysis = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/profit-analysis`);
+      const response = await fetch(`${API_BASE}/profitAnalysis`);
       if (!response.ok) throw new Error('데이터 로드 실패');
       const data = await response.json();
       setProfitAnalysis(data);
@@ -313,7 +313,7 @@ const Accounting: React.FC = () => {
   const loadTaxInvoices = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/tax-invoice-api`);
+      const response = await fetch(`${API_BASE}/taxInvoiceApi`);
       if (!response.ok) throw new Error('데이터 로드 실패');
       const data = await response.json();
       setTaxInvoices(data);
@@ -517,7 +517,7 @@ const Accounting: React.FC = () => {
     try {
       if (editExpense) {
         const response = await fetch(
-          `${API_BASE}/fixed-expenses/${editExpense.id}`,
+          `${API_BASE}/updateFixedExpense/${editExpense.id}`,
           {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -526,7 +526,7 @@ const Accounting: React.FC = () => {
         );
         if (!response.ok) throw new Error('수정 실패');
       } else {
-        const response = await fetch(`${API_BASE}/fixed-expenses`, {
+        const response = await fetch(`${API_BASE}/saveFixedExpense`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(expenseForm),
@@ -594,7 +594,7 @@ const Accounting: React.FC = () => {
     try {
       if (editProfit) {
         const response = await fetch(
-          `${API_BASE}/profit-analysis/${editProfit.id}`,
+          `${API_BASE}/profitAnalysis/${editProfit.id}`,
           {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -603,7 +603,7 @@ const Accounting: React.FC = () => {
         );
         if (!response.ok) throw new Error('수정 실패');
       } else {
-        const response = await fetch(`${API_BASE}/profit-analysis`, {
+        const response = await fetch(`${API_BASE}/profitAnalysis`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(profitForm),
@@ -632,7 +632,7 @@ const Accounting: React.FC = () => {
 
   const handleTaxInvoiceSave = async () => {
     try {
-      const response = await fetch(`${API_BASE}/tax-invoice-api/issue`, {
+      const response = await fetch(`${API_BASE}/taxInvoiceApi/issue`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(taxInvoiceForm),
@@ -660,7 +660,7 @@ const Accounting: React.FC = () => {
     if (!window.confirm('정말 삭제하시겠습니까?')) return;
 
     try {
-      const response = await fetch(`${API_BASE}/fixed-expenses/${id}`, {
+      const response = await fetch(`${API_BASE}/deleteFixedExpense/${id}`, {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('삭제 실패');

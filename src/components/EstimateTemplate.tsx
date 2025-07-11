@@ -544,6 +544,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
       >
         <DialogTitle>
           <Box
+            className="print-hide"
             display="flex"
             justifyContent="space-between"
             alignItems="center"

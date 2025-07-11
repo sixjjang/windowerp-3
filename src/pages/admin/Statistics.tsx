@@ -223,7 +223,7 @@ export default function Statistics() {
       if (filter.category) params.append('category', filter.category);
       if (filter.product) params.append('product', filter.product);
 
-      const url = `${API_BASE}/sales-records${params.toString() ? '?' + params.toString() : ''}`;
+      const url = `${API_BASE}/salesRecords${params.toString() ? '?' + params.toString() : ''}`;
       const response = await fetch(url);
       if (!response.ok) throw new Error('데이터 로드 실패');
       const data = await response.json();
@@ -275,7 +275,7 @@ export default function Statistics() {
 
   const loadProfitAnalysis = async () => {
     try {
-      const response = await fetch(`${API_BASE}/profit-analysis`);
+      const response = await fetch(`${API_BASE}/profitAnalysis`);
       if (!response.ok) throw new Error('수익성 분석 데이터 로드 실패');
       const data = await response.json();
       setProfitAnalysis(data);
@@ -478,7 +478,7 @@ export default function Statistics() {
 
   const handleSave = async () => {
     try {
-      const response = await fetch(`${API_BASE}/sales-records`, {
+      const response = await fetch(`${API_BASE}/saveSalesRecord`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),

@@ -186,10 +186,33 @@ const CompanyInfoManagement = () => {
         return;
       }
 
-      const response = await fetch(`${API_BASE}/companyInfo`, {
+      // Firestore 호환성을 위해 데이터 형식 수정
+      const formattedInfos = infos.map(info => {
+        const cleanInfo = {
+          type: info.type,
+          businessNumber: info.businessNumber || '',
+          name: info.name || '',
+          ceo: info.ceo || '',
+          businessType: info.businessType || '',
+          businessItem: info.businessItem || '',
+          address: info.address || '',
+          contact: info.contact || '',
+          fax: info.fax || '',
+          email: info.email || ''
+        };
+        
+        // 빈 문자열이 아닌 필드만 포함
+        return Object.fromEntries(
+          Object.entries(cleanInfo).filter(([key, value]) => 
+            value !== '' && value !== null && value !== undefined
+          )
+        );
+      });
+
+      const response = await fetch(`${API_BASE}/saveCompanyInfo`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify(infos),
+        body: JSON.stringify(formattedInfos),
       });
 
       console.log('저장 응답 상태:', response.status);

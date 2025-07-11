@@ -1090,7 +1090,6 @@ function getSpaceColor(space: string, lightness = 1) {
   }
   return color;
 }
-
 const EstimateManagement: React.FC = () => {
   // === UI 개선을 위한 선언 ===
   const isMobile = useMediaQuery('(max-width:600px)');
@@ -8988,4 +8987,5 @@ const EstimateManagement: React.FC = () => {
 };
 
 export default EstimateManagement;
+
 

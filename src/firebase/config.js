@@ -24,7 +24,7 @@ export const storage = getStorage(app);
 export const realtimeDb = getDatabase(app);
 export const functions = getFunctions(app);
 
-// 개발 환경에서 에뮬레이터 사용
+// 개발 환경에서 에뮬레이터 사용 (Realtime Database는 실제 서버 사용)
 if (process.env.NODE_ENV === 'development') {
   // Firestore 에뮬레이터
   connectFirestoreEmulator(db, 'localhost', 8080);
@@ -35,8 +35,8 @@ if (process.env.NODE_ENV === 'development') {
   // Storage 에뮬레이터
   connectStorageEmulator(storage, 'localhost', 9199);
   
-  // Realtime Database 에뮬레이터
-  connectDatabaseEmulator(realtimeDb, 'localhost', 9000);
+  // Realtime Database는 실제 Firebase 서버 사용 (에뮬레이터 연결 제거)
+  // connectDatabaseEmulator(realtimeDb, 'localhost', 9000);
 }
 
 export default app; 

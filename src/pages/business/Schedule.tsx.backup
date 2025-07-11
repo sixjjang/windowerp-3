@@ -497,7 +497,7 @@ const Schedule: React.FC = () => {
       }
 
       // 현재 사용자 정보 조회
-      const userResponse = await axios.get(`${API_BASE}/users/me`, {
+      const userResponse = await axios.get(`${API_BASE}/me`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       

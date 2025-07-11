@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { API_BASE } from '../../utils/auth';
 import {
   Box,
   Typography,
@@ -94,7 +95,7 @@ const HistoricalDataManagement: React.FC = () => {
     { length: 10 },
     (_, i) => new Date().getFullYear() - i
   );
-  const API_BASE = 'https://us-central1-windowerp-3.cloudfunctions.net';
+
 
   // 가상화 설정
   const ROW_HEIGHT = 32;
@@ -172,47 +173,74 @@ const HistoricalDataManagement: React.FC = () => {
     if (!selectedFile || selectedSheets.length === 0) return;
 
     setUploading(true);
+    let successCount = 0;
+    let errorCount = 0;
     
     try {
       // 선택된 각 시트별로 업로드
       for (const sheetName of selectedSheets) {
-        const sheetDataArray = sheetData[sheetName];
-        if (!sheetDataArray || sheetDataArray.length === 0) continue;
+        try {
+          const sheetDataArray = sheetData[sheetName];
+          if (!sheetDataArray || sheetDataArray.length === 0) {
+            console.warn(`시트 ${sheetName}의 데이터가 없습니다.`);
+            continue;
+          }
 
-        // 시트 데이터를 임시 엑셀 파일로 변환
-        const workbook = XLSX.utils.book_new();
-        const worksheet = XLSX.utils.aoa_to_sheet(sheetDataArray);
-        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-        
-        // 엑셀 파일을 Blob으로 변환
-        const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-        const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        
-        // 파일명에 시트명 포함
-        const originalName = selectedFile.name;
-        const nameWithoutExt = originalName.substring(0, originalName.lastIndexOf('.'));
-        const ext = originalName.substring(originalName.lastIndexOf('.'));
-        const newFileName = `${nameWithoutExt}_${sheetName}${ext}`;
-        
-        // File 객체 생성
-        const sheetFile = new File([blob], newFileName, { type: blob.type });
-        
-        // 업로드
-        const formData = new FormData();
-        formData.append('file', sheetFile);
-        formData.append('type', selectedType);
-        formData.append('year', String(selectedYear));
-        formData.append('sheetName', sheetName); // 시트명 정보 추가
-        
-        await fetch(`${API_BASE}/historicalDataUpload`, {
-          method: 'POST',
-          body: formData,
-        });
+          // 시트 데이터를 임시 엑셀 파일로 변환
+          const workbook = XLSX.utils.book_new();
+          const worksheet = XLSX.utils.aoa_to_sheet(sheetDataArray);
+          XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+          
+          // 엑셀 파일을 Blob으로 변환
+          const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+          const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          
+          // 파일명에 시트명 포함
+          const originalName = selectedFile.name;
+          const nameWithoutExt = originalName.substring(0, originalName.lastIndexOf('.'));
+          const ext = originalName.substring(originalName.lastIndexOf('.'));
+          const newFileName = `${nameWithoutExt}_${sheetName}${ext}`;
+          
+          // File 객체 생성
+          const sheetFile = new File([blob], newFileName, { type: blob.type });
+          
+          // 업로드
+          const formData = new FormData();
+          formData.append('file', sheetFile);
+          formData.append('type', selectedType);
+          formData.append('year', String(selectedYear));
+          formData.append('sheetName', sheetName); // 시트명 정보 추가
+          
+          console.log(`시트 ${sheetName} 업로드 시작...`);
+          
+          const response = await fetch(`${API_BASE}/historicalDataUpload`, {
+            method: 'POST',
+            body: formData,
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: '알 수 없는 오류' }));
+            throw new Error(`시트 ${sheetName} 업로드 실패: ${response.status} - ${errorData.error || '알 수 없는 오류'}`);
+          }
+          
+          const result = await response.json();
+          console.log(`시트 ${sheetName} 업로드 성공:`, result);
+          successCount++;
+          
+        } catch (error) {
+          console.error(`시트 ${sheetName} 업로드 실패:`, error);
+          errorCount++;
+        }
       }
       
       // 업로드 완료 후 목록 갱신
       loadRecords();
-      alert(`${selectedSheets.length}개 시트가 성공적으로 업로드되었습니다.`);
+      
+      if (errorCount === 0) {
+        alert(`${successCount}개 시트가 성공적으로 업로드되었습니다.`);
+      } else {
+        alert(`업로드 완료: ${successCount}개 성공, ${errorCount}개 실패`);
+      }
       
     } catch (error) {
       console.error('업로드 실패:', error);
@@ -504,7 +532,7 @@ const HistoricalDataManagement: React.FC = () => {
         year: editYear,
       });
 
-      const response = await fetch(`${API_BASE}/historical-data/${editingRecord.id}/update`, {
+              const response = await fetch(`${API_BASE}/historicalDataUpdate/${editingRecord.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

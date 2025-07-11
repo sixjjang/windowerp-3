@@ -1121,7 +1121,9 @@ const DeliveryManagement: React.FC = () => {
         return;
       }
 
-      const scheduleId = `delivery-${delivery.id}`;
+      // 프로젝트 단위 스케줄 ID 생성 (고객명 + 주소 기반, 시공일시 무관)
+      const addressKey = delivery.address?.replace(/[^가-힣a-zA-Z0-9]/g, '').substring(0, 10) || '';
+      const projectId = `delivery-${delivery.customerName}_${addressKey}`;
 
       // 카테고리 색상 가져오기 함수
       const getCategoryColor = (categoryId: string) => {
@@ -1207,7 +1209,7 @@ const DeliveryManagement: React.FC = () => {
         : `시공-${timeStr}`;
 
       const scheduleData = {
-        id: scheduleId,
+        id: projectId,
         title: scheduleTitle,
         date: delivery.constructionDate,
         time: delivery.constructionTime || '09:00',
@@ -1229,19 +1231,20 @@ const DeliveryManagement: React.FC = () => {
       };
 
       console.log('스케줄 데이터 전송:', {
-        id: scheduleId,
+        id: projectId,
         title: scheduleTitle,
         date: delivery.constructionDate,
+        customerName: delivery.customerName,
+        address: delivery.address?.substring(0, 20) + '...',
       });
 
-      // 서버에 PUT(있으면 수정, 없으면 생성)
+      // Firebase Functions에 스케줄 저장
       const response = await fetch(
-        `/schedules/${encodeURIComponent(scheduleId)}`,
+        `https://us-central1-windowerp-3.cloudfunctions.net/schedules`,
         {
-          method: 'PUT',
+          method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Accept: 'application/json',
           },
           body: JSON.stringify(scheduleData),
         }
@@ -1249,7 +1252,7 @@ const DeliveryManagement: React.FC = () => {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`스케줄 등록 실패 (${scheduleId}):`, {
+        console.error(`스케줄 등록 실패 (${projectId}):`, {
           status: response.status,
           statusText: response.statusText,
           error: errorText,
@@ -1261,7 +1264,7 @@ const DeliveryManagement: React.FC = () => {
         }
       } else {
         const result = await response.json();
-        console.log(`✅ 상세 스케줄 등록 성공: ${scheduleId}`, result);
+        console.log(`✅ 상세 스케줄 등록 성공: ${projectId}`, result);
       }
     } catch (error) {
       console.error(`스케줄 등록 중 오류 (${delivery.id}):`, error);
@@ -2571,7 +2574,15 @@ const DeliveryManagement: React.FC = () => {
                                   constructionTime: timeStr,
                                 };
                                 updateDelivery(delivery.id, updatedDelivery);
-                                // ... (계약서/스케줄 동기화 로직 생략)
+                                
+                                // 시공일시 변경 시 스케줄 자동 업데이트 (중복 방지)
+                                console.log('시공일시 변경 감지:', dateStr, timeStr);
+                                try {
+                                  await createDetailedSchedule(updatedDelivery);
+                                  console.log('✅ 시공일정이 스케줄에 자동 업데이트되었습니다.');
+                                } catch (error) {
+                                  console.error('❌ 시공일정 스케줄 업데이트 실패:', error);
+                                }
                               }
                             }}
                             fullWidth

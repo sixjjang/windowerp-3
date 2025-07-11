@@ -64,7 +64,7 @@ export default function TaxInvoice() {
   const loadInvoices = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/tax-invoices`);
+      const response = await fetch(`${API_BASE}/taxInvoices`);
       if (!response.ok) throw new Error('데이터 로드 실패');
       const data = await response.json();
       setInvoices(data);
@@ -122,7 +122,7 @@ export default function TaxInvoice() {
 
   const handleSave = async () => {
     try {
-      const response = await fetch(`${API_BASE}/tax-invoices`, {
+      const response = await fetch(`${API_BASE}/saveTaxInvoice`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),

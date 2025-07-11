@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { ref, onValue, push, off } from 'firebase/database';
+import { realtimeDb } from '../firebase/config';
 
 export interface Notification {
   id: string;
@@ -68,130 +70,93 @@ interface NotificationStore {
   ) => void;
 }
 
-// WebSocket 관련 변수들
-let ws: WebSocket | null = null;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
+// Firebase Realtime Database 관련 변수들
+let notificationListener: (() => void) | null = null;
 
-const WS_BASE =
-  process.env.NODE_ENV === 'development'
-    ? 'ws://localhost:4001'
-    : process.env.REACT_APP_WS_BASE || 'wss://us-central1-windowerp-3.cloudfunctions.net/ws';
-
-// WebSocket 연결 함수
+// Firebase Realtime Database 연결 함수
 export const connectNotificationWebSocket = (userId: string) => {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    console.log('WebSocket이 이미 연결되어 있습니다.');
+  if (!userId) {
+    console.log('사용자 ID가 없어 알림 연결을 시도하지 않습니다.');
     return;
   }
 
-  // WebSocket 서버 주소 (NAS 환경에서는 실제 IP/도메인으로 변경)
-  const wsUrl = WS_BASE;
-
-  // WebSocket URL이 없으면 연결하지 않음
-  if (!wsUrl) {
-    console.log('WebSocket URL이 설정되지 않았습니다.');
-    return;
+  // 기존 리스너 제거
+  if (notificationListener) {
+    notificationListener();
+    notificationListener = null;
   }
 
   try {
-    ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      console.log('WebSocket 연결됨');
-      reconnectAttempts = 0;
-
-      // 사용자 등록
-      ws?.send(
-        JSON.stringify({
-          type: 'register',
-          userId: userId,
-        })
-      );
-    };
-
-    ws.onmessage = event => {
-      try {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'register_success') {
-          console.log('WebSocket 등록 성공:', data.message);
-          return;
-        }
-
-        // 알림 메시지 수신
-        if (data.type && data.title && data.message) {
-          useNotificationStore.getState().addNotification(data);
-        }
-      } catch (e) {
-        console.error('WebSocket 메시지 파싱 오류:', e);
+    // 사용자별 알림 경로
+    const notificationsRef = ref(realtimeDb, `notifications/${userId}`);
+    
+    // 실시간 알림 리스너 설정
+    notificationListener = onValue(notificationsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        // 새로운 알림이 추가되면 처리
+        Object.keys(data).forEach(key => {
+          const notification = data[key];
+          if (notification && !notification.isRead) {
+            useNotificationStore.getState().addNotification(notification);
+          }
+        });
       }
-    };
+    }, (error) => {
+      console.log('Firebase Realtime Database 연결 오류 (무시됨):', error);
+    });
 
-    ws.onclose = () => {
-      console.log('WebSocket 연결 종료');
-      ws = null;
-
-      // 자동 재연결 (최대 5회)
-      if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-        reconnectAttempts++;
-        console.log(
-          `WebSocket 재연결 시도 ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`
-        );
-        setTimeout(() => {
-          connectNotificationWebSocket(userId);
-        }, 3000); // 3초 후 재연결
-      }
-    };
-
-    ws.onerror = error => {
-      console.log('WebSocket 연결 오류 (무시됨):', error);
-    };
+    console.log('Firebase Realtime Database 알림 연결됨');
   } catch (error) {
-    console.log('WebSocket 연결 실패 (무시됨):', error);
+    console.log('Firebase Realtime Database 연결 실패 (무시됨):', error);
   }
 };
 
-// WebSocket으로 알림 전송 함수들
-export const sendNotificationWS = (targetUserId: string, notification: any) => {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(
-      JSON.stringify({
-        type: 'notify',
-        targetUserId,
-        notification,
-      })
-    );
+// Firebase Realtime Database로 알림 전송 함수들
+export const sendNotificationWS = async (targetUserId: string, notification: any) => {
+  try {
+    const notificationRef = ref(realtimeDb, `notifications/${targetUserId}`);
+    await push(notificationRef, {
+      ...notification,
+      timestamp: new Date().toISOString(),
+      isRead: false
+    });
+  } catch (error) {
+    console.log('Firebase Realtime Database 알림 전송 실패:', error);
   }
 };
 
-export const broadcastNotificationWS = (notification: any) => {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(
-      JSON.stringify({
-        type: 'broadcast',
-        notification,
-      })
-    );
+export const broadcastNotificationWS = async (notification: any) => {
+  try {
+    const broadcastRef = ref(realtimeDb, 'broadcast_notifications');
+    await push(broadcastRef, {
+      ...notification,
+      timestamp: new Date().toISOString(),
+      isRead: false
+    });
+  } catch (error) {
+    console.log('Firebase Realtime Database 브로드캐스트 실패:', error);
   }
 };
 
-export const notifyStaffWS = (notification: any) => {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(
-      JSON.stringify({
-        type: 'notify_staff',
-        notification,
-      })
-    );
+export const notifyStaffWS = async (notification: any) => {
+  try {
+    const staffRef = ref(realtimeDb, 'staff_notifications');
+    await push(staffRef, {
+      ...notification,
+      timestamp: new Date().toISOString(),
+      isRead: false
+    });
+  } catch (error) {
+    console.log('Firebase Realtime Database 직원 알림 실패:', error);
   }
 };
 
-// WebSocket 연결 해제
+// Firebase Realtime Database 연결 해제
 export const disconnectNotificationWebSocket = () => {
-  if (ws) {
-    ws.close();
-    ws = null;
+  if (notificationListener) {
+    notificationListener();
+    notificationListener = null;
   }
 };
 
@@ -392,11 +357,13 @@ export const initializeNotificationStore = () => {
   }
 };
 
-// 알림 변경 시 localStorage에 저장
-useNotificationStore.subscribe(state => {
-  try {
-    localStorage.setItem('notifications', JSON.stringify(state.notifications));
-  } catch (error) {
-    console.error('알림 저장 오류:', error);
-  }
-});
+// 알림 변경 시 localStorage에 저장 (초기화 후에 설정)
+setTimeout(() => {
+  useNotificationStore.subscribe(state => {
+    try {
+      localStorage.setItem('notifications', JSON.stringify(state.notifications));
+    } catch (error) {
+      console.error('알림 저장 오류:', error);
+    }
+  });
+}, 0);

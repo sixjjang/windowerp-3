@@ -269,6 +269,9 @@ const Schedule: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const { createScheduleNotification } = useNotificationStore();
+  
+  // 중복 처리 방지를 위한 ref
+  const processedDeliveryIds = useRef<Set<string>>(new Set());
 
   // 기본 상태 관리
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
@@ -503,7 +506,7 @@ const Schedule: React.FC = () => {
       }
 
       // 현재 사용자 정보 조회
-      const userResponse = await axios.get(`${API_BASE}/users/me`, {
+      const userResponse = await axios.get(`${API_BASE}/me`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -611,13 +614,6 @@ const Schedule: React.FC = () => {
   useEffect(() => {
     const loadSchedules = async () => {
       try {
-        // 먼저 localStorage에서 데이터 로드
-        const localSchedules = localStorage.getItem('schedules');
-        if (localSchedules) {
-          const localData = JSON.parse(localSchedules);
-          setEvents(localData);
-        }
-
         // Firebase Functions에서 데이터 로드
         const response = await fetch(`${API_BASE}/schedules`);
         if (response.ok) {
@@ -627,11 +623,21 @@ const Schedule: React.FC = () => {
           localStorage.setItem('schedules', JSON.stringify(data));
         } else {
           console.error('스케줄 로드 실패:', response.statusText);
-          // 에러가 발생해도 localStorage 데이터는 유지
+          // API 실패 시 localStorage에서 데이터 로드
+          const localSchedules = localStorage.getItem('schedules');
+          if (localSchedules) {
+            const localData = JSON.parse(localSchedules);
+            setEvents(localData);
+          }
         }
       } catch (error) {
         console.error('스케줄 로드 오류:', error);
-        // 에러가 발생해도 localStorage 데이터는 유지
+        // 에러 발생 시 localStorage에서 데이터 로드
+        const localSchedules = localStorage.getItem('schedules');
+        if (localSchedules) {
+          const localData = JSON.parse(localSchedules);
+          setEvents(localData);
+        }
       }
     };
 
@@ -794,8 +800,17 @@ const Schedule: React.FC = () => {
 
   // 납품건에서 시공 일정 자동 생성
   useEffect(() => {
-    const deliveryEvents: ScheduleEvent[] = deliveries
-      .filter(delivery => delivery.constructionDate)
+    // 이미 처리된 delivery ID들 필터링
+    const newDeliveries = deliveries.filter(delivery => 
+      delivery.constructionDate && !processedDeliveryIds.current.has(delivery.id)
+    );
+    
+    // 새로운 delivery ID들을 processedDeliveryIds에 추가
+    newDeliveries.forEach(delivery => {
+      processedDeliveryIds.current.add(delivery.id);
+    });
+    
+    const deliveryEvents: ScheduleEvent[] = newDeliveries
       .map(delivery => {
         // 계약서에서 시공일자 우선 확인 (데이터 일관성 유지)
         let constructionDate = delivery.constructionDate;
@@ -852,12 +867,14 @@ const Schedule: React.FC = () => {
         };
       });
 
-    // AS 일정 자동 생성
+        // AS 일정 자동 생성 (이미 처리된 AS ID들 필터링)
+    const processedAsIds = new Set<string>();
     const asEvents: ScheduleEvent[] = deliveries.flatMap(
       delivery =>
         delivery.asRecords
-          ?.filter(as => as.visitDate)
+          ?.filter(as => as.visitDate && !processedAsIds.has(as.id))
           .map(as => {
+            processedAsIds.add(as.id);
             const visitDateTime = new Date(as.visitDate!);
             const year = visitDateTime.getFullYear();
             const month = String(visitDateTime.getMonth() + 1).padStart(2, '0');
@@ -895,10 +912,35 @@ const Schedule: React.FC = () => {
           }) || []
     );
 
+    // 기존 이벤트에서 delivery와 as 이벤트 ID들을 수집
+    const existingDeliveryIds = new Set(
+      events
+        .filter(event => event.id.startsWith('delivery-') || event.id.startsWith('as-'))
+        .map(event => event.id)
+    );
+    
+    // 중복되지 않는 이벤트만 필터링
+    const uniqueDeliveryEvents = deliveryEvents.filter(
+      event => !existingDeliveryIds.has(event.id)
+    );
+    const uniqueAsEvents = asEvents.filter(
+      event => !existingDeliveryIds.has(event.id)
+    );
+    
+    // 기존 수동 이벤트 + 새로운 고유한 delivery/as 이벤트들
     const existingManualEvents = events.filter(
       event => !event.id.startsWith('delivery-') && !event.id.startsWith('as-')
     );
-    setEvents([...existingManualEvents, ...deliveryEvents, ...asEvents]);
+    
+    // 최종 이벤트 배열 생성 (중복 제거)
+    const finalEvents = [...existingManualEvents, ...uniqueDeliveryEvents, ...uniqueAsEvents];
+    
+    // 추가 중복 제거 (같은 ID를 가진 이벤트가 여러 개 있는 경우)
+    const uniqueEvents = finalEvents.filter((event, index, self) => 
+      index === self.findIndex(e => e.id === event.id)
+    );
+    
+    setEvents(uniqueEvents);
   }, [deliveries]);
 
   // 현재 월의 날짜들 계산

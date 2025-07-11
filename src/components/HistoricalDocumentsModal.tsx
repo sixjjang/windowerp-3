@@ -43,7 +43,7 @@ const HistoricalDocumentsModal: React.FC<Props> = ({ open, onClose }) => {
   // 연도별 파일 목록 불러오기
   useEffect(() => {
     if (!open) return;
-    fetch(`${API_BASE}/historical-documents/list?year=${selectedYear}`)
+    fetch(`${API_BASE}/historicalDataList?type=delivery&year=${selectedYear}`)
       .then(res => res.json())
       .then(list => {
         // 방어 코드: 항상 배열로 보장
@@ -67,7 +67,7 @@ const HistoricalDocumentsModal: React.FC<Props> = ({ open, onClose }) => {
   // 파일 선택 시 미리보기 불러오기
   useEffect(() => {
     if (selectedFile) {
-      fetch(`${API_BASE}/historical-documents/${selectedFile.id}/preview`)
+      fetch(`${API_BASE}/historicalDataPreview?id=${selectedFile.id}`)
         .then(res => res.json())
         .then(data => setPreview(data))
         .catch(error => {
@@ -86,15 +86,16 @@ const HistoricalDocumentsModal: React.FC<Props> = ({ open, onClose }) => {
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('type', 'delivery');
     formData.append('year', String(selectedYear));
     try {
-      await fetch(`${API_BASE}/historical-documents/upload`, {
+      await fetch(`${API_BASE}/historicalDataUpload`, {
         method: 'POST',
         body: formData,
       });
       // 업로드 후 목록 갱신
       const res = await fetch(
-        `${API_BASE}/historical-documents/list?year=${selectedYear}`
+        `${API_BASE}/historicalDataList?type=delivery&year=${selectedYear}`
       );
       const list = await res.json();
       const safeList = Array.isArray(list) ? list : [];
@@ -112,7 +113,7 @@ const HistoricalDocumentsModal: React.FC<Props> = ({ open, onClose }) => {
     if (!selectedFile || !search.trim()) return;
     try {
       const res = await fetch(
-        `${API_BASE}/historical-documents/${selectedFile.id}/search?keyword=${encodeURIComponent(search)}`
+        `${API_BASE}/historicalDataSearch?type=delivery&year=${selectedYear}&keyword=${encodeURIComponent(search)}`
       );
       const data = await res.json();
       setSearchResults(data.results || []);

@@ -163,7 +163,7 @@ const AdminUserManagement: React.FC = () => {
     setRegisterMsg('');
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`${API_BASE}/register-staff`, newUser, {
+      await axios.post(`${API_BASE}/registerUser`, newUser, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setRegisterMsg('직원 등록 성공!');
