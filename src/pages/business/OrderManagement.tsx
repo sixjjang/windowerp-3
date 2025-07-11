@@ -61,6 +61,7 @@ import {
   PaymentStatus,
   ConstructionType,
 } from '../../utils/deliveryStore';
+import { Estimate, EstimateRow } from '../../types';
 
 // 타입 정의를 직접 여기에 포함
 interface Contract {
@@ -94,53 +95,6 @@ interface Contract {
   updatedAt: string;
   constructionDate?: string;
   rows?: EstimateRow[]; // any[]에서 EstimateRow[]로 수정
-}
-
-interface EstimateRow {
-  id: number;
-  type: 'product' | 'option';
-  vendor: string;
-  brand: string;
-  space: string;
-  productType: string;
-  curtainType: string;
-  pleatType: string;
-  productName: string;
-  width: string;
-  details: string;
-  widthMM: number;
-  heightMM: number;
-  area: number;
-  lineDir: string;
-  lineLen: number;
-  pleatAmount: string | number;
-  widthCount: number;
-  quantity: number;
-  totalPrice: number;
-  salePrice: number;
-  cost: number;
-  purchaseCost: number;
-  margin: number;
-  note: string;
-  productCode?: string;
-  parent?: EstimateRow | null; // 옵션의 부모 제품을 저장하기 위한 속성
-  showRequestNote?: boolean;
-  originalIndex?: number; // 견적서/계약서 rows의 순서 정보 추가
-  optionLabel?: string; // 레일 등 옵션 라벨 추가
-}
-
-interface Estimate {
-  id: number;
-  name: string;
-  estimateNo: string;
-  estimateDate: string;
-  customerName: string;
-  contact: string;
-  emergencyContact: string;
-  projectName: string;
-  type: string;
-  address: string;
-  rows: EstimateRow[];
 }
 
 // =================================================================================

@@ -32,67 +32,7 @@ import {
   Save as SaveIcon,
 } from '@mui/icons-material';
 
-interface OptionItem {
-  id: number;
-  optionName: string;
-  salePrice: number;
-  purchaseCost: number;
-  details: string;
-  note: '폭당' | 'm당' | '추가' | '포함' | 'm2당';
-  quantity?: number;
-}
-
-interface EstimateRow {
-  id: number;
-  type: 'product' | 'option';
-  vendor: string;
-  brand: string;
-  space: string;
-  productType: string;
-  curtainType: string;
-  pleatType: string;
-  productName: string;
-  width: string;
-  details: string;
-  widthMM: number;
-  heightMM: number;
-  area: number;
-  lineDir: string;
-  lineLen: number;
-  pleatAmount: string | number;
-  widthCount: number;
-  quantity: number;
-  totalPrice: number;
-  salePrice: number;
-  cost: number;
-  purchaseCost: number;
-  margin: number;
-  optionLabel?: string;
-  lineDirection?: string;
-  lineLength?: string;
-  customLineLength?: string;
-  spaceCustom?: string;
-  productCode?: string;
-  pleatAmountCustom?: string;
-  minOrderQty?: number;
-  largePlainPrice?: number;
-  largePlainCost?: number;
-  options?: OptionItem[];
-}
-
-interface Estimate {
-  id: number;
-  name: string;
-  estimateNo: string;
-  estimateDate: string;
-  customerName: string;
-  contact: string;
-  emergencyContact: string;
-  projectName: string;
-  type: string;
-  address: string;
-  rows: EstimateRow[];
-}
+import { Estimate, EstimateRow, OptionItem } from '../types';
 
 interface EstimateTemplateProps {
   estimate: Estimate;

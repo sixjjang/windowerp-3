@@ -72,15 +72,30 @@ export interface EstimateRow {
   originalIndex?: number;
   optionLabel?: string;
   options?: OptionItem[];
+  // 추가 필드들
+  lineDirection?: string;
+  lineLength?: string;
+  customLineLength?: string;
+  spaceCustom?: string;
+  pleatAmountCustom?: string;
+  minOrderQty?: number;
+  largePlainPrice?: number;
+  largePlainCost?: number;
 }
 
 export interface OptionItem {
   id: number;
-  name: string;
-  amount: number;
-  purchaseAmount: number;
-  type: 'fixed' | 'percent' | '%';
+  name?: string; // EstimateTemplate에서 사용
+  optionName?: string; // EstimateManagement에서 사용
+  amount?: number; // types.d.ts에서 사용
+  purchaseAmount?: number; // types.d.ts에서 사용
+  type?: 'fixed' | 'percent' | '%'; // types.d.ts에서 사용
+  salePrice: number;
+  purchaseCost: number;
+  details: string;
   note: string | '폭당' | 'm당' | '추가' | '포함' | 'm2당';
+  quantity?: number;
+  optionType?: string; // OptionManagement에서 사용
 }
 
 export interface Estimate {
@@ -95,4 +110,21 @@ export interface Estimate {
   type: string;
   address: string;
   rows: EstimateRow[];
+  // 추가 필드들
+  totalAmount?: number;
+  discountedAmount?: number;
+  measurementRequired?: boolean | 'direct';
+  measurementInfo?: {
+    measuredAt?: string;
+    measuredBy?: string;
+    measurementMethod?: '현장실측' | '실측없이진행' | '직접입력' | string;
+    eventId?: string;
+    eventTitle?: string;
+    customerName?: string;
+    address?: string;
+  };
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  products?: string;
 }

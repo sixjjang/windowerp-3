@@ -68,7 +68,7 @@ import EstimateTemplate from '../../components/EstimateTemplate';
 import Autocomplete from '@mui/material/Autocomplete';
 import TemplateManager from '../../components/TemplateManager';
 import { templateRoomToEstimateRow } from '../../utils/templateUtils';
-import { EstimateTemplate as EstimateTemplateType } from '../../types';
+import { EstimateTemplate as EstimateTemplateType, Estimate, EstimateRow, OptionItem } from '../../types';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { findLastIndex } from 'lodash';
@@ -98,80 +98,7 @@ const printStyles = `
   }
 `;
 
-interface OptionItem {
-  id: number;
-  optionName: string;
-  salePrice: number;
-  purchaseCost: number;
-  details: string;
-  note: '폭당' | 'm당' | '추가' | '포함' | 'm2당' | string; // % 적용타입을 위해 string으로 확장
-  quantity?: number;
-}
 
-interface EstimateRow {
-  id: number;
-  type: 'product' | 'option';
-  vendor: string;
-  brand: string;
-  space: string;
-  productType: string;
-  curtainType: string;
-  pleatType: string;
-  productName: string;
-  width: string;
-  details: string;
-  widthMM: number;
-  heightMM: number;
-  area: number;
-  lineDir: string;
-  lineLen: number;
-  pleatAmount: string | number;
-  widthCount: number;
-  quantity: number;
-  totalPrice: number;
-  salePrice: number;
-  cost: number;
-  purchaseCost: number;
-  margin: number;
-  note: string;
-  optionLabel?: string;
-  lineDirection?: string;
-  lineLength?: string;
-  customLineLength?: string;
-  spaceCustom?: string;
-  productCode?: string;
-  pleatAmountCustom?: string;
-  minOrderQty?: number;
-  largePlainPrice?: number;
-  largePlainCost?: number;
-  options?: OptionItem[];
-}
-
-interface Estimate {
-  id: number;
-  name: string;
-  estimateNo: string;
-  estimateDate: string; // 견적일자
-  customerName: string;
-  contact: string;
-  emergencyContact: string;
-  projectName: string;
-  type: string;
-  address: string;
-  rows: EstimateRow[];
-  totalAmount?: number;
-  discountedAmount?: number;
-  measurementRequired?: boolean;
-  measurementInfo?: {
-    measuredAt?: string;
-    measuredBy?: string;
-    measurementMethod?: string;
-    eventId?: string;
-    eventTitle?: string;
-    customerName?: string;
-    address?: string;
-  };
-}
 
 interface FormulaMap {
   [productType: string]: {
