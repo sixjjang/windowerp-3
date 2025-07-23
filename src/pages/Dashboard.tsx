@@ -823,7 +823,7 @@ const Dashboard: React.FC = () => {
           variant="h3"
           sx={{
             fontWeight: 800,
-            background: 'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)',
+            background: 'var(--gradient-primary)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
@@ -835,7 +835,7 @@ const Dashboard: React.FC = () => {
         <Typography
           variant="h6"
           sx={{
-            color: 'rgba(255, 255, 255, 0.7)',
+            color: 'var(--text-secondary-color)',
             fontWeight: 500,
           }}
         >
@@ -848,11 +848,11 @@ const Dashboard: React.FC = () => {
         <Grid item xs={12} md={6}>
           <Card
             sx={{
-              background: '#23232a',
+              background: 'var(--surface-color)',
               borderRadius: 4,
-              boxShadow: '0 4px 24px rgba(255, 107, 157, 0.10)',
-              border: '1px solid rgba(255, 107, 157, 0.15)',
-              color: 'white',
+              boxShadow: '0 4px 24px var(--border-color)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-color)',
             }}
           >
             <CardContent
@@ -885,7 +885,7 @@ const Dashboard: React.FC = () => {
                   variant="h6"
                   sx={{
                     fontWeight: 700,
-                    color: 'white',
+                    color: 'var(--text-color)',
                     flex: 1,
                   }}
                 >
@@ -894,10 +894,10 @@ const Dashboard: React.FC = () => {
                 <IconButton
                   onClick={() => setScheduleExpanded(!scheduleExpanded)}
                   sx={{
-                    color: 'rgba(255, 255, 255, 0.7)',
+                    color: 'var(--text-secondary-color)',
                     '&:hover': {
-                      color: '#FF6B9D',
-                      backgroundColor: 'rgba(255, 107, 157, 0.1)',
+                      color: 'var(--primary-color)',
+                      backgroundColor: 'var(--hover-color)',
                     },
                     transition: 'all 0.2s ease-in-out',
                     transform: scheduleExpanded ? 'rotate(0deg)' : 'rotate(180deg)',
@@ -918,7 +918,7 @@ const Dashboard: React.FC = () => {
                           mb: 2,
                         }}
                       />
-                      <Typography color="rgba(255, 255, 255, 0.6)">
+                      <Typography color="var(--text-secondary-color)">
                         오늘 등록된 일정이 없습니다.
                       </Typography>
                     </Box>
@@ -931,14 +931,14 @@ const Dashboard: React.FC = () => {
                           sx={{
                             py: 1,
                             mb: 1,
-                            background: 'rgba(255, 255, 255, 0.05)',
+                            background: 'var(--hover-color)',
                             borderRadius: 2,
-                            border: '1px solid rgba(255, 107, 157, 0.1)',
+                            border: '1px solid var(--border-color)',
                             cursor: 'pointer',
                             transition: 'all 0.2s ease-in-out',
                             '&:hover': {
-                              background: 'rgba(255, 107, 157, 0.1)',
-                              border: '1px solid rgba(255, 107, 157, 0.3)',
+                              background: 'var(--primary-color)',
+                              border: '1px solid var(--primary-color)',
                               transform: 'translateY(-1px)',
                             },
                           }}
@@ -1030,19 +1030,18 @@ const Dashboard: React.FC = () => {
         <Grid item xs={12} md={6}>
           <Card
             sx={{
-              background: '#23232a',
+              background: 'var(--surface-color)',
               borderRadius: 4,
-              boxShadow: '0 4px 24px rgba(255, 107, 157, 0.10)',
-              border: '1px solid rgba(255, 107, 157, 0.15)',
-              color: 'white',
+              boxShadow: '0 4px 24px var(--border-color)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-color)',
             }}
           >
             <CardContent sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <Avatar
                   sx={{
-                    background:
-                      'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)',
+                    background: 'var(--gradient-primary)',
                     mr: 2,
                     width: 40,
                     height: 40,
@@ -1054,7 +1053,7 @@ const Dashboard: React.FC = () => {
                   variant="h6"
                   sx={{
                     fontWeight: 700,
-                    color: 'white',
+                    color: 'var(--text-color)',
                   }}
                 >
                   전화통화 메모
@@ -1077,19 +1076,19 @@ const Dashboard: React.FC = () => {
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 2,
-                      background: 'rgba(255, 255, 255, 0.05)',
+                      background: 'var(--background-color)',
                       '& fieldset': {
-                        borderColor: 'rgba(255, 107, 157, 0.3)',
+                        borderColor: 'var(--border-color)',
                       },
                       '&:hover fieldset': {
-                        borderColor: '#FF6B9D',
+                        borderColor: 'var(--primary-color)',
                       },
                       '&.Mui-focused fieldset': {
-                        borderColor: '#FF6B9D',
+                        borderColor: 'var(--primary-color)',
                       },
                     },
                     '& .MuiInputBase-input': {
-                      color: 'white',
+                      color: 'var(--text-color)',
                     },
                   }}
                 />
@@ -1098,12 +1097,10 @@ const Dashboard: React.FC = () => {
                   onClick={handleSaveMemo}
                   sx={{
                     minWidth: 80,
-                    background:
-                      'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)',
+                    background: 'var(--gradient-primary)',
                     borderRadius: 2,
                     '&:hover': {
-                      background:
-                        'linear-gradient(135deg, #FFB3D1 0%, #FF6B7A 100%)',
+                      background: 'var(--gradient-secondary)',
                     },
                   }}
                 >
@@ -1450,11 +1447,11 @@ const Dashboard: React.FC = () => {
           {/* 우측: 활성 채팅 영역 */}
           <Card
             sx={{
-              background: '#23232a',
+              background: 'var(--surface-color)',
               borderRadius: 4,
               boxShadow: '0 4px 24px rgba(255, 107, 157, 0.10)',
-              border: '1px solid rgba(255, 107, 157, 0.15)',
-              color: 'white',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-color)',
               minHeight: 220,
             }}
           >
@@ -1475,7 +1472,7 @@ const Dashboard: React.FC = () => {
                   variant="h6"
                   sx={{
                     fontWeight: 700,
-                    color: 'white',
+                    color: 'var(--text-color)',
                   }}
                 >
                   활성 채팅
@@ -1575,7 +1572,7 @@ const Dashboard: React.FC = () => {
                                       component="span"
                                       sx={{
                                         fontWeight: 600,
-                                        color: 'white',
+                                        color: 'var(--text-color)',
                                         fontSize: '0.875rem',
                                       }}
                                     >
@@ -1686,11 +1683,11 @@ const Dashboard: React.FC = () => {
                           mb: 2,
                         }}
                       />
-                      <Typography color="rgba(255, 255, 255, 0.6)">
+                      <Typography color="var(--text-secondary-color)">
                         현재 진행 중인 채팅이 없습니다.
                       </Typography>
                       <Typography
-                        color="rgba(76, 175, 80, 0.8)"
+                        color="var(--primary-color)"
                         sx={{ fontSize: '0.875rem', mt: 1 }}
                       >
                         스케줄 항목을 클릭하여 채팅을 시작하세요.
@@ -1712,8 +1709,8 @@ const Dashboard: React.FC = () => {
         fullWidth
         PaperProps={{
           sx: {
-            backgroundColor: '#23232a',
-            color: '#e0e6ed',
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
             borderRadius: 3,
           },
         }}
@@ -1749,9 +1746,9 @@ const Dashboard: React.FC = () => {
                   sx={{
                     mb: 2,
                     p: 2,
-                    background: 'rgba(255, 255, 255, 0.05)',
+                    background: 'var(--background-color)',
                     borderRadius: 2,
-                    border: '1px solid rgba(255, 107, 157, 0.2)',
+                    border: '1px solid var(--border-color)',
                   }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
@@ -1766,7 +1763,7 @@ const Dashboard: React.FC = () => {
                     </Typography>
                     <Typography
                       sx={{
-                        color: 'rgba(255, 255, 255, 0.6)',
+                        color: 'var(--text-secondary-color)',
                         fontSize: '0.75rem',
                       }}
                     >
@@ -1775,7 +1772,7 @@ const Dashboard: React.FC = () => {
                   </Box>
                   <Typography
                     sx={{
-                      color: 'white',
+                      color: 'var(--text-color)',
                       fontSize: '0.875rem',
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word',
@@ -1787,8 +1784,8 @@ const Dashboard: React.FC = () => {
               ))
             ) : (
               <Box sx={{ textAlign: 'center', py: 4 }}>
-                <ChatIcon sx={{ fontSize: 48, color: 'rgba(255, 107, 157, 0.5)', mb: 2 }} />
-                <Typography color="rgba(255, 255, 255, 0.6)">
+                <ChatIcon sx={{ fontSize: 48, color: 'var(--primary-color)', mb: 2 }} />
+                <Typography color="var(--text-secondary-color)">
                   아직 채팅 메시지가 없습니다.
                 </Typography>
               </Box>
@@ -1805,8 +1802,8 @@ const Dashboard: React.FC = () => {
         fullWidth
         PaperProps={{
           sx: {
-            backgroundColor: '#23232a',
-            color: '#e0e6ed',
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
             borderRadius: 3,
             maxHeight: '90vh',
           },
@@ -1838,7 +1835,7 @@ const Dashboard: React.FC = () => {
           <Grid container spacing={3}>
             {/* 왼쪽: 스케줄 상세내역 */}
             <Grid item xs={12} md={6}>
-              <Card sx={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 107, 157, 0.2)' }}>
+              <Card sx={{ backgroundColor: 'var(--background-color)', border: '1px solid var(--border-color)' }}>
                 <CardContent>
                   <Typography variant="h6" sx={{ color: '#FF6B9D', fontWeight: 700, mb: 2 }}>
                     일정 정보
@@ -1847,28 +1844,28 @@ const Dashboard: React.FC = () => {
                   {selectedScheduleDetail && (
                     <Box>
                       <Box sx={{ mb: 2 }}>
-                        <Typography sx={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.875rem', mb: 0.5 }}>
+                        <Typography sx={{ color: 'var(--text-secondary-color)', fontSize: '0.875rem', mb: 0.5 }}>
                           제목
                         </Typography>
-                        <Typography sx={{ color: 'white', fontWeight: 600 }}>
+                        <Typography sx={{ color: 'var(--text-color)', fontWeight: 600 }}>
                           {selectedScheduleDetail.title}
                         </Typography>
                       </Box>
 
                       <Box sx={{ mb: 2 }}>
-                        <Typography sx={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.875rem', mb: 0.5 }}>
+                        <Typography sx={{ color: 'var(--text-secondary-color)', fontSize: '0.875rem', mb: 0.5 }}>
                           날짜 & 시간
                         </Typography>
-                        <Typography sx={{ color: 'white' }}>
+                        <Typography sx={{ color: 'var(--text-color)' }}>
                           {new Date(selectedScheduleDetail.date).toLocaleDateString('ko-KR')} {selectedScheduleDetail.time}
                         </Typography>
                       </Box>
 
                       {selectedScheduleDetail.type && (
                         <Box sx={{ mb: 2 }}>
-                          <Typography sx={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.875rem', mb: 0.5 }}>
-                            유형
-                          </Typography>
+                                                  <Typography sx={{ color: 'var(--text-secondary-color)', fontSize: '0.875rem', mb: 0.5 }}>
+                          유형
+                        </Typography>
                           <Chip
                             label={selectedScheduleDetail.type}
                             size="small"
@@ -1883,43 +1880,43 @@ const Dashboard: React.FC = () => {
 
                       {selectedScheduleDetail.customerName && (
                         <Box sx={{ mb: 2 }}>
-                          <Typography sx={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.875rem', mb: 0.5 }}>
-                            고객명
-                          </Typography>
-                          <Typography sx={{ color: 'white' }}>
-                            {selectedScheduleDetail.customerName}
-                          </Typography>
+                                                  <Typography sx={{ color: 'var(--text-secondary-color)', fontSize: '0.875rem', mb: 0.5 }}>
+                          고객명
+                        </Typography>
+                        <Typography sx={{ color: 'var(--text-color)' }}>
+                          {selectedScheduleDetail.customerName}
+                        </Typography>
                         </Box>
                       )}
 
                       {selectedScheduleDetail.address && (
                         <Box sx={{ mb: 2 }}>
-                          <Typography sx={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.875rem', mb: 0.5 }}>
-                            주소
-                          </Typography>
-                          <Typography sx={{ color: 'white', fontSize: '0.875rem' }}>
-                            {selectedScheduleDetail.address}
-                          </Typography>
+                                                  <Typography sx={{ color: 'var(--text-secondary-color)', fontSize: '0.875rem', mb: 0.5 }}>
+                          주소
+                        </Typography>
+                        <Typography sx={{ color: 'var(--text-color)', fontSize: '0.875rem' }}>
+                          {selectedScheduleDetail.address}
+                        </Typography>
                         </Box>
                       )}
 
                       {selectedScheduleDetail.contact && (
                         <Box sx={{ mb: 2 }}>
-                          <Typography sx={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.875rem', mb: 0.5 }}>
-                            연락처
-                          </Typography>
-                          <Typography sx={{ color: 'white' }}>
-                            {selectedScheduleDetail.contact}
-                          </Typography>
-                        </Box>
-                      )}
+                                                  <Typography sx={{ color: 'var(--text-secondary-color)', fontSize: '0.875rem', mb: 0.5 }}>
+                          연락처
+                        </Typography>
+                        <Typography sx={{ color: 'var(--text-color)' }}>
+                          {selectedScheduleDetail.contact}
+                        </Typography>
+                      </Box>
+                    )}
 
                       {selectedScheduleDetail.description && (
                         <Box sx={{ mb: 2 }}>
-                          <Typography sx={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.875rem', mb: 0.5 }}>
+                          <Typography sx={{ color: 'var(--text-secondary-color)', fontSize: '0.875rem', mb: 0.5 }}>
                             설명
                           </Typography>
-                          <Typography sx={{ color: 'white', fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>
+                          <Typography sx={{ color: 'var(--text-color)', fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>
                             {selectedScheduleDetail.description}
                           </Typography>
                         </Box>
@@ -1932,7 +1929,7 @@ const Dashboard: React.FC = () => {
 
             {/* 오른쪽: 채팅 영역 */}
             <Grid item xs={12} md={6}>
-              <Card sx={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 107, 157, 0.2)', height: '100%' }}>
+              <Card sx={{ backgroundColor: 'var(--background-color)', border: '1px solid var(--border-color)', height: '100%' }}>
                 <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                   <Typography variant="h6" sx={{ color: '#FF6B9D', fontWeight: 700, mb: 2 }}>
                     채팅 ({selectedScheduleChat?.messages?.length || 0}개)
@@ -1950,9 +1947,9 @@ const Dashboard: React.FC = () => {
                           sx={{
                             mb: 2,
                             p: 2,
-                            background: 'rgba(255, 255, 255, 0.05)',
+                            background: 'var(--surface-color)',
                             borderRadius: 2,
-                            border: '1px solid rgba(255, 107, 157, 0.2)',
+                            border: '1px solid var(--border-color)',
                           }}
                         >
                           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
@@ -1967,7 +1964,7 @@ const Dashboard: React.FC = () => {
                             </Typography>
                             <Typography
                               sx={{
-                                color: 'rgba(255, 255, 255, 0.6)',
+                                color: 'var(--text-secondary-color)',
                                 fontSize: '0.75rem',
                               }}
                             >
@@ -1976,7 +1973,7 @@ const Dashboard: React.FC = () => {
                           </Box>
                           <Typography
                             sx={{
-                              color: 'white',
+                              color: 'var(--text-color)',
                               fontSize: '0.875rem',
                               whiteSpace: 'pre-wrap',
                               wordBreak: 'break-word',
@@ -1988,8 +1985,8 @@ const Dashboard: React.FC = () => {
                       ))
                     ) : (
                       <Box sx={{ textAlign: 'center', py: 4 }}>
-                        <ChatIcon sx={{ fontSize: 48, color: 'rgba(255, 107, 157, 0.5)', mb: 2 }} />
-                        <Typography color="rgba(255, 255, 255, 0.6)">
+                        <ChatIcon sx={{ fontSize: 48, color: 'var(--primary-color)', mb: 2 }} />
+                        <Typography color="var(--text-secondary-color)">
                           아직 채팅 메시지가 없습니다.
                         </Typography>
                       </Box>
@@ -2012,23 +2009,23 @@ const Dashboard: React.FC = () => {
                       }}
                       sx={{
                         '& .MuiOutlinedInput-root': {
-                          color: 'white',
-                          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                          color: 'var(--text-color)',
+                          backgroundColor: 'var(--background-color)',
                           '& fieldset': {
-                            borderColor: 'rgba(255, 107, 157, 0.3)',
+                            borderColor: 'var(--border-color)',
                           },
                           '&:hover fieldset': {
-                            borderColor: 'rgba(255, 107, 157, 0.5)',
+                            borderColor: 'var(--primary-color)',
                           },
                           '&.Mui-focused fieldset': {
-                            borderColor: '#FF6B9D',
+                            borderColor: 'var(--primary-color)',
                           },
                         },
                         '& .MuiInputLabel-root': {
-                          color: 'rgba(255, 255, 255, 0.7)',
+                          color: 'var(--text-secondary-color)',
                         },
                         '& .MuiInputBase-input::placeholder': {
-                          color: 'rgba(255, 255, 255, 0.5)',
+                          color: 'var(--text-secondary-color)',
                           opacity: 1,
                         },
                       }}
@@ -2037,14 +2034,15 @@ const Dashboard: React.FC = () => {
                       onClick={handleScheduleCommentSubmit}
                       disabled={!newScheduleComment.trim()}
                       sx={{
-                        color: '#FF6B9D',
-                        backgroundColor: 'rgba(255, 107, 157, 0.1)',
+                        color: 'var(--primary-color)',
+                        backgroundColor: 'var(--hover-color)',
                         '&:hover': {
-                          backgroundColor: 'rgba(255, 107, 157, 0.2)',
+                          backgroundColor: 'var(--primary-color)',
+                          color: 'white',
                         },
                         '&.Mui-disabled': {
-                          color: 'rgba(255, 255, 255, 0.3)',
-                          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                          color: 'var(--text-secondary-color)',
+                          backgroundColor: 'var(--background-color)',
                         },
                       }}
                     >
@@ -2070,15 +2068,15 @@ const Dashboard: React.FC = () => {
         }
         PaperProps={{
           sx: {
-            backgroundColor: '#23232a',
-            color: '#e0e6ed',
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
             borderRadius: 2,
-            border: '1px solid rgba(255, 107, 157, 0.3)',
+            border: '1px solid var(--border-color)',
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
             '& .MuiMenuItem-root': {
-              color: '#e0e6ed',
+              color: 'var(--text-color)',
               '&:hover': {
-                backgroundColor: 'rgba(255, 107, 157, 0.1)',
+                backgroundColor: 'var(--hover-color)',
               },
             },
           },

@@ -310,8 +310,17 @@ const AdminUserManagement: React.FC = () => {
 
       <TabPanel value={tabValue} index={0}>
         <div style={{ padding: 0 }}>
-          <h2 style={{ textAlign: 'center', marginBottom: 24 }}>직원/사용자 관리</h2>
-          <form onSubmit={handleRegister} style={{ marginBottom: 24, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'center' }}>
+                        <h2 style={{ textAlign: 'center', marginBottom: 24, color: 'var(--text-color)' }}>직원/사용자 관리</h2>
+                      <form onSubmit={handleRegister} style={{ 
+              marginBottom: 24, 
+              display: 'flex', 
+              flexWrap: 'wrap', 
+              gap: 8, 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              backgroundColor: 'var(--background-color)',
+              color: 'var(--text-color)'
+            }}>
             <input
               type="text"
               placeholder="아이디 *"
@@ -378,39 +387,54 @@ const AdminUserManagement: React.FC = () => {
           </form>
           {loading && <div style={{ textAlign: 'center' }}>로딩 중...</div>}
           {error && <div style={{ color: 'red', textAlign: 'center' }}>{error}</div>}
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 16 }}>
+                        <table style={{ 
+                width: '100%', 
+                borderCollapse: 'collapse', 
+                marginTop: 16,
+                backgroundColor: 'var(--background-color)',
+                color: 'var(--text-color)'
+              }}>
             <thead>
-              <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-                <th style={{ textAlign: 'center', width: 40 }}>ID</th>
-                <th style={{ textAlign: 'center', width: 120 }}>아이디</th>
-                <th style={{ textAlign: 'center', width: 100 }}>이름</th>
-                <th style={{ textAlign: 'center', width: 150 }}>이메일</th>
-                <th style={{ textAlign: 'center', width: 120 }}>전화번호</th>
-                <th style={{ textAlign: 'center', width: 150 }}>주소</th>
-                <th style={{ textAlign: 'center', width: 120 }}>계좌번호</th>
-                <th style={{ textAlign: 'center', width: 120 }}>역할</th>
-                <th style={{ textAlign: 'center', width: 80 }}>승인여부</th>
-                <th style={{ textAlign: 'center', width: 120 }}>작업</th>
+                              <tr style={{ backgroundColor: 'var(--surface-color)' }}>
+                                    <th style={{ textAlign: 'center', width: 40, color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>ID</th>
+                    <th style={{ textAlign: 'center', width: 120, color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>아이디</th>
+                    <th style={{ textAlign: 'center', width: 100, color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>이름</th>
+                    <th style={{ textAlign: 'center', width: 150, color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>이메일</th>
+                    <th style={{ textAlign: 'center', width: 120, color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>전화번호</th>
+                    <th style={{ textAlign: 'center', width: 150, color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>주소</th>
+                    <th style={{ textAlign: 'center', width: 120, color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>계좌번호</th>
+                    <th style={{ textAlign: 'center', width: 120, color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>역할</th>
+                    <th style={{ textAlign: 'center', width: 80, color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>승인여부</th>
+                    <th style={{ textAlign: 'center', width: 120, color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>작업</th>
               </tr>
             </thead>
             <tbody>
               {users.map((user) => (
                 <tr key={user.id}>
-                  <td style={{ textAlign: 'center' }}>{user.id}</td>
-                  <td style={{ textAlign: 'center' }}>{user.username}</td>
-                  <td style={{ textAlign: 'center' }}>{user.name || '-'}</td>
-                  <td style={{ textAlign: 'center' }}>{user.email || '-'}</td>
-                  <td style={{ textAlign: 'center' }}>{user.phone || '-'}</td>
-                  <td style={{ textAlign: 'center' }}>{user.address || '-'}</td>
-                  <td style={{ textAlign: 'center' }}>{user.accountNumber || '-'}</td>
+                                          <td style={{ textAlign: 'center', color: 'var(--text-color)' }}>{user.id}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-color)' }}>{user.username}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-color)' }}>{user.name || '-'}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-color)' }}>{user.email || '-'}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-color)' }}>{user.phone || '-'}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-color)' }}>{user.address || '-'}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-color)' }}>{user.accountNumber || '-'}</td>
                   <td style={{ textAlign: 'center' }}>
-                    <select value={user.role} onChange={e => handleRoleChange(user.id, e.target.value)} style={{ fontSize: '1rem', height: 32, padding: '0 8px', minWidth: 100, textAlign: 'center' }}>
+                                          <select value={user.role} onChange={e => handleRoleChange(user.id, e.target.value)} style={{ 
+                        fontSize: '1rem', 
+                        height: 32, 
+                        padding: '0 8px', 
+                        minWidth: 100, 
+                        textAlign: 'center',
+                        color: 'var(--text-color)',
+                        backgroundColor: 'var(--background-color)',
+                        border: '1px solid var(--border-color)'
+                      }}>
                       <option value="admin">관리자</option>
                       <option value="staff">직원</option>
                       <option value="guest">손님</option>
                     </select>
                   </td>
-                  <td style={{ textAlign: 'center' }}>{user.isApproved ? '승인' : '대기'}</td>
+                                      <td style={{ textAlign: 'center', color: 'var(--text-color)' }}>{user.isApproved ? '승인' : '대기'}</td>
                   <td style={{ textAlign: 'center' }}>
                     {!user.isApproved && (
                       <button onClick={() => handleApprove(user.id)} style={{ fontSize: '1rem', height: 32, padding: '0 12px' }}>승인</button>

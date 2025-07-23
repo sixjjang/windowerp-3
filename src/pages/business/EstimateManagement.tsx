@@ -75,7 +75,8 @@ import { findLastIndex } from 'lodash';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '../../utils/notificationStore';
 import { UserContext } from '../../components/Layout';
-import { estimateService } from '../../utils/firebaseDataService';
+import { estimateService, customerService } from '../../utils/firebaseDataService';
+import { ensureFirebaseAuth, API_BASE } from '../../utils/auth';
 
 // 인쇄용 CSS 스타일
 const printStyles = `
@@ -214,7 +215,7 @@ function getLocalDate() {
 const useEstimateStore = create<EstimateStore>(set => ({
   estimates: [
     {
-      id: 1,
+      id: 1, // 고정된 ID 사용으로 안정성 확보
       name: `견적서-${generateEstimateNo([])}`,
       estimateNo: generateEstimateNo([]),
       estimateDate: getLocalDate(), // 로컬 시간 기준으로 오늘 날짜 설정
@@ -244,11 +245,16 @@ const useEstimateStore = create<EstimateStore>(set => ({
   addEstimate: () =>
     set(state => {
       const estimateNo = generateEstimateNo(state.estimates);
+      // 고유 ID 생성 (기존 ID 중 최대값 + 1)
+      const maxId = state.estimates.length > 0 
+        ? Math.max(...state.estimates.map(e => e.id)) 
+        : 0;
+      const newId = maxId + 1;
       return {
         estimates: [
           ...state.estimates,
           {
-            id: Date.now(),
+            id: newId,
             name: `견적서-${estimateNo}`,
             estimateNo,
             estimateDate: getLocalDate(), // 로컬 시간 기준으로 오늘 날짜 설정
@@ -272,7 +278,7 @@ const useEstimateStore = create<EstimateStore>(set => ({
         return {
           estimates: [
             {
-              id: Date.now(),
+              id: 1, // 고정된 ID 사용으로 안정성 확보
               name: `견적서-${estimateNo}`,
               estimateNo,
               estimateDate: getLocalDate(),
@@ -1031,12 +1037,24 @@ interface Customer {
 const CUSTOMER_DB_KEY = 'customer_db';
 const CUSTOMER_STORAGE_KEY = 'customerList';
 
-function getCustomerList() {
+async function getCustomerList() {
   try {
-    const data = localStorage.getItem('customerList');
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
+    console.log('Firebase에서 고객 데이터 로드 시작');
+    const customers = await customerService.getCustomers();
+    console.log('Firebase에서 고객 데이터 로드 완료:', customers.length, '개');
+    return customers;
+  } catch (error) {
+    console.error('Firebase에서 고객 데이터 로드 실패:', error);
+    // Firebase 실패 시 localStorage에서 로드 (fallback)
+    try {
+      const data = localStorage.getItem('customerList');
+      const localCustomers = data ? JSON.parse(data) : [];
+      console.log('localStorage에서 고객 데이터 로드 (fallback):', localCustomers.length, '개');
+      return localCustomers;
+    } catch (localError) {
+      console.error('localStorage에서 고객 데이터 로드 실패:', localError);
+      return [];
+    }
   }
 }
 
@@ -1049,31 +1067,39 @@ function loadCustomers() {
   }
 }
 
-function saveCustomerToDB(customer: any) {
-  const list = getCustomerList();
-  // 연락처 중복 체크
-  const idx = list.findIndex((c: any) => c.contact === customer.contact);
-  if (idx >= 0) {
-    list[idx] = { ...list[idx], ...customer };
-  } else {
-    list.push(customer);
-  }
-  localStorage.setItem('customerList', JSON.stringify(list));
-}
 
-// 공간별 다크톤 파스텔 컬러 팔레트 (테이블 배경과 어울리게)
+
+// 공간별 다크 테마 컬러 팔레트 (테이블 배경과 어울리게)
 const SPACE_COLORS: { [space: string]: string } = {
-  거실: '#263040',
-  안방: '#2d3545',
-  드레스룸: '#2a3a3a',
-  중간방: '#2b3440',
-  끝방: '#2e2f36',
-  주방: '#2a353d',
-  기타: '#23272b',
-  '': '#23272b',
+  거실: '#1a2332', // 어두운 파란색
+  안방: '#2a1a2a', // 어두운 분홍색
+  드레스룸: '#1a2a1a', // 어두운 초록색
+  중간방: '#2a2a1a', // 어두운 노란색
+  끝방: '#2a2a2a', // 어두운 베이지색
+  주방: '#2a1a1a', // 어두운 살구색
+  기타: '#1a1a2a', // 어두운 라벤더색
+  '': '#1a1a2a', // 기본 어두운 라벤더색
 };
 const SPACE_COLOR_LIST = Object.values(SPACE_COLORS);
 function getSpaceColor(space: string, lightness = 1) {
+  // 다크모드에서는 CSS 변수를 사용하여 테마에 맞는 색상 반환
+  const spaceColorMap: { [key: string]: string } = {
+    거실: 'var(--space-living-color)',
+    안방: 'var(--space-bedroom-color)',
+    드레스룸: 'var(--space-dressroom-color)',
+    중간방: 'var(--space-middle-color)',
+    끝방: 'var(--space-end-color)',
+    주방: 'var(--space-kitchen-color)',
+    기타: 'var(--space-etc-color)',
+    '': 'var(--space-default-color)',
+  };
+  
+  // 공간에 해당하는 CSS 변수가 있으면 사용, 없으면 기존 로직 사용
+  if (spaceColorMap[space]) {
+    return spaceColorMap[space];
+  }
+  
+  // 기존 로직 (fallback)
   const keys = Object.keys(SPACE_COLORS);
   let idx = keys.indexOf(space);
   if (idx === -1)
@@ -1083,10 +1109,10 @@ function getSpaceColor(space: string, lightness = 1) {
   let color = SPACE_COLOR_LIST[idx];
   if (lightness !== 1) {
     // hex to rgb
-    const rgb = color.match(/\w\w/g)?.map(x => parseInt(x, 16)) || [35, 39, 43];
+    const rgb = color.match(/\w\w/g)?.map(x => parseInt(x, 16)) || [248, 248, 255];
     const newRgb = rgb.map(v =>
-      Math.round(v + (255 - v) * (lightness - 1) * 0.25)
-    ); // 다크톤에서 살짝만 밝게
+      Math.round(v - (v - 0) * (lightness - 1) * 0.3)
+    ); // 라이트톤에서 살짝만 어둡게
     color = `rgb(${newRgb.join(',')})`;
   }
   return color;
@@ -1122,6 +1148,15 @@ const EstimateManagement: React.FC = () => {
     updateEstimateRows,
     setEstimates,
   } = useEstimateStore();
+
+  // 견적서 스토어 상태 변화 추적
+  useEffect(() => {
+    console.log('견적서 스토어 상태 변화:', { 
+      estimatesCount: estimates.length, 
+      activeTab,
+      estimates: estimates.map(e => ({ id: e.id, name: e.name }))
+    });
+  }, [estimates, activeTab]);
 
   // 디버깅: 견적서 스토어 상태 확인
   console.log('견적서 스토어 상태:', { estimates, activeTab });
@@ -1280,6 +1315,62 @@ const EstimateManagement: React.FC = () => {
       return;
     }
 
+    // 일괄변경 모드인 경우
+    if (isBulkEditProductSelection) {
+      if (selectedProducts.size !== 1) {
+        alert('일괄변경을 위해서는 하나의 제품만 선택해주세요.');
+        return;
+      }
+
+      const selectedProduct = productSearchResults.find(p => selectedProducts.has(p.id));
+      if (!selectedProduct) {
+        alert('선택된 제품을 찾을 수 없습니다.');
+        return;
+      }
+
+      // 일괄변경 실행
+      const currentRows = [...estimates[activeTab].rows];
+      const updatedRows = currentRows.map((row, index) => {
+        if (selectedRowsForBulkEdit.has(index) && row.type === 'product') {
+          return {
+            ...row,
+            productName: selectedProduct.productName,
+            productType: selectedProduct.category || row.productType,
+            vendor: selectedProduct.vendorName || row.vendor,
+            brand: selectedProduct.brand || row.brand,
+            width: selectedProduct.width || row.width,
+            details: selectedProduct.details || row.details,
+            curtainType: selectedProduct.category === '커튼'
+              ? selectedProduct.insideOutside === '속' ? '속커튼' : '겉커튼'
+              : row.curtainType,
+            pleatType: selectedProduct.category === '커튼'
+              ? selectedProduct.insideOutside === '속' ? '나비' : '민자'
+              : row.pleatType,
+            pleatAmount: selectedProduct.category === '커튼' && 
+              selectedProduct.insideOutside === '속' ? '1.8~2' : row.pleatAmount,
+          };
+        }
+        return row;
+      });
+
+      updateEstimateRows(activeTab, updatedRows);
+      
+      // 일괄변경 완료 후 상태 초기화
+      setIsBulkEditMode(false);
+      setSelectedRowsForBulkEdit(new Set());
+      setIsBulkEditProductSelection(false);
+      setSelectedProducts(new Set());
+      setProductDialogOpen(false);
+      
+      setSnackbar({
+        open: true,
+        message: `${selectedRowsForBulkEdit.size}개 제품이 "${selectedProduct.productName}"으로 변경되었습니다.`,
+      });
+      
+      return;
+    }
+
+    // 일반 제품 추가 모드
     console.log('선택된 제품 ID들:', Array.from(selectedProducts));
     console.log('검색 결과 제품들:', productSearchResults.map(p => ({ id: p.id, name: p.productName })));
 
@@ -1359,10 +1450,16 @@ const EstimateManagement: React.FC = () => {
   };
 
   // 고객리스트 최신화 핸들러 추가
-  const handleOpenCustomerList = () => {
-    setCustomerOptions(getCustomerList());
-    setCustomerSearch(''); // 검색어 초기화
-    setCustomerListDialogOpen(true);
+  const handleOpenCustomerList = async () => {
+    try {
+      const customers = await getCustomerList();
+      setCustomerOptions(customers);
+      setCustomerSearch(''); // 검색어 초기화
+      setCustomerListDialogOpen(true);
+    } catch (error) {
+      console.error('고객리스트 로드 실패:', error);
+      alert('고객리스트를 불러오는데 실패했습니다. 다시 시도해주세요.');
+    }
   };
 
   // Final 견적서 수정/생성을 위한 상태 추가
@@ -1582,8 +1679,20 @@ const EstimateManagement: React.FC = () => {
       console.log('견적서 정보가 없어 meta 업데이트를 건너뜁니다.');
     }
   }, [activeTab, estimates.length]); // estimates.length만 의존성으로 추가
-  const [customerOptions, setCustomerOptions] =
-    useState<any[]>(getCustomerList());
+  const [customerOptions, setCustomerOptions] = useState<any[]>([]);
+
+  // 컴포넌트 마운트 시 고객 데이터 로드
+  useEffect(() => {
+    const loadCustomerData = async () => {
+      try {
+        const customers = await getCustomerList();
+        setCustomerOptions(customers);
+      } catch (error) {
+        console.error('고객 데이터 로드 실패:', error);
+      }
+    };
+    loadCustomerData();
+  }, []);
 
   // 고객리스트 검색 필터링
   const filteredCustomerOptions = customerOptions.filter((customer: any) => {
@@ -1614,13 +1723,14 @@ const EstimateManagement: React.FC = () => {
           return parsed;
         }
       }
-      // 기본값: 탭 순서: 커튼옵션, 블라인드옵션, 커튼전동, 블라인드전동, 헌터옵션, 기타옵션
+      // 기본값: 탭 순서: 커튼옵션, 블라인드옵션, 커튼전동, 블라인드전동, 헌터옵션, 시공옵션, 기타옵션
       return [
         '커튼옵션',
         '블라인드옵션',
         '커튼전동',
         '블라인드전동',
         '헌터옵션',
+        '시공옵션',
         '기타옵션',
       ];
     } catch {
@@ -1630,6 +1740,7 @@ const EstimateManagement: React.FC = () => {
         '커튼전동',
         '블라인드전동',
         '헌터옵션',
+        '시공옵션',
         '기타옵션',
       ];
     }
@@ -1774,8 +1885,10 @@ const EstimateManagement: React.FC = () => {
   
   // 견적서 로드
   useEffect(() => {
+    console.log('=== 견적서 로드 useEffect 실행 ===');
     const loadEstimates = async () => {
       const estimates = await loadSavedEstimates();
+      console.log('로드된 견적서 개수:', estimates.length);
       setSavedEstimates(estimates);
     };
     loadEstimates();
@@ -2461,10 +2574,57 @@ const EstimateManagement: React.FC = () => {
     updateEstimateRows(activeTab, newRows);
   };
 
-  function loadOptions() {
+  // Firebase에서 옵션을 불러오는 함수
+  const loadOptionsFromFirebase = async () => {
+    try {
+      console.log('Firebase에서 옵션 데이터 로드 시작');
+      const response = await fetch(`${API_BASE}/options`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const options = await response.json();
+      console.log('Firebase에서 로드된 옵션:', options);
+
+      // 옵션 타입별로 분류
+      const curtainOptions = options.filter((o: any) => o.optionType === '커튼옵션');
+      const blindOptions = options.filter((o: any) => o.optionType === '블라인드옵션');
+      const curtainMotorOptions = options.filter((o: any) => o.optionType === '커튼전동');
+      const blindMotorOptions = options.filter((o: any) => o.optionType === '블라인드전동');
+      const hunterOptions = options.filter((o: any) => o.optionType === '헌터옵션');
+      const constructionOptions = options.filter((o: any) => o.optionType === '시공옵션');
+      const etcOptions = options.filter((o: any) => o.optionType === '기타옵션');
+
+      console.log('분류 결과:', {
+        커튼옵션: curtainOptions.length,
+        블라인드옵션: blindOptions.length,
+        커튼전동: curtainMotorOptions.length,
+        블라인드전동: blindMotorOptions.length,
+        헌터옵션: hunterOptions.length,
+        시공옵션: constructionOptions.length,
+        기타옵션: etcOptions.length
+      });
+
+      return [
+        curtainOptions,
+        blindOptions,
+        curtainMotorOptions,
+        blindMotorOptions,
+        hunterOptions,
+        constructionOptions,
+        etcOptions,
+      ];
+    } catch (error) {
+      console.error('Firebase 옵션 로드 오류:', error);
+      // Firebase 로드 실패 시 localStorage에서 로드 (fallback)
+      return loadOptionsFromLocalStorage();
+    }
+  };
+
+  // localStorage에서 옵션을 불러오는 함수 (fallback용)
+  function loadOptionsFromLocalStorage() {
     try {
       const data = localStorage.getItem('erp_options');
-      if (!data) return [[], [], [], [], [], []];
+      if (!data) return [[], [], [], [], [], [], []];
       const parsed = JSON.parse(data);
 
       // 2차원 배열인지 확인 (새로운 구조)
@@ -2478,21 +2638,23 @@ const EstimateManagement: React.FC = () => {
 
       // 1차원 배열인 경우 (기존 구조) - 옵션 타입별로 분류
       if (Array.isArray(parsed)) {
-        console.log('옵션 데이터 분류 중:', parsed.length, '개 옵션');
+        console.log('localStorage 옵션 데이터 분류 중:', parsed.length, '개 옵션');
 
         const curtainOptions = parsed.filter((o: any) => o.optionType === '커튼');
         const blindOptions = parsed.filter((o: any) => o.optionType === '블라인드');
         const curtainMotorOptions = parsed.filter((o: any) => o.optionType === '커튼전동');
         const blindMotorOptions = parsed.filter((o: any) => o.optionType === '블라인드전동');
         const hunterOptions = parsed.filter((o: any) => o.optionType === '헌터');
+        const constructionOptions = parsed.filter((o: any) => o.optionType === '시공');
         const etcOptions = parsed.filter((o: any) => o.optionType === '기타');
 
-        console.log('분류 결과:', {
+        console.log('localStorage 분류 결과:', {
           커튼: curtainOptions.length,
           블라인드: blindOptions.length,
           커튼전동: curtainMotorOptions.length,
           블라인드전동: blindMotorOptions.length,
           헌터: hunterOptions.length,
+          시공: constructionOptions.length,
           기타: etcOptions.length
         });
 
@@ -2502,15 +2664,34 @@ const EstimateManagement: React.FC = () => {
           curtainMotorOptions,
           blindMotorOptions,
           hunterOptions,
+          constructionOptions,
           etcOptions,
         ];
       }
 
-      return [[], [], [], [], [], []];
+      return [[], [], [], [], [], [], []];
     } catch (error) {
-      console.error('옵션 로드 오류:', error);
-      return [[], [], [], [], [], []];
+      console.error('localStorage 옵션 로드 오류:', error);
+      return [[], [], [], [], [], [], []];
     }
+  }
+
+  // 옵션 데이터 상태 추가
+  const [optionData, setOptionData] = useState<any[][]>([]);
+  const [optionDataLoaded, setOptionDataLoaded] = useState(false);
+
+  // 컴포넌트 마운트 시 옵션 데이터 로드
+  useEffect(() => {
+    const loadOptionsData = async () => {
+      const options = await loadOptionsFromFirebase();
+      setOptionData(options);
+      setOptionDataLoaded(true);
+    };
+    loadOptionsData();
+  }, []);
+
+  function loadOptions() {
+    return optionData;
   }
 
   const handleOptionSearch = (type: string) => {
@@ -2541,24 +2722,19 @@ const EstimateManagement: React.FC = () => {
   const handleAddOptionToEstimate = (selectedOption: any) => {
     if (!selectedOption) return;
 
-    if (selectedProductIdx === null) {
-      alert(
-        '옵션을 추가할 제품을 먼저 선택해주세요. 제품 행을 클릭하여 선택할 수 있습니다.'
-      );
-      return;
-    }
-
     const currentRows = estimates[activeTab].rows;
+    let insertIndex = currentRows.length; // 기본적으로 마지막에 추가
 
-    // Find the insertion index.
-    // Start looking from the selected product index.
-    let insertIndex = selectedProductIdx + 1;
-    // Move past any existing options for the selected product.
-    while (
-      insertIndex < currentRows.length &&
-      currentRows[insertIndex].type === 'option'
-    ) {
-      insertIndex++;
+    // 제품이 선택된 경우 해당 제품 다음에 추가
+    if (selectedProductIdx !== null) {
+      insertIndex = selectedProductIdx + 1;
+      // Move past any existing options for the selected product.
+      while (
+        insertIndex < currentRows.length &&
+        currentRows[insertIndex].type === 'option'
+      ) {
+        insertIndex++;
+      }
     }
 
     const newOptionRow: EstimateRow = {
@@ -2601,18 +2777,20 @@ const EstimateManagement: React.FC = () => {
   };
 
   useEffect(() => {
-    const all: any[] = loadOptions();
-    const arr = all[optionSearchTab] || [];
-    setOptionResults(
-      arr.filter(
-        (o: any) =>
-          optionSearch === '' ||
-          o.optionName?.toLowerCase().includes(optionSearch.toLowerCase()) ||
-          o.details?.toLowerCase().includes(optionSearch.toLowerCase())
-      )
-    );
+    if (optionDataLoaded) {
+      const all: any[] = loadOptions();
+      const arr = all[optionSearchTab] || [];
+      setOptionResults(
+        arr.filter(
+          (o: any) =>
+            optionSearch === '' ||
+            o.optionName?.toLowerCase().includes(optionSearch.toLowerCase()) ||
+            o.details?.toLowerCase().includes(optionSearch.toLowerCase())
+        )
+      );
+    }
     // eslint-disable-next-line
-  }, [optionSearchTab, optionSearch, optionDialogOpen]);
+  }, [optionSearchTab, optionSearch, optionDialogOpen, optionDataLoaded]);
 
   const handleCopyRow = (id: number) => {
     const rows = [...estimates[activeTab].rows];
@@ -3421,62 +3599,74 @@ const EstimateManagement: React.FC = () => {
     setSelectedProductIdx(selectedProductIdx === idx ? null : idx);
   };
 
-  // 옵션 추가 다이얼로그 열기 (제품 종류에 맞는 옵션만 표시)
+  // 옵션 추가 다이얼로그 열기 (제품 선택 없이도 가능)
   const handleOpenOptionDialog = () => {
-    if (selectedProductIdx === null) {
-      alert('옵션을 추가할 제품을 먼저 선택해주세요. 제품 행을 클릭하여 선택할 수 있습니다.');
-      return;
-    }
+    // 제품이 선택된 경우 해당 제품에 맞는 옵션 타입으로 설정
+    if (selectedProductIdx !== null) {
+      const selectedProduct = estimates[activeTab].rows[selectedProductIdx];
+      if (selectedProduct && selectedProduct.type === 'product') {
+        // 제품 종류에 따라 해당하는 옵션 탭 설정
+        const productType = selectedProduct.productType;
+        let targetOptionType = '';
 
-    const selectedProduct = estimates[activeTab].rows[selectedProductIdx];
-    if (!selectedProduct || selectedProduct.type !== 'product') {
-      alert('선택된 항목이 제품이 아닙니다.');
-      return;
-    }
+        switch (productType) {
+          case '커튼':
+            targetOptionType = '커튼';
+            break;
+          case '블라인드':
+            targetOptionType = '블라인드';
+            break;
+          case '커튼전동':
+            targetOptionType = '커튼전동';
+            break;
+          case '블라인드전동':
+            targetOptionType = '블라인드전동';
+            break;
+          case '헌터':
+            targetOptionType = '헌터';
+            break;
+          default:
+            targetOptionType = '기타';
+            break;
+        }
 
-    // 제품 종류에 따라 해당하는 옵션 탭 설정
-    const productType = selectedProduct.productType;
-    let targetOptionType = '';
+        // 해당 옵션 타입의 인덱스 찾기
+        const typeIndex = optionTypeMap.indexOf(targetOptionType);
+        if (typeIndex >= 0) {
+          setOptionSearchTab(typeIndex);
+          setOptionSearch('');
 
-    switch (productType) {
-      case '커튼':
-        targetOptionType = '커튼';
-        break;
-      case '블라인드':
-        targetOptionType = '블라인드';
-        break;
-      case '커튼전동':
-        targetOptionType = '커튼전동';
-        break;
-      case '블라인드전동':
-        targetOptionType = '블라인드전동';
-        break;
-      case '헌터':
-        targetOptionType = '헌터';
-        break;
-      default:
-        targetOptionType = '기타';
-        break;
-    }
+          // 해당 타입의 옵션만 로드
+          const all: any[] = loadOptions();
+          const targetOptions = all[typeIndex] || [];
+          setOptionResults(targetOptions);
 
-    // 해당 옵션 타입의 인덱스 찾기
-    const typeIndex = optionTypeMap.indexOf(targetOptionType);
-    if (typeIndex >= 0) {
-      setOptionSearchTab(typeIndex);
-      setOptionSearch('');
-
-      // 해당 타입의 옵션만 로드
-      const all: any[] = loadOptions();
-      const targetOptions = all[typeIndex] || [];
-      setOptionResults(targetOptions);
-
-      console.log(`제품 종류: ${productType}, 표시할 옵션 타입: ${targetOptionType}, 옵션 개수: ${targetOptions.length}`);
+          console.log(`제품 종류: ${productType}, 표시할 옵션 타입: ${targetOptionType}, 옵션 개수: ${targetOptions.length}`);
+        } else {
+          // 기본값으로 커튼 옵션 표시
+          setOptionSearchTab(0);
+          setOptionSearch('');
+          const all: any[] = loadOptions();
+          setOptionResults(all[0] || []);
+        }
+      }
     } else {
-      // 기본값으로 커튼 옵션 표시
-      setOptionSearchTab(0);
-      setOptionSearch('');
-      const all: any[] = loadOptions();
-      setOptionResults(all[0] || []);
+      // 제품이 선택되지 않은 경우 시공옵션 탭을 기본으로 표시
+      const constructionOptionIndex = optionTypeMap.indexOf('시공옵션');
+      if (constructionOptionIndex >= 0) {
+        setOptionSearchTab(constructionOptionIndex);
+        setOptionSearch('');
+        const all: any[] = loadOptions();
+        const constructionOptions = all[constructionOptionIndex] || [];
+        setOptionResults(constructionOptions);
+        console.log(`시공옵션 표시, 옵션 개수: ${constructionOptions.length}`);
+      } else {
+        // 시공옵션이 없으면 커튼 옵션 표시
+        setOptionSearchTab(0);
+        setOptionSearch('');
+        const all: any[] = loadOptions();
+        setOptionResults(all[0] || []);
+      }
     }
 
     setOptionDialogOpen(true);
@@ -3694,8 +3884,27 @@ const EstimateManagement: React.FC = () => {
           console.log('새로운 Final 견적서 저장:', finalEstimateName);
         }
 
-        localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
-        alert(`Final 견적서가 저장되었습니다.\n견적번호: ${finalEstimateNo}`);
+        // Firebase에 Final 견적서 저장
+        try {
+          if (existingFinalIndex >= 0) {
+            // 기존 Final 견적서 업데이트
+            await estimateService.updateEstimate(savedEstimates[existingFinalIndex].id, savedEstimates[existingFinalIndex]);
+            console.log('Firebase에 기존 Final 견적서 업데이트 완료');
+          } else {
+            // 새로운 Final 견적서 저장
+            const newEstimateId = await estimateService.saveEstimate(savedEstimates[savedEstimates.length - 1]);
+            console.log('Firebase에 새로운 Final 견적서 저장 완료, ID:', newEstimateId);
+          }
+          
+          // 저장된 견적서 목록 새로고침
+          const updatedEstimates = await estimateService.getEstimates();
+          setSavedEstimates(updatedEstimates);
+          
+          alert(`Final 견적서가 Firebase에 저장되었습니다.\n견적번호: ${finalEstimateNo}`);
+        } catch (error) {
+          console.error('Firebase 저장 실패:', error);
+          alert('Firebase 저장에 실패했습니다. 다시 시도해주세요.');
+        }
 
         // Final 견적서 저장 후에는 새로운 견적서로 초기화하지 않음
         return;
@@ -4343,7 +4552,8 @@ const EstimateManagement: React.FC = () => {
   };
 
   // 상태 변경 시 강제 리렌더링을 위한 상태
-  const [statusUpdateTrigger, setStatusUpdateTrigger] = useState(0);
+  // 불필요한 상태 제거
+  // const [statusUpdateTrigger, setStatusUpdateTrigger] = useState(0);
 
   // 그룹별 색상 배열 (3개 색상 반복, 톤다운)
   const groupColors = [
@@ -4376,18 +4586,19 @@ const EstimateManagement: React.FC = () => {
     return groups;
   };
 
-  const triggerStatusUpdate = () => {
-    setStatusUpdateTrigger(prev => prev + 1);
-  };
+  // 불필요한 주기적 상태 업데이트 제거
+  // const triggerStatusUpdate = () => {
+  //   setStatusUpdateTrigger(prev => prev + 1);
+  // };
 
-  // 주기적으로 상태 업데이트 (5초마다)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      triggerStatusUpdate();
-    }, 5000);
+  // 주기적 상태 업데이트 제거 - 불필요한 리렌더링 방지
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     triggerStatusUpdate();
+  //   }, 5000);
 
-    return () => clearInterval(interval);
-  }, []);
+  //   return () => clearInterval(interval);
+  // }, []);
 
   const activeEstimate = estimates[activeTab];
 
@@ -4403,12 +4614,61 @@ const EstimateManagement: React.FC = () => {
     open: false,
     message: '',
   });
+
+  // 일괄 변경 모드 관련 상태
+  const [isBulkEditMode, setIsBulkEditMode] = useState(false);
+  const [selectedRowsForBulkEdit, setSelectedRowsForBulkEdit] = useState<Set<number>>(new Set());
+
+  const [isBulkEditProductSelection, setIsBulkEditProductSelection] = useState(false);
   // 메모 상태 추가
   const [estimateMemos, setEstimateMemos] = useState<{ [key: string]: string }>(
     {}
   );
 
-  const handleSaveCustomer = () => {
+  // 일괄 변경 관련 함수들
+  const handleBulkEditModeToggle = () => {
+    setIsBulkEditMode(!isBulkEditMode);
+    if (isBulkEditMode) {
+      // 일괄 변경 모드 종료 시 선택 초기화
+      setSelectedRowsForBulkEdit(new Set());
+    }
+  };
+
+  const handleRowSelectionForBulkEdit = (rowIndex: number) => {
+    if (!isBulkEditMode) return;
+    
+    setSelectedRowsForBulkEdit(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(rowIndex)) {
+        newSet.delete(rowIndex);
+      } else {
+        newSet.add(rowIndex);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAllRowsForBulkEdit = () => {
+    if (!isBulkEditMode) return;
+    
+    const productRows = filteredRows
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.type === 'product')
+      .map(({ index }) => index);
+    
+    setSelectedRowsForBulkEdit(new Set(productRows));
+  };
+
+
+
+  const handleBulkEditProductSelection = () => {
+    setIsBulkEditProductSelection(true);
+    setProductDialogOpen(true);
+  };
+
+
+
+  const handleSaveCustomer = async () => {
     console.log('=== 고객정보 저장 시작 ===');
     console.log('현재 activeTab:', activeTab);
     console.log('현재 estimates 길이:', estimates.length);
@@ -4470,21 +4730,32 @@ const EstimateManagement: React.FC = () => {
     }
 
     try {
-      console.log('localStorage에서 고객 목록 로드 시작');
-      const customerData = localStorage.getItem('customerList');
-      console.log('localStorage customerData:', customerData);
-
+      console.log('Firebase에서 고객 목록 로드 시작');
+      
+      // Firebase에서 고객 목록 가져오기
       let customers = [];
-      if (customerData) {
-        try {
-          customers = JSON.parse(customerData);
-          console.log('고객 목록 파싱 성공:', customers.length, '개');
-        } catch (parseError) {
-          console.error('고객 목록 파싱 실패:', parseError);
-          customers = [];
+      try {
+        customers = await customerService.getCustomers();
+        console.log('Firebase에서 고객 목록 로드 성공:', customers.length, '개');
+      } catch (firebaseError) {
+        console.error('Firebase 고객 목록 로드 실패:', firebaseError);
+        
+        // Firebase 실패 시 localStorage에서 로드
+        console.log('localStorage에서 고객 목록 로드 시작');
+        const customerData = localStorage.getItem('customerList');
+        console.log('localStorage customerData:', customerData);
+
+        if (customerData) {
+          try {
+            customers = JSON.parse(customerData);
+            console.log('localStorage 고객 목록 파싱 성공:', customers.length, '개');
+          } catch (parseError) {
+            console.error('localStorage 고객 목록 파싱 실패:', parseError);
+            customers = [];
+          }
+        } else {
+          console.log('localStorage에 고객 목록이 없습니다. 새로 생성합니다.');
         }
-      } else {
-        console.log('localStorage에 고객 목록이 없습니다. 새로 생성합니다.');
       }
 
       // 프로젝트 정보 생성
@@ -4499,7 +4770,7 @@ const EstimateManagement: React.FC = () => {
         createdAt: new Date().toISOString(),
       };
 
-      // 고객명 + 연락처로 기존 고객 찾기
+      // 고객명으로 기존 고객 찾기 (연락처는 업데이트 가능)
       console.log('기존 고객 검색 시작');
       console.log('검색할 고객명:', customerName);
       console.log('검색할 연락처:', contact);
@@ -4507,11 +4778,9 @@ const EstimateManagement: React.FC = () => {
       const existingIndex = customers.findIndex((c: any) => {
         const nameMatch = c.name && customerName &&
           c.name.trim().toLowerCase() === customerName.trim().toLowerCase();
-        const telMatch = c.tel && contact &&
-          c.tel.trim() === contact.trim();
-
-        console.log(`고객 ${c.name} (${c.tel}): 이름일치=${nameMatch}, 연락처일치=${telMatch}`);
-        return nameMatch && telMatch;
+        
+        console.log(`고객 ${c.name} (${c.tel}): 이름일치=${nameMatch}`);
+        return nameMatch; // 이름만 일치하면 기존 고객으로 인식
       });
 
       console.log('기존 고객 검색 결과:', existingIndex > -1 ? '기존 고객 발견' : '새 고객');
@@ -4533,10 +4802,12 @@ const EstimateManagement: React.FC = () => {
           existingCustomer.projects.push(newProject);
         }
 
-        // 고객 정보는 기존 정보 유지 (주소, 프로젝트명, 타입이 다를 수 있으므로)
+        // 고객 정보 업데이트 (연락처 정보도 업데이트)
         customers[existingIndex] = {
           ...existingCustomer,
+          tel: contact, // 연락처 업데이트
           emergencyTel: emergencyContact,
+          address: address, // 주소도 업데이트 (변경된 경우)
           visitPath: '견적서에서 등록',
           updatedAt: new Date().toISOString(),
         };
@@ -4571,13 +4842,33 @@ const EstimateManagement: React.FC = () => {
         });
       }
 
-      console.log('localStorage에 고객 목록 저장 시작');
-      const customerListJson = JSON.stringify(customers);
-      console.log('저장할 JSON:', customerListJson);
-
-      localStorage.setItem('customerList', customerListJson);
-      console.log('localStorage 저장 완료');
-      console.log('최종 고객 목록:', customers.length, '개 고객');
+      // Firebase에 고객 데이터 저장
+      try {
+        console.log('Firebase에 고객 데이터 저장 시작');
+        
+        if (existingIndex > -1) {
+          // 기존 고객 업데이트
+          await customerService.updateCustomer(customers[existingIndex].id, customers[existingIndex]);
+          console.log('Firebase에 기존 고객 업데이트 완료');
+        } else {
+          // 새 고객 저장
+          const newCustomerId = await customerService.saveCustomer(customers[customers.length - 1]);
+          console.log('Firebase에 새 고객 저장 완료, ID:', newCustomerId);
+        }
+        
+        console.log('Firebase 고객 데이터 저장 완료');
+        console.log('최종 고객 목록:', customers.length, '개 고객');
+        
+        // localStorage도 업데이트
+        localStorage.setItem('customerList', JSON.stringify(customers));
+        console.log('localStorage 고객 목록 업데이트 완료');
+      } catch (error) {
+        console.error('Firebase 고객 저장 실패:', error);
+        setSnackbar({
+          open: true,
+          message: '고객 정보가 저장되었지만 Firebase 동기화에 실패했습니다.',
+        });
+      }
 
       // 견적서 정보도 함께 업데이트 (변경사항이 있을 때만)
       const currentEstimate = estimates[activeTab];
@@ -5189,7 +5480,7 @@ const EstimateManagement: React.FC = () => {
         sx={{
           p: 2,
           mb: 2,
-          background: '#232a36',
+          background: 'var(--surface-color)',
           borderRadius: 1,
           display: 'flex',
           flexWrap: 'wrap',
@@ -5215,7 +5506,25 @@ const EstimateManagement: React.FC = () => {
               setMeta(prev => ({ ...prev, estimateNo: e.target.value }))
             }
             size="small"
-            sx={{ minWidth: 100 }}
+            sx={{ 
+              minWidth: 100,
+              '& .MuiInputBase-root': {
+                backgroundColor: 'var(--background-color)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-color)',
+                '&:hover': {
+                  backgroundColor: 'var(--hover-color)',
+                  borderColor: 'var(--primary-color)',
+                },
+                '&:focus-within': {
+                  borderColor: 'var(--primary-color)',
+                  boxShadow: '0 0 0 2px var(--border-color)',
+                },
+              },
+              '& .MuiInputLabel-root': {
+                color: 'var(--text-secondary-color)',
+              },
+            }}
             required
           />
           <TextField
@@ -5228,17 +5537,17 @@ const EstimateManagement: React.FC = () => {
             InputProps={{
               sx: {
                 borderRadius: 2,
-                background: '#232a36',
-                border: '1px solid #2e3a4a',
-                color: '#e0e6ed',
+                background: 'var(--background-color)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-color)',
                 cursor: 'pointer',
                 '&:hover': {
-                  backgroundColor: '#2e3a4a',
-                  borderColor: '#40c4ff',
+                  backgroundColor: 'var(--hover-color)',
+                  borderColor: 'var(--primary-color)',
                 },
                 '&:focus': {
-                  borderColor: '#40c4ff',
-                  boxShadow: '0 0 0 2px rgba(64, 196, 255, 0.2)',
+                  borderColor: 'var(--primary-color)',
+                  boxShadow: '0 0 0 2px var(--border-color)',
                 },
               },
               onClick: (e) => {
@@ -5268,7 +5577,25 @@ const EstimateManagement: React.FC = () => {
               setMeta(prev => ({ ...prev, customerName: e.target.value }));
             }}
             size="small"
-            sx={{ minWidth: 200 }}
+            sx={{ 
+              minWidth: 200,
+              '& .MuiInputBase-root': {
+                backgroundColor: 'var(--background-color)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-color)',
+                '&:hover': {
+                  backgroundColor: 'var(--hover-color)',
+                  borderColor: 'var(--primary-color)',
+                },
+                '&:focus-within': {
+                  borderColor: 'var(--primary-color)',
+                  boxShadow: '0 0 0 2px var(--border-color)',
+                },
+              },
+              '& .MuiInputLabel-root': {
+                color: 'var(--text-secondary-color)',
+              },
+            }}
           />
           <Autocomplete
             freeSolo
@@ -5301,7 +5628,25 @@ const EstimateManagement: React.FC = () => {
                 label="연락처"
                 required
                 size="small"
-                sx={{ minWidth: 180 }}
+                sx={{ 
+                  minWidth: 180,
+                  '& .MuiInputBase-root': {
+                    backgroundColor: 'var(--background-color)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-color)',
+                    '&:hover': {
+                      backgroundColor: 'var(--hover-color)',
+                      borderColor: 'var(--primary-color)',
+                    },
+                    '&:focus-within': {
+                      borderColor: 'var(--primary-color)',
+                      boxShadow: '0 0 0 2px var(--border-color)',
+                    },
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: 'var(--text-secondary-color)',
+                  },
+                }}
               />
             )}
           />
@@ -5312,7 +5657,25 @@ const EstimateManagement: React.FC = () => {
               setMeta(prev => ({ ...prev, emergencyContact: e.target.value }))
             }
             size="small"
-            sx={{ minWidth: 60 }}
+            sx={{ 
+              minWidth: 60,
+              '& .MuiInputBase-root': {
+                backgroundColor: 'var(--background-color)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-color)',
+                '&:hover': {
+                  backgroundColor: 'var(--hover-color)',
+                  borderColor: 'var(--primary-color)',
+                },
+                '&:focus-within': {
+                  borderColor: 'var(--primary-color)',
+                  boxShadow: '0 0 0 2px var(--border-color)',
+                },
+              },
+              '& .MuiInputLabel-root': {
+                color: 'var(--text-secondary-color)',
+              },
+            }}
           />
           <TextField
             label="프로젝트명"
@@ -5321,7 +5684,25 @@ const EstimateManagement: React.FC = () => {
               setMeta(prev => ({ ...prev, projectName: e.target.value }))
             }
             size="small"
-            sx={{ minWidth: 140 }}
+            sx={{ 
+              minWidth: 140,
+              '& .MuiInputBase-root': {
+                backgroundColor: 'var(--background-color)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-color)',
+                '&:hover': {
+                  backgroundColor: 'var(--hover-color)',
+                  borderColor: 'var(--primary-color)',
+                },
+                '&:focus-within': {
+                  borderColor: 'var(--primary-color)',
+                  boxShadow: '0 0 0 2px var(--border-color)',
+                },
+              },
+              '& .MuiInputLabel-root': {
+                color: 'var(--text-secondary-color)',
+              },
+            }}
           />
           <TextField
             label="타입"
@@ -5330,7 +5711,25 @@ const EstimateManagement: React.FC = () => {
               setMeta(prev => ({ ...prev, type: e.target.value }))
             }
             size="small"
-            sx={{ minWidth: 30 }}
+            sx={{ 
+              minWidth: 30,
+              '& .MuiInputBase-root': {
+                backgroundColor: 'var(--background-color)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-color)',
+                '&:hover': {
+                  backgroundColor: 'var(--hover-color)',
+                  borderColor: 'var(--primary-color)',
+                },
+                '&:focus-within': {
+                  borderColor: 'var(--primary-color)',
+                  boxShadow: '0 0 0 2px var(--border-color)',
+                },
+              },
+              '& .MuiInputLabel-root': {
+                color: 'var(--text-secondary-color)',
+              },
+            }}
           />
           <TextField
             label="주소"
@@ -5339,7 +5738,26 @@ const EstimateManagement: React.FC = () => {
               setMeta(prev => ({ ...prev, address: e.target.value }))
             }
             size="small"
-            sx={{ minWidth: 200, flex: 1 }}
+            sx={{ 
+              minWidth: 200, 
+              flex: 1,
+              '& .MuiInputBase-root': {
+                backgroundColor: 'var(--background-color)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-color)',
+                '&:hover': {
+                  backgroundColor: 'var(--hover-color)',
+                  borderColor: 'var(--primary-color)',
+                },
+                '&:focus-within': {
+                  borderColor: 'var(--primary-color)',
+                  boxShadow: '0 0 0 2px var(--border-color)',
+                },
+              },
+              '& .MuiInputLabel-root': {
+                color: 'var(--text-secondary-color)',
+              },
+            }}
           />
         </Box>
         {/* 우측: 고객저장 버튼 */}
@@ -5675,8 +6093,8 @@ const EstimateManagement: React.FC = () => {
                       hover
                       sx={{
                         cursor: 'pointer',
-                        backgroundColor: '#232a36',
-                        '&:hover': { backgroundColor: '#263040' },
+                        backgroundColor: 'var(--surface-color)',
+                        '&:hover': { backgroundColor: 'var(--hover-color)' },
                       }}
                       onDoubleClick={() => {
                         const isFinal = savedEstimate.estimateNo && savedEstimate.estimateNo.includes('-final');
@@ -5739,10 +6157,35 @@ const EstimateManagement: React.FC = () => {
           setProductDialogOpen(false);
           setProductSearchText('');
           handleProductSearchFilterReset();
+          // 일괄변경 모드 상태 초기화
+          if (isBulkEditProductSelection) {
+            setIsBulkEditProductSelection(false);
+            setSelectedProducts(new Set());
+          }
         }}
         maxWidth="lg"
         fullWidth
         fullScreen={isMobile}
+        PaperProps={{ 
+          sx: { 
+            backgroundColor: 'var(--surface-color)', 
+            color: 'var(--text-color)',
+            '& .MuiDialogTitle-root': {
+              backgroundColor: 'var(--surface-color)',
+              color: 'var(--text-color)',
+              borderBottom: '1px solid var(--border-color)'
+            },
+            '& .MuiDialogContent-root': {
+              backgroundColor: 'var(--surface-color)',
+              color: 'var(--text-color)'
+            },
+            '& .MuiDialogActions-root': {
+              backgroundColor: 'var(--surface-color)',
+              color: 'var(--text-color)',
+              borderTop: '1px solid var(--border-color)'
+            }
+          } 
+        }}
       >
         <DialogTitle sx={{
           display: 'flex',
@@ -5773,7 +6216,7 @@ const EstimateManagement: React.FC = () => {
             width: '100%'
           }}>
             <Typography variant="h6" sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
-              제품 검색
+              {isBulkEditProductSelection ? '일괄변경할 제품 선택' : '제품 검색'}
             </Typography>
             <Button
               size={isMobile ? "medium" : "small"}
@@ -5800,66 +6243,138 @@ const EstimateManagement: React.FC = () => {
             <Grid container spacing={isMobile ? 1 : 2}>
               <Grid item xs={12} md={3}>
                 <FormControl fullWidth size={isMobile ? "medium" : "small"}>
-                  <InputLabel sx={{ fontSize: isMobile ? '1rem' : '0.875rem' }}>거래처</InputLabel>
+                  <InputLabel sx={{ 
+                    fontSize: isMobile ? '1rem' : '0.875rem',
+                    color: 'var(--text-secondary-color)'
+                  }}>거래처</InputLabel>
                   <Select
                     value={productSearchFilters.vendor}
                     onChange={(e) => handleProductSearchFilterChange('vendor', e.target.value)}
                     label="거래처"
                     sx={{
+                      backgroundColor: 'var(--background-color)',
                       '& .MuiSelect-select': {
                         fontSize: isMobile ? '1rem' : '0.875rem',
-                        padding: isMobile ? '12px 14px' : '8.5px 14px'
-                      }
+                        padding: isMobile ? '12px 14px' : '8.5px 14px',
+                        color: 'var(--text-color)',
+                      },
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--border-color)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary-color)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary-color)',
+                      },
                     }}
                   >
-                    <MenuItem value="" sx={{ fontSize: isMobile ? '1rem' : '0.875rem' }}>전체</MenuItem>
+                    <MenuItem value="" sx={{ 
+                      fontSize: isMobile ? '1rem' : '0.875rem',
+                      color: 'var(--text-color)',
+                      '&:hover': {
+                        backgroundColor: 'var(--hover-color)',
+                      },
+                    }}>전체</MenuItem>
                     {Array.from(new Set(productOptions.map(p => p.vendorName).filter(Boolean))).map(vendor => (
-                      <MenuItem key={vendor} value={vendor} sx={{ fontSize: isMobile ? '1rem' : '0.875rem' }}>{vendor}</MenuItem>
+                      <MenuItem key={vendor} value={vendor} sx={{ 
+                        fontSize: isMobile ? '1rem' : '0.875rem',
+                        color: 'var(--text-color)',
+                        '&:hover': {
+                          backgroundColor: 'var(--hover-color)',
+                        },
+                      }}>{vendor}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={3}>
                 <FormControl fullWidth size={isMobile ? "medium" : "small"}>
-                  <InputLabel sx={{ fontSize: isMobile ? '1rem' : '0.875rem' }}>제품종류</InputLabel>
+                  <InputLabel sx={{ 
+                    fontSize: isMobile ? '1rem' : '0.875rem',
+                    color: 'var(--text-secondary-color)'
+                  }}>제품종류</InputLabel>
                   <Select
                     value={productSearchFilters.category}
                     onChange={(e) => handleProductSearchFilterChange('category', e.target.value)}
                     label="제품종류"
                     sx={{
+                      backgroundColor: 'var(--background-color)',
                       '& .MuiSelect-select': {
                         fontSize: isMobile ? '1rem' : '0.875rem',
-                        padding: isMobile ? '12px 14px' : '8.5px 14px'
-                      }
+                        padding: isMobile ? '12px 14px' : '8.5px 14px',
+                        color: 'var(--text-color)',
+                      },
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--border-color)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary-color)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary-color)',
+                      },
                     }}
                   >
-                    <MenuItem value="" sx={{ fontSize: isMobile ? '1rem' : '0.875rem' }}>전체</MenuItem>
+                    <MenuItem value="" sx={{ 
+                      fontSize: isMobile ? '1rem' : '0.875rem',
+                      color: 'var(--text-color)',
+                      '&:hover': {
+                        backgroundColor: 'var(--hover-color)',
+                      },
+                    }}>전체</MenuItem>
                     {Array.from(new Set(
                       productOptions
                         .filter(p => !productSearchFilters.vendor || p.vendorName === productSearchFilters.vendor)
                         .map(p => p.category)
                         .filter(Boolean)
                     )).map(category => (
-                      <MenuItem key={category} value={category} sx={{ fontSize: isMobile ? '1rem' : '0.875rem' }}>{category}</MenuItem>
+                      <MenuItem key={category} value={category} sx={{ 
+                        fontSize: isMobile ? '1rem' : '0.875rem',
+                        color: 'var(--text-color)',
+                        '&:hover': {
+                          backgroundColor: 'var(--hover-color)',
+                        },
+                      }}>{category}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={3}>
                 <FormControl fullWidth size={isMobile ? "medium" : "small"}>
-                  <InputLabel sx={{ fontSize: isMobile ? '1rem' : '0.875rem' }}>브랜드</InputLabel>
+                  <InputLabel sx={{ 
+                    fontSize: isMobile ? '1rem' : '0.875rem',
+                    color: 'var(--text-secondary-color)'
+                  }}>브랜드</InputLabel>
                   <Select
                     value={productSearchFilters.brand}
                     onChange={(e) => handleProductSearchFilterChange('brand', e.target.value)}
                     label="브랜드"
                     sx={{
+                      backgroundColor: 'var(--background-color)',
                       '& .MuiSelect-select': {
                         fontSize: isMobile ? '1rem' : '0.875rem',
-                        padding: isMobile ? '12px 14px' : '8.5px 14px'
-                      }
+                        padding: isMobile ? '12px 14px' : '8.5px 14px',
+                        color: 'var(--text-color)',
+                      },
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--border-color)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary-color)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary-color)',
+                      },
                     }}
                   >
-                    <MenuItem value="" sx={{ fontSize: isMobile ? '1rem' : '0.875rem' }}>전체</MenuItem>
+                    <MenuItem value="" sx={{ 
+                      fontSize: isMobile ? '1rem' : '0.875rem',
+                      color: 'var(--text-color)',
+                      '&:hover': {
+                        backgroundColor: 'var(--hover-color)',
+                      },
+                    }}>전체</MenuItem>
                     {Array.from(new Set(
                       productOptions
                         .filter(p => {
@@ -5876,7 +6391,13 @@ const EstimateManagement: React.FC = () => {
                         .map(p => p.brand)
                         .filter(Boolean)
                     )).map(brand => (
-                      <MenuItem key={brand} value={brand} sx={{ fontSize: isMobile ? '1rem' : '0.875rem' }}>{brand}</MenuItem>
+                      <MenuItem key={brand} value={brand} sx={{ 
+                        fontSize: isMobile ? '1rem' : '0.875rem',
+                        color: 'var(--text-color)',
+                        '&:hover': {
+                          backgroundColor: 'var(--hover-color)',
+                        },
+                      }}>{brand}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -5891,10 +6412,26 @@ const EstimateManagement: React.FC = () => {
                   onKeyPress={handleSearchKeyPress}
                   placeholder="제품명, 코드, 세부내용"
                   sx={{
+                    backgroundColor: 'var(--background-color)',
                     '& .MuiInputBase-input': {
                       fontSize: isMobile ? '1rem' : '0.875rem',
-                      padding: isMobile ? '12px 14px' : '8.5px 14px'
-                    }
+                      padding: isMobile ? '12px 14px' : '8.5px 14px',
+                      color: 'var(--text-color)',
+                    },
+                    '& .MuiInputLabel-root': {
+                      color: 'var(--text-secondary-color)',
+                    },
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': {
+                        borderColor: 'var(--border-color)',
+                      },
+                      '&:hover fieldset': {
+                        borderColor: 'var(--primary-color)',
+                      },
+                      '&.Mui-focused fieldset': {
+                        borderColor: 'var(--primary-color)',
+                      },
+                    },
                   }}
                   InputProps={{
                     endAdornment: (
@@ -6074,17 +6611,19 @@ const EstimateManagement: React.FC = () => {
                     <Box
                       key={product.id}
                       sx={{
-                        border: '1px solid #eee',
+                        border: '1px solid var(--border-color)',
                         borderRadius: 2,
                         p: 2,
                         mb: 1.5,
                         cursor: 'pointer',
                         transition: 'all 0.2s',
                         position: 'relative',
+                        backgroundColor: 'var(--background-color)',
+                        color: 'var(--text-color)',
                         '&:hover': {
                           boxShadow: 3,
-                          background: '#f5faff',
-                          borderColor: '#1976d2'
+                          background: 'var(--hover-color)',
+                          borderColor: 'var(--primary-color)'
                         },
                       }}
                     >
@@ -6157,10 +6696,10 @@ const EstimateManagement: React.FC = () => {
                         }}
                       >
                         <Box fontWeight="bold" fontSize={16} mb={0.5}>
-                          {highlightText(product.productName, productSearchText)}
+                          {highlightText(product?.productName || '', productSearchText)}
                         </Box>
                         <Box fontSize={13} color="#666" mb={0.5}>
-                          {highlightText(product.details, productSearchText)}
+                          {highlightText(product?.details || '', productSearchText)}
                         </Box>
                         {product.note && (
                           <Box fontSize={12} color="#888" mb={0.5} fontStyle="italic">
@@ -6180,11 +6719,38 @@ const EstimateManagement: React.FC = () => {
                 </Box>
               ) : (
                 // 데스크탑: 테이블형 UI (컬럼 최소화, 말줄임, hover)
-                <TableContainer sx={{ maxHeight: 400, overflow: 'auto' }}>
+                <TableContainer sx={{ 
+                  maxHeight: 400, 
+                  overflow: 'auto',
+                  backgroundColor: 'var(--surface-color)',
+                  '& .MuiTable-root': {
+                    backgroundColor: 'var(--surface-color)',
+                  },
+                  '& .MuiTableHead-root': {
+                    backgroundColor: 'var(--surface-color)',
+                  },
+                  '& .MuiTableBody-root': {
+                    backgroundColor: 'var(--surface-color)',
+                  }
+                }}>
                   <Table size="small" stickyHeader>
                     <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ minWidth: 50 }}>
+                      <TableRow sx={{
+                        backgroundColor: 'var(--surface-color)',
+                        '& .MuiTableCell-root': {
+                          backgroundColor: 'var(--surface-color)',
+                          color: 'var(--text-color)',
+                          borderBottom: '2px solid var(--border-color)',
+                          fontWeight: 'bold'
+                        }
+                      }}>
+                        <TableCell sx={{ 
+                          minWidth: 50,
+                          backgroundColor: 'var(--surface-color)',
+                          color: 'var(--text-color)',
+                          borderBottom: '2px solid var(--border-color)',
+                          fontWeight: 'bold'
+                        }}>
                           <Checkbox
                             checked={selectedProducts.size === productSearchResults.length && productSearchResults.length > 0}
                             indeterminate={selectedProducts.size > 0 && selectedProducts.size < productSearchResults.length}
@@ -6192,12 +6758,48 @@ const EstimateManagement: React.FC = () => {
                             size="small"
                           />
                         </TableCell>
-                        <TableCell sx={{ minWidth: 80 }}>거래처</TableCell>
-                        <TableCell sx={{ minWidth: 80 }}>브랜드</TableCell>
-                        <TableCell sx={{ minWidth: 200 }}>제품명</TableCell>
-                        <TableCell sx={{ minWidth: 250 }}>세부내용</TableCell>
-                        <TableCell sx={{ minWidth: 150 }}>비고</TableCell>
-                        <TableCell align="right" sx={{ minWidth: 100 }}>판매가</TableCell>
+                        <TableCell sx={{ 
+                          minWidth: 80,
+                          backgroundColor: 'var(--surface-color)',
+                          color: 'var(--text-color)',
+                          borderBottom: '2px solid var(--border-color)',
+                          fontWeight: 'bold'
+                        }}>거래처</TableCell>
+                        <TableCell sx={{ 
+                          minWidth: 80,
+                          backgroundColor: 'var(--surface-color)',
+                          color: 'var(--text-color)',
+                          borderBottom: '2px solid var(--border-color)',
+                          fontWeight: 'bold'
+                        }}>브랜드</TableCell>
+                        <TableCell sx={{ 
+                          minWidth: 200,
+                          backgroundColor: 'var(--surface-color)',
+                          color: 'var(--text-color)',
+                          borderBottom: '2px solid var(--border-color)',
+                          fontWeight: 'bold'
+                        }}>제품명</TableCell>
+                        <TableCell sx={{ 
+                          minWidth: 250,
+                          backgroundColor: 'var(--surface-color)',
+                          color: 'var(--text-color)',
+                          borderBottom: '2px solid var(--border-color)',
+                          fontWeight: 'bold'
+                        }}>세부내용</TableCell>
+                        <TableCell sx={{ 
+                          minWidth: 150,
+                          backgroundColor: 'var(--surface-color)',
+                          color: 'var(--text-color)',
+                          borderBottom: '2px solid var(--border-color)',
+                          fontWeight: 'bold'
+                        }}>비고</TableCell>
+                        <TableCell align="right" sx={{ 
+                          minWidth: 100,
+                          backgroundColor: 'var(--surface-color)',
+                          color: 'var(--text-color)',
+                          borderBottom: '2px solid var(--border-color)',
+                          fontWeight: 'bold'
+                        }}>판매가</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -6208,7 +6810,12 @@ const EstimateManagement: React.FC = () => {
                           sx={{
                             cursor: 'pointer',
                             transition: 'background 0.2s',
-                            '&:hover': { background: '#f5faff' }
+                            backgroundColor: 'var(--surface-color)',
+                            color: 'var(--text-color)',
+                            '&:hover': { 
+                              background: 'var(--hover-color)',
+                              color: 'var(--text-color)'
+                            }
                           }}
                           onClick={() => {
                             if (editOpen) {
@@ -6268,7 +6875,12 @@ const EstimateManagement: React.FC = () => {
                             }
                           }}
                         >
-                          <TableCell sx={{ minWidth: 50 }}>
+                          <TableCell sx={{ 
+                            minWidth: 50,
+                            backgroundColor: 'var(--surface-color)',
+                            color: 'var(--text-color)',
+                            borderBottom: '1px solid var(--border-color)'
+                          }}>
                             <Checkbox
                               checked={selectedProducts.has(product.id)}
                               onChange={() => handleProductSelection(product.id)}
@@ -6280,7 +6892,10 @@ const EstimateManagement: React.FC = () => {
                             maxWidth: 80,
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
-                            textOverflow: 'ellipsis'
+                            textOverflow: 'ellipsis',
+                            backgroundColor: 'var(--surface-color)',
+                            color: 'var(--text-color)',
+                            borderBottom: '1px solid var(--border-color)'
                           }}>
                             {product.vendorName}
                           </TableCell>
@@ -6288,7 +6903,10 @@ const EstimateManagement: React.FC = () => {
                             maxWidth: 80,
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
-                            textOverflow: 'ellipsis'
+                            textOverflow: 'ellipsis',
+                            backgroundColor: 'var(--surface-color)',
+                            color: 'var(--text-color)',
+                            borderBottom: '1px solid var(--border-color)'
                           }}>
                             {product.brand}
                           </TableCell>
@@ -6296,30 +6914,41 @@ const EstimateManagement: React.FC = () => {
                             minWidth: 200,
                             maxWidth: 300,
                             wordBreak: 'break-word',
-                            whiteSpace: 'normal'
+                            whiteSpace: 'normal',
+                            backgroundColor: 'var(--surface-color)',
+                            color: 'var(--text-color)',
+                            borderBottom: '1px solid var(--border-color)'
                           }}>
-                            {highlightText(product.productName, productSearchText)}
+                            {highlightText(product?.productName || '', productSearchText)}
                           </TableCell>
                           <TableCell sx={{
                             minWidth: 250,
                             maxWidth: 400,
                             wordBreak: 'break-word',
-                            whiteSpace: 'normal'
+                            whiteSpace: 'normal',
+                            backgroundColor: 'var(--surface-color)',
+                            color: 'var(--text-color)',
+                            borderBottom: '1px solid var(--border-color)'
                           }}>
-                            {highlightText(product.details, productSearchText)}
+                            {highlightText(product?.details || '', productSearchText)}
                           </TableCell>
                           <TableCell sx={{
                             minWidth: 150,
                             maxWidth: 200,
                             wordBreak: 'break-word',
-                            whiteSpace: 'normal'
+                            whiteSpace: 'normal',
+                            backgroundColor: 'var(--surface-color)',
+                            color: 'var(--text-color)',
+                            borderBottom: '1px solid var(--border-color)'
                           }}>
                             {product.note || '-'}
                           </TableCell>
                           <TableCell align="right" sx={{
                             minWidth: 100,
                             fontWeight: 'bold',
-                            color: '#1976d2'
+                            color: 'var(--primary-color)',
+                            backgroundColor: 'var(--surface-color)',
+                            borderBottom: '1px solid var(--border-color)'
                           }}>
                             {product.salePrice?.toLocaleString()}원
                           </TableCell>
@@ -6333,10 +6962,10 @@ const EstimateManagement: React.FC = () => {
           ) : (
             // 제품종류 미선택 시 안내 메시지
             <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Typography color="text.secondary" variant="body1">
+              <Typography color="text.secondary" variant="body1" sx={{ color: 'var(--text-secondary-color)' }}>
                 제품종류를 먼저 선택하세요.
               </Typography>
-              <Typography variant="body2" sx={{ mt: 1, color: '#666' }}>
+              <Typography variant="body2" sx={{ mt: 1, color: 'var(--text-secondary-color)' }}>
                 제품종류를 선택하면 검색 결과가 표시됩니다.
               </Typography>
             </Box>
@@ -6351,7 +6980,10 @@ const EstimateManagement: React.FC = () => {
                 onClick={handleAddSelectedProducts}
                 sx={{ mr: 1 }}
               >
-                선택된 제품 추가 후 계속 ({selectedProducts.size}개)
+                {isBulkEditProductSelection 
+                  ? `선택된 제품으로 일괄변경 (${selectedProducts.size}개)`
+                  : `선택된 제품 추가 후 계속 (${selectedProducts.size}개)`
+                }
               </Button>
             )}
             <Button onClick={() => {
@@ -6376,7 +7008,10 @@ const EstimateManagement: React.FC = () => {
                   px: 3
                 }}
               >
-                선택된 제품 추가 후 계속 ({selectedProducts.size}개)
+                {isBulkEditProductSelection 
+                  ? `선택된 제품으로 일괄변경 (${selectedProducts.size}개)`
+                  : `선택된 제품 추가 후 계속 (${selectedProducts.size}개)`
+                }
               </Button>
             )}
             <Button
@@ -6384,6 +7019,11 @@ const EstimateManagement: React.FC = () => {
                 setProductDialogOpen(false);
                 setProductSearchText('');
                 handleProductSearchFilterReset();
+                // 일괄변경 모드 상태 초기화
+                if (isBulkEditProductSelection) {
+                  setIsBulkEditProductSelection(false);
+                  setSelectedProducts(new Set());
+                }
               }}
               variant="outlined"
               sx={{
@@ -6439,24 +7079,35 @@ const EstimateManagement: React.FC = () => {
                     fontSize: isMobile ? '0.9rem' : '0.875rem'
                   }}
                 >
-                  선택된 제품: {estimates[activeTab].rows[selectedProductIdx].productName}
-                  ({estimates[activeTab].rows[selectedProductIdx].productType})
+                  선택된 제품: {estimates[activeTab]?.rows[selectedProductIdx]?.productName || '알 수 없음'}
+                  ({estimates[activeTab]?.rows[selectedProductIdx]?.productType || '알 수 없음'})
                 </Typography>
               )}
           </Box>
         </DialogTitle>
         <DialogContent>
-          {selectedProductIdx === null ? (
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Typography color="error" variant="body1">
-                옵션을 추가할 제품을 먼저 선택해주세요.
+          {selectedProductIdx !== null && (
+            <Box sx={{ mb: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+              <Typography variant="subtitle2" sx={{ color: '#666', mb: 1 }}>
+                선택된 제품: {estimates[activeTab]?.rows[selectedProductIdx]?.productName || '알 수 없음'}
+                ({estimates[activeTab]?.rows[selectedProductIdx]?.productType || '알 수 없음'})
               </Typography>
-              <Typography variant="body2" sx={{ mt: 1, color: '#666' }}>
-                제품 행을 클릭하여 선택한 후 옵션을 추가하세요.
+              <Typography variant="body2" sx={{ color: '#888', fontSize: '0.875rem' }}>
+                옵션이 선택된 제품 다음에 추가됩니다.
               </Typography>
             </Box>
-          ) : (
-            <>
+          )}
+          {selectedProductIdx === null && (
+            <Box sx={{ mb: 2, p: 2, bgcolor: '#e3f2fd', borderRadius: 1 }}>
+              <Typography variant="subtitle2" sx={{ color: '#1976d2', mb: 1 }}>
+                전체 견적서 옵션 추가
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#666', fontSize: '0.875rem' }}>
+                시공옵션 등 전체 견적서에 적용되는 옵션을 추가할 수 있습니다.
+              </Typography>
+            </Box>
+          )}
+          <>
               <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: isMobile ? 1.5 : 2 }}>
                 <Tabs
                   value={optionSearchTab}
@@ -6527,7 +7178,6 @@ const EstimateManagement: React.FC = () => {
                 </Table>
               </TableContainer>
             </>
-          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOptionDialogOpen(false)}>닫기</Button>
@@ -6540,7 +7190,7 @@ const EstimateManagement: React.FC = () => {
           onClose={handleEditClose}
           maxWidth="lg"
           fullWidth
-          PaperProps={{ sx: { backgroundColor: '#232a36', color: '#e0e6ed' } }}
+          PaperProps={{ sx: { backgroundColor: 'var(--surface-color)', color: 'var(--text-color)' } }}
         >
           <DialogTitle
             sx={{
@@ -6560,7 +7210,7 @@ const EstimateManagement: React.FC = () => {
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <TextField
                       label="제품명"
-                      value={editRow.productName || ''}
+                      value={editRow?.productName || ''}
                       InputProps={{ readOnly: true }}
                       fullWidth
                       size="small"
@@ -6588,7 +7238,7 @@ const EstimateManagement: React.FC = () => {
                 <Grid item xs={12} md={4}>
                   <TextField
                     label="제품코드"
-                    value={editRow.productCode || ''}
+                    value={editRow?.productCode || ''}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                       handleEditChange('productCode', e.target.value)
                     }
@@ -6619,7 +7269,7 @@ const EstimateManagement: React.FC = () => {
                   >
                     <InputLabel>공간</InputLabel>
                     <Select
-                      value={editRow.space || ''}
+                      value={editRow?.space || ''}
                       onChange={(e: SelectChangeEvent) =>
                         handleEditChange('space', e.target.value)
                       }
@@ -6633,11 +7283,11 @@ const EstimateManagement: React.FC = () => {
                     </Select>
                   </FormControl>
                 </Grid>
-                {editRow.space === '직접입력' && (
+                {editRow?.space === '직접입력' && (
                   <Grid item xs={12} md={4}>
                     <TextField
                       label="공간 직접입력"
-                      value={editRow.spaceCustom || ''}
+                      value={editRow?.spaceCustom || ''}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                         handleEditChange('spaceCustom', e.target.value)
                       }
@@ -7060,10 +7710,20 @@ const EstimateManagement: React.FC = () => {
               variant="scrollable"
               scrollButtons="auto"
               sx={{
-                backgroundColor: '#23272b',
-                color: '#fff',
+                backgroundColor: 'var(--surface-color)',
+                color: 'var(--text-color)',
                 borderRadius: 1,
                 flex: 1,
+                '& .MuiTab-root': {
+                  color: 'var(--text-color)',
+                  '&.Mui-selected': {
+                    color: 'var(--primary-color)',
+                    fontWeight: 'bold',
+                  },
+                },
+                '& .MuiTabs-indicator': {
+                  backgroundColor: 'var(--primary-color)',
+                },
               }}
             >
               {estimates.map((estimate, idx) => (
@@ -7092,7 +7752,7 @@ const EstimateManagement: React.FC = () => {
                     handleResetEstimate(activeTab);
                   }
                 }}
-                sx={{ color: '#40c4ff' }}
+                sx={{ color: 'var(--primary-color)' }}
                 title="초기화"
               >
                 <ResetIcon fontSize="small" />
@@ -7120,14 +7780,14 @@ const EstimateManagement: React.FC = () => {
               </IconButton>
               <IconButton
                 onClick={() => setEstimateTabSettingsOpen(true)}
-                sx={{ ml: 1, color: '#fff' }}
+                sx={{ ml: 1, color: 'var(--text-color)' }}
                 title="견적서 탭 표시 설정"
               >
                 <ArrowDownIcon />
               </IconButton>
               <IconButton
                 onClick={handleOpenSpaceSettings}
-                sx={{ ml: 1, color: '#fff' }}
+                sx={{ ml: 1, color: 'var(--text-color)' }}
                 title="공간 설정"
               >
                 <EditIcon />
@@ -7138,7 +7798,55 @@ const EstimateManagement: React.FC = () => {
 
         {/* 견적서 내용 */}
         <Grid item xs={12}>
-          <Paper sx={{ p: 2, pt: 0, backgroundColor: '#23272b' }}>
+          <Paper sx={{ p: 2, pt: 0, backgroundColor: 'var(--surface-color)' }}>
+            {/* 일괄 변경 모드 컨트롤 */}
+            {estimates[activeTab]?.rows.length > 0 && (
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 2, 
+                mb: 2, 
+                p: 1, 
+                backgroundColor: isBulkEditMode ? 'rgba(255, 193, 7, 0.1)' : 'transparent',
+                border: isBulkEditMode ? '1px solid #ffc107' : 'none',
+                borderRadius: 1
+              }}>
+                <Button
+                  variant={isBulkEditMode ? 'contained' : 'outlined'}
+                  color={isBulkEditMode ? 'warning' : 'primary'}
+                  onClick={handleBulkEditModeToggle}
+                  startIcon={<EditIcon />}
+                  size="small"
+                >
+                  {isBulkEditMode ? '일괄 변경 모드 종료' : '일괄 변경 모드'}
+                </Button>
+                
+                {isBulkEditMode && (
+                  <>
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      onClick={handleSelectAllRowsForBulkEdit}
+                      size="small"
+                    >
+                      전체 선택
+                    </Button>
+                    <Typography variant="body2" color="text.secondary">
+                      선택된 행: {selectedRowsForBulkEdit.size}개
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      color="success"
+                      onClick={handleBulkEditProductSelection}
+                      disabled={selectedRowsForBulkEdit.size === 0}
+                      size="small"
+                    >
+                      제품 변경
+                    </Button>
+                  </>
+                )}
+              </Box>
+            )}
             {(() => {
               console.log(
                 '견적서 테이블 렌더링 - 현재 견적서:',
@@ -7158,20 +7866,30 @@ const EstimateManagement: React.FC = () => {
                 <TableContainer>
                   <Table size="small">
                     <TableHead>
-                      <TableRow>
-                        <TableCell>구분</TableCell>
+                      <TableRow sx={{ backgroundColor: 'var(--background-color)' }}>
+                        {isBulkEditMode && (
+                          <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold', width: 50 }}>
+                            <Checkbox
+                              checked={selectedRowsForBulkEdit.size === filteredRows.filter(row => row.type === 'product').length}
+                              indeterminate={selectedRowsForBulkEdit.size > 0 && selectedRowsForBulkEdit.size < filteredRows.filter(row => row.type === 'product').length}
+                              onChange={handleSelectAllRowsForBulkEdit}
+                              size="small"
+                            />
+                          </TableCell>
+                        )}
+                        <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>구분</TableCell>
                         {FILTER_FIELDS.map(
                           field =>
                             columnVisibility[field.key] && (
-                              <TableCell key={field.key}>
+                              <TableCell key={field.key} sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>
                                 {field.label}
                               </TableCell>
                             )
                         )}
-                        <TableCell>작업</TableCell>
+                        <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>작업</TableCell>
                       </TableRow>
                     </TableHead>
-                    <TableBody sx={{ color: '#b0b8c1' }}>
+                    <TableBody sx={{ color: 'var(--text-color)' }}>
                       {filteredRows.map((row, idx) => {
                         const isProduct = row.type === 'product';
                         const isRail = row.optionLabel === '레일';
@@ -7202,21 +7920,43 @@ const EstimateManagement: React.FC = () => {
                         if (isProduct) {
                           return (
                             <TableRow
-                              key={row.id}
+                              key={`product-${row.id}-${idx}`}
                               sx={{
                                 backgroundColor:
                                   selectedProductIdx === idx
-                                    ? '#f57f17'
+                                    ? 'var(--primary-color)'
+                                    : selectedRowsForBulkEdit.has(idx)
+                                    ? 'rgba(255, 193, 7, 0.3)'
                                     : getSpaceColor(row.space),
                                 fontSize: '11pt',
                                 cursor: 'pointer',
                                 transition: 'background 0.2s',
                               }}
-                              onClick={() => handleProductRowClick(idx)}
+                              onClick={() => {
+                                if (isBulkEditMode) {
+                                  handleRowSelectionForBulkEdit(idx);
+                                } else {
+                                  handleProductRowClick(idx);
+                                }
+                              }}
                               onDoubleClick={() => handleRowClick(idx)}
                             >
+                              {isBulkEditMode && (
+                                <TableCell sx={{ width: 50 }}>
+                                  <Checkbox
+                                    checked={selectedRowsForBulkEdit.has(idx)}
+                                    onChange={() => handleRowSelectionForBulkEdit(idx)}
+                                    size="small"
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                </TableCell>
+                              )}
                               <TableCell
-                                sx={{ fontWeight: 'bold', fontSize: '11pt' }}
+                                sx={{ 
+                                  fontWeight: 'bold', 
+                                  fontSize: '11pt',
+                                  color: 'var(--text-color)'
+                                }}
                               >
                                 제품
                               </TableCell>
@@ -7225,7 +7965,10 @@ const EstimateManagement: React.FC = () => {
                                   columnVisibility[field.key] && (
                                     <TableCell
                                       key={field.key}
-                                      sx={{ fontSize: '11pt' }}
+                                      sx={{ 
+                                        fontSize: '11pt',
+                                        color: 'var(--text-color)'
+                                      }}
                                     >
                                       {getRowValue(row, field.key)}
                                     </TableCell>
@@ -7272,7 +8015,7 @@ const EstimateManagement: React.FC = () => {
                           // 옵션행: 제품행보다 밝은 배경, 들여쓰기, 글씨 10.5pt
                           return (
                             <TableRow
-                              key={row.id}
+                              key={`${row.id}-${idx}-${Date.now()}`}
                               sx={{
                                 backgroundColor: getSpaceColor(row.space, 1.12),
                                 fontSize: '10.5pt',
@@ -7282,7 +8025,11 @@ const EstimateManagement: React.FC = () => {
                                 isRail ? () => handleRailEdit(idx) : undefined
                               }
                             >
-                              <TableCell sx={{ pl: 3, fontSize: '10.5pt' }}>
+                              <TableCell sx={{ 
+                                pl: 3, 
+                                fontSize: '10.5pt',
+                                color: 'var(--text-color)'
+                              }}>
                                 {isRail ? (
                                   <Box
                                     sx={{
@@ -7313,6 +8060,7 @@ const EstimateManagement: React.FC = () => {
                                 sx={{
                                   whiteSpace: 'nowrap',
                                   fontSize: '10.5pt',
+                                  color: 'var(--text-color)',
                                 }}
                               >
                                 {isRail
@@ -7325,7 +8073,10 @@ const EstimateManagement: React.FC = () => {
                                     <TableCell
                                       key={field.key}
                                       align="right"
-                                      sx={{ fontSize: '10.5pt' }}
+                                      sx={{ 
+                                        fontSize: '10.5pt',
+                                        color: 'var(--text-color)'
+                                      }}
                                     >
                                       {getRowValue(
                                         row,
@@ -7634,9 +8385,14 @@ const EstimateManagement: React.FC = () => {
           fullWidth
           disableEnforceFocus
           disableAutoFocus
+          sx={{
+            '& .MuiDialog-paper': {
+              backgroundColor: 'var(--surface-color)',
+            },
+          }}
         >
-          <DialogTitle>열 표시 설정</DialogTitle>
-          <DialogContent>
+          <DialogTitle sx={{ color: 'var(--text-color)' }}>열 표시 설정</DialogTitle>
+          <DialogContent sx={{ backgroundColor: 'var(--surface-color)' }}>
             <Grid container spacing={2}>
               {FILTER_FIELDS.map(f => (
                 <Grid item xs={4} key={f.key}>
@@ -7645,19 +8401,47 @@ const EstimateManagement: React.FC = () => {
                       <Checkbox
                         checked={columnVisibility[f.key]}
                         onChange={() => handleColumnToggle(f.key)}
+                        sx={{
+                          color: 'var(--primary-color)',
+                          '&.Mui-checked': {
+                            color: 'var(--primary-color)',
+                          },
+                        }}
                       />
                     }
                     label={f.label}
+                    sx={{
+                      color: 'var(--text-color)',
+                      '& .MuiFormControlLabel-label': {
+                        color: 'var(--text-color)',
+                      },
+                    }}
                   />
                 </Grid>
               ))}
             </Grid>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={handleFilterReset}>초기화</Button>
+          <DialogActions sx={{ backgroundColor: 'var(--surface-color)' }}>
+            <Button 
+              onClick={handleFilterReset}
+              sx={{
+                color: 'var(--text-color)',
+                '&:hover': {
+                  backgroundColor: 'var(--hover-color)',
+                },
+              }}
+            >
+              초기화
+            </Button>
             <Button
               variant="contained"
               onClick={() => setFilterModalOpen(false)}
+              sx={{
+                backgroundColor: 'var(--primary-color)',
+                '&:hover': {
+                  backgroundColor: 'var(--primary-hover-color)',
+                },
+              }}
             >
               적용
             </Button>
@@ -7689,7 +8473,7 @@ const EstimateManagement: React.FC = () => {
 
       {/* 저장된 견적서 리스트 */}
       <Grid item xs={12}>
-        <Paper sx={{ p: 2, backgroundColor: '#232a36' }}>
+        <Paper sx={{ p: 2, backgroundColor: 'var(--surface-color)' }}>
           <Box
             sx={{
               display: 'flex',
@@ -7699,7 +8483,7 @@ const EstimateManagement: React.FC = () => {
             }}
           >
             <Typography
-              sx={{ fontWeight: 'bold', color: '#e0e6ed', fontSize: '17px' }}
+              sx={{ fontWeight: 'bold', color: 'var(--text-color)', fontSize: '17px' }}
             >
               견적서 LIST
             </Typography>
@@ -7713,11 +8497,11 @@ const EstimateManagement: React.FC = () => {
                   fontSize: 13,
                   py: 0.5,
                   px: 1.5,
-                  color: '#b0b8c1',
-                  borderColor: '#2e3a4a',
+                  color: 'var(--text-secondary-color)',
+                  borderColor: 'var(--border-color)',
                   '&:hover': {
-                    backgroundColor: '#263040',
-                    borderColor: '#3a4a5a',
+                    backgroundColor: 'var(--hover-color)',
+                    borderColor: 'var(--primary-color)',
                   },
                 }}
               >
@@ -7732,11 +8516,11 @@ const EstimateManagement: React.FC = () => {
                   fontSize: 13,
                   py: 0.5,
                   px: 1.5,
-                  color: '#b0b8c1',
-                  borderColor: '#2e3a4a',
+                  color: 'var(--text-secondary-color)',
+                  borderColor: 'var(--border-color)',
                   '&:hover': {
-                    backgroundColor: '#263040',
-                    borderColor: '#3a4a5a',
+                    backgroundColor: 'var(--hover-color)',
+                    borderColor: 'var(--primary-color)',
                   },
                 }}
               >
@@ -7757,25 +8541,40 @@ const EstimateManagement: React.FC = () => {
                 placeholder="견적서명, 제품명, 거래처, 브랜드 등으로 검색"
                 sx={{
                   mb: 2,
-                  input: { color: '#e0e6ed' },
-                  label: { color: '#b0b8c1' },
+                  input: { color: 'var(--text-color)' },
+                  label: { color: 'var(--text-secondary-color)' },
                   '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#2e3a4a' },
-                    '&:hover fieldset': { borderColor: '#3a4a5a' },
+                    '& fieldset': { borderColor: 'var(--border-color)' },
+                    '&:hover fieldset': { borderColor: 'var(--primary-color)' },
+                    height: '40px', // 높이를 40px로 줄임
+                    '& .MuiInputBase-input': {
+                      padding: '8px 12px', // 패딩도 줄여서 더 컴팩트하게
+                      fontSize: '14px', // 폰트 크기도 약간 줄임
+                    },
+                  },
+                  '& .MuiInputLabel-root': {
+                    fontSize: '14px', // 라벨 폰트 크기도 줄임
+                    transform: 'translate(12px, 8px) scale(1)', // 라벨 위치 조정
+                    '&.Mui-focused, &.MuiFormLabel-filled': {
+                      transform: 'translate(12px, -6px) scale(0.75)', // 포커스/채워진 상태 위치 조정
+                    },
                   },
                 }}
                 size="small"
                 InputProps={{
                   endAdornment: (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <ButtonGroup variant="outlined" size="small">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, height: '40px' }}>
+                      <ButtonGroup variant="outlined" size="small" sx={{ height: '32px' }}>
                         <Button
                           onClick={() => setPeriodMode('all')}
                           sx={{
-                            color: periodMode === 'all' ? '#40c4ff' : '#b0b8c1',
-                            borderColor: '#2e3a4a',
+                            color: periodMode === 'all' ? 'var(--primary-color)' : 'var(--text-secondary-color)',
+                            borderColor: 'var(--border-color)',
                             backgroundColor:
-                              periodMode === 'all' ? '#263040' : 'inherit',
+                              periodMode === 'all' ? 'var(--hover-color)' : 'inherit',
+                            height: '32px',
+                            fontSize: '12px',
+                            px: 1,
                           }}
                         >
                           전체
@@ -7784,10 +8583,13 @@ const EstimateManagement: React.FC = () => {
                           onClick={() => setPeriodMode('week')}
                           sx={{
                             color:
-                              periodMode === 'week' ? '#40c4ff' : '#b0b8c1',
-                            borderColor: '#2e3a4a',
+                              periodMode === 'week' ? 'var(--primary-color)' : 'var(--text-secondary-color)',
+                            borderColor: 'var(--border-color)',
                             backgroundColor:
-                              periodMode === 'week' ? '#263040' : 'inherit',
+                              periodMode === 'week' ? 'var(--hover-color)' : 'inherit',
+                            height: '32px',
+                            fontSize: '12px',
+                            px: 1,
                           }}
                         >
                           주간
@@ -7796,10 +8598,13 @@ const EstimateManagement: React.FC = () => {
                           onClick={() => setPeriodMode('month')}
                           sx={{
                             color:
-                              periodMode === 'month' ? '#40c4ff' : '#b0b8c1',
-                            borderColor: '#2e3a4a',
+                              periodMode === 'month' ? 'var(--primary-color)' : 'var(--text-secondary-color)',
+                            borderColor: 'var(--border-color)',
                             backgroundColor:
-                              periodMode === 'month' ? '#263040' : 'inherit',
+                              periodMode === 'month' ? 'var(--hover-color)' : 'inherit',
+                            height: '32px',
+                            fontSize: '12px',
+                            px: 1,
                           }}
                         >
                           월간
@@ -7812,10 +8617,13 @@ const EstimateManagement: React.FC = () => {
                           }}
                           sx={{
                             color:
-                              periodMode === 'quarter' ? '#40c4ff' : '#b0b8c1',
-                            borderColor: '#2e3a4a',
+                              periodMode === 'quarter' ? 'var(--primary-color)' : 'var(--text-secondary-color)',
+                            borderColor: 'var(--border-color)',
                             backgroundColor:
-                              periodMode === 'quarter' ? '#263040' : 'inherit',
+                              periodMode === 'quarter' ? 'var(--hover-color)' : 'inherit',
+                            height: '32px',
+                            fontSize: '12px',
+                            px: 1,
                           }}
                         >
                           분기 ▼
@@ -7828,10 +8636,13 @@ const EstimateManagement: React.FC = () => {
                           }}
                           sx={{
                             color:
-                              periodMode === 'half' ? '#40c4ff' : '#b0b8c1',
-                            borderColor: '#2e3a4a',
+                              periodMode === 'half' ? 'var(--primary-color)' : 'var(--text-secondary-color)',
+                            borderColor: 'var(--border-color)',
                             backgroundColor:
-                              periodMode === 'half' ? '#263040' : 'inherit',
+                              periodMode === 'half' ? 'var(--hover-color)' : 'inherit',
+                            height: '32px',
+                            fontSize: '12px',
+                            px: 1,
                           }}
                         >
                           반기 ▼
@@ -7844,10 +8655,13 @@ const EstimateManagement: React.FC = () => {
                           }}
                           sx={{
                             color:
-                              periodMode === 'year' ? '#40c4ff' : '#b0b8c1',
-                            borderColor: '#2e3a4a',
+                              periodMode === 'year' ? 'var(--primary-color)' : 'var(--text-secondary-color)',
+                            borderColor: 'var(--border-color)',
                             backgroundColor:
-                              periodMode === 'year' ? '#263040' : 'inherit',
+                              periodMode === 'year' ? 'var(--hover-color)' : 'inherit',
+                            height: '32px',
+                            fontSize: '12px',
+                            px: 1,
                           }}
                         >
                           년도 ▼
@@ -7970,105 +8784,105 @@ const EstimateManagement: React.FC = () => {
                 }}
               />
               <TableContainer
-                sx={{ backgroundColor: '#232a36', borderRadius: 1 }}
+                sx={{ backgroundColor: 'var(--surface-color)', borderRadius: 1 }}
               >
                 <Table size="small">
                   <TableHead>
-                    <TableRow sx={{ backgroundColor: '#263040' }}>
+                    <TableRow sx={{ backgroundColor: 'var(--background-color)' }}>
                       {estimateListDisplay.showEstimateNo && (
                         <TableCell
-                          sx={{ color: '#b0b8c1', borderColor: '#2e3a4a' }}
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
                         >
                           견적번호
                         </TableCell>
                       )}
                       {estimateListDisplay.showEstimateDate && (
                         <TableCell
-                          sx={{ color: '#b0b8c1', borderColor: '#2e3a4a' }}
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
                         >
                           견적일자
                         </TableCell>
                       )}
                       {estimateListDisplay.showSavedDate && (
                         <TableCell
-                          sx={{ color: '#b0b8c1', borderColor: '#2e3a4a' }}
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
                         >
                           저장일
                         </TableCell>
                       )}
                       {estimateListDisplay.showCustomerName && (
                         <TableCell
-                          sx={{ color: '#b0b8c1', borderColor: '#2e3a4a' }}
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
                         >
                           고객명
                         </TableCell>
                       )}
                       {estimateListDisplay.showContact && (
                         <TableCell
-                          sx={{ color: '#b0b8c1', borderColor: '#2e3a4a' }}
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
                         >
                           연락처
                         </TableCell>
                       )}
                       {estimateListDisplay.showProjectName && (
                         <TableCell
-                          sx={{ color: '#b0b8c1', borderColor: '#2e3a4a' }}
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
                         >
                           프로젝트명
                         </TableCell>
                       )}
                       {estimateListDisplay.showProducts && (
                         <TableCell
-                          sx={{ color: '#b0b8c1', borderColor: '#2e3a4a' }}
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
                         >
                           포함제품
                         </TableCell>
                       )}
                       {estimateListDisplay.showTotalAmount && (
                         <TableCell
-                          sx={{ color: '#b0b8c1', borderColor: '#2e3a4a' }}
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
                         >
                           총금액
                         </TableCell>
                       )}
                       {estimateListDisplay.showDiscountedAmount && (
                         <TableCell
-                          sx={{ color: '#b0b8c1', borderColor: '#2e3a4a' }}
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
                         >
                           할인후금액
                         </TableCell>
                       )}
                       {estimateListDisplay.showDiscountAmount && (
                         <TableCell
-                          sx={{ color: '#b0b8c1', borderColor: '#2e3a4a' }}
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
                         >
                           할인금액
                         </TableCell>
                       )}
                       {estimateListDisplay.showDiscountRate && (
                         <TableCell
-                          sx={{ color: '#b0b8c1', borderColor: '#2e3a4a' }}
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
                         >
                           할인율(%)
                         </TableCell>
                       )}
                       {estimateListDisplay.showMargin && (
                         <TableCell
-                          sx={{ color: '#b0b8c1', borderColor: '#2e3a4a' }}
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
                         >
                           마진
                         </TableCell>
                       )}
                       {estimateListDisplay.showActions && (
                         <TableCell
-                          sx={{ color: '#b0b8c1', borderColor: '#2e3a4a' }}
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
                         >
                           작업
                         </TableCell>
                       )}
                       {estimateListDisplay.showAddress && (
                         <TableCell
-                          sx={{ color: '#b0b8c1', borderColor: '#2e3a4a' }}
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
                         >
                           주소
                         </TableCell>
@@ -8082,8 +8896,8 @@ const EstimateManagement: React.FC = () => {
                           est.discountedAmount ??
                           est.totalAmount - est.discountAmount;
                         const status = getEstimateStatus(est);
-                        // statusUpdateTrigger를 사용하여 실시간 업데이트
-                        const key = `${est.id}-${statusUpdateTrigger}`;
+                        // 견적서 ID만 사용하여 안정적인 키 생성
+                        const key = `estimate-${est.id}`;
 
                         // 그룹 정보 가져오기
                         const { colorIndex, isLatest, isFinal } =
@@ -8487,22 +9301,62 @@ const EstimateManagement: React.FC = () => {
 
                                 <IconButton
                                   size="small"
-                                  onClick={() => {
+                                  onClick={async () => {
                                     if (
                                       window.confirm(
                                         '정말로 이 견적서를 삭제하시겠습니까?'
                                       )
                                     ) {
-                                      const updatedSavedEstimates =
-                                        savedEstimates.filter(
-                                          (e: any) => e.id !== est.id
+                                      try {
+                                        console.log('=== 견적서 삭제 시작 ===');
+                                        console.log('삭제할 견적서:', est);
+
+                                        // Firebase 서버에서 견적서 삭제
+                                        const response = await fetch(`${API_BASE}/estimates/${est.estimateNo}`, {
+                                          method: 'DELETE',
+                                          headers: {
+                                            'Content-Type': 'application/json',
+                                          },
+                                        });
+
+                                        console.log('Firebase 삭제 응답:', response.status, response.statusText);
+
+                                        if (response.ok) {
+                                          console.log('Firebase에서 견적서 삭제 성공');
+                                        } else {
+                                          const errorText = await response.text();
+                                          console.error('Firebase 삭제 실패:', response.status, response.statusText, errorText);
+                                          // Firebase 삭제 실패해도 localStorage는 삭제 진행
+                                        }
+
+                                        // localStorage에서 견적서 삭제
+                                        const updatedSavedEstimates =
+                                          savedEstimates.filter(
+                                            (e: any) => e.id !== est.id
+                                          );
+                                        localStorage.setItem(
+                                          'saved_estimates',
+                                          JSON.stringify(updatedSavedEstimates)
                                         );
-                                      localStorage.setItem(
-                                        'saved_estimates',
-                                        JSON.stringify(updatedSavedEstimates)
-                                      );
-                                      alert('견적서가 삭제되었습니다.');
-                                      window.location.reload();
+
+                                        alert('견적서가 삭제되었습니다.');
+                                        window.location.reload();
+                                      } catch (error) {
+                                        console.error('견적서 삭제 중 오류:', error);
+                                        
+                                        // 오류 발생 시에도 localStorage는 삭제
+                                        const updatedSavedEstimates =
+                                          savedEstimates.filter(
+                                            (e: any) => e.id !== est.id
+                                          );
+                                        localStorage.setItem(
+                                          'saved_estimates',
+                                          JSON.stringify(updatedSavedEstimates)
+                                        );
+                                        
+                                        alert('견적서가 삭제되었습니다. (서버 연결 오류가 있었지만 로컬에서는 삭제됨)');
+                                        window.location.reload();
+                                      }
                                     }
                                   }}
                                   sx={{
@@ -8533,7 +9387,7 @@ const EstimateManagement: React.FC = () => {
                         <TableCell
                           colSpan={5}
                           align="center"
-                          sx={{ color: '#b0b8c1', backgroundColor: '#232a36' }}
+                          sx={{ color: 'var(--text-secondary-color)', backgroundColor: 'var(--surface-color)' }}
                         >
                           저장된 견적서가 없습니다
                         </TableCell>
@@ -8592,7 +9446,7 @@ const EstimateManagement: React.FC = () => {
             sx={{
               flex: 1,
               textAlign: isMobile ? 'center' : 'left',
-              color: '#e0e6ed',
+              color: 'var(--text-color)',
               fontSize: isMobile ? '1.2rem' : '1.25rem',
               fontWeight: 600,
             }}
@@ -8602,9 +9456,9 @@ const EstimateManagement: React.FC = () => {
         </DialogTitle>
         <DialogContent sx={{
           p: isMobile ? 2 : 3,
-          backgroundColor: '#1e2633',
+          backgroundColor: 'var(--surface-color)',
           '& .MuiDialogContent-root': {
-            backgroundColor: '#1e2633',
+            backgroundColor: 'var(--surface-color)',
           }
         }}>
           <TextField
@@ -8617,33 +9471,34 @@ const EstimateManagement: React.FC = () => {
             placeholder="고객명, 연락처, 주소, 프로젝트명으로 검색"
             sx={{
               mb: 2,
-              '& .MuiInputLabel-root': { color: '#b0b8c1' },
+              '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
               '& .MuiOutlinedInput-root': {
-                '& fieldset': { borderColor: '#2e3a4a' },
-                '&:hover fieldset': { borderColor: '#40c4ff' },
-                '&.Mui-focused fieldset': { borderColor: '#40c4ff' },
+                backgroundColor: 'var(--background-color)',
+                '& fieldset': { borderColor: 'var(--border-color)' },
+                '&:hover fieldset': { borderColor: 'var(--primary-color)' },
+                '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
               },
-              '& .MuiInputBase-input': { color: '#e0e6ed' },
+              '& .MuiInputBase-input': { color: 'var(--text-color)' },
             }}
             size={isMobile ? "medium" : "small"}
           />
           <TableContainer component={Paper} sx={{
             maxHeight: isMobile ? '70vh' : 500,
-            backgroundColor: '#232a36',
+            backgroundColor: 'var(--surface-color)',
             '& .MuiTable-root': {
-              backgroundColor: '#232a36',
+              backgroundColor: 'var(--surface-color)',
             },
             '& .MuiTableCell-root': {
-              color: '#e0e6ed',
-              borderColor: '#2e3a4a',
+              color: 'var(--text-color)',
+              borderColor: 'var(--border-color)',
             },
             '& .MuiTableHead-root .MuiTableCell-root': {
-              backgroundColor: '#1e2633',
-              color: '#b0b8c1',
+              backgroundColor: 'var(--background-color)',
+              color: 'var(--text-secondary-color)',
               fontWeight: 600,
             },
             '& .MuiTableRow-root:hover': {
-              backgroundColor: '#263040',
+              backgroundColor: 'var(--hover-color)',
             },
           }}>
             <Table stickyHeader size={isMobile ? "medium" : "small"}>
@@ -8746,11 +9601,11 @@ const EstimateManagement: React.FC = () => {
                           }
                         }}
                         sx={{
-                          backgroundColor: '#40c4ff',
+                          backgroundColor: 'var(--primary-color)',
                           minHeight: isMobile ? '44px' : 'auto',
                           fontSize: isMobile ? '0.9rem' : '0.875rem',
                           '&:hover': {
-                            backgroundColor: '#33a3cc'
+                            backgroundColor: 'var(--primary-hover-color)'
                           }
                         }}
                       >
@@ -8766,16 +9621,16 @@ const EstimateManagement: React.FC = () => {
         {!isMobile && (
           <DialogActions sx={{
             borderTop: 1,
-            borderColor: '#2e3a4a',
+            borderColor: 'var(--border-color)',
             p: 2,
-            backgroundColor: '#1e2633'
+            backgroundColor: 'var(--surface-color)'
           }}>
             <Button
               onClick={() => setCustomerListDialogOpen(false)}
               sx={{
-                color: '#b0b8c1',
+                color: 'var(--text-color)',
                 '&:hover': {
-                  backgroundColor: '#2e3a4a'
+                  backgroundColor: 'var(--hover-color)'
                 }
               }}
             >
@@ -8996,6 +9851,8 @@ const EstimateManagement: React.FC = () => {
         )}
       </Dialog>
 
+      
+
       {/* 제품 추가 성공 메시지 Snackbar */}
       <Snackbar
         open={snackbarOpen}
@@ -9013,6 +9870,27 @@ const EstimateManagement: React.FC = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="body2">
             {snackbarMessage}
+          </Typography>
+        </Box>
+      </Snackbar>
+
+      {/* 일괄 변경 메시지 Snackbar */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar({ open: false, message: '' })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        sx={{
+          '& .MuiSnackbarContent-root': {
+            backgroundColor: '#2196f3',
+            color: 'white',
+            fontWeight: 'bold',
+          }
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body2">
+            {snackbar.message}
           </Typography>
         </Box>
       </Snackbar>

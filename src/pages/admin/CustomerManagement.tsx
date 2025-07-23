@@ -164,21 +164,11 @@ async function loadCustomers() {
 
 async function saveCustomers(customers: Customer[]) {
   try {
-    // Firebase에 저장
-    for (const customer of customers) {
-      if (customer.id && typeof customer.id === 'string') {
-        // 기존 고객 업데이트
-        await customerService.updateCustomer(customer.id, customer);
-      } else {
-        // 새 고객 저장
-        await customerService.saveCustomer(customer);
-      }
-    }
-    console.log('Firebase에 고객 데이터 저장 완료');
+    // localStorage에만 저장 (Firebase 저장은 별도로 처리)
+    localStorage.setItem('customerList', JSON.stringify(customers));
+    console.log('localStorage에 고객 데이터 저장 완료');
   } catch (error) {
-    console.error('Firebase에 고객 데이터 저장 실패:', error);
-    // Firebase 실패 시 localStorage에 저장 (fallback)
-    localStorage.setItem(CUSTOMER_STORAGE_KEY, JSON.stringify(customers));
+    console.error('localStorage에 고객 데이터 저장 실패:', error);
   }
 }
 
@@ -281,10 +271,11 @@ const CustomerManagement: React.FC = () => {
     useState<Customer | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // customers가 바뀔 때마다 localStorage에 저장
+  // customers가 바뀔 때마다 localStorage에 저장 (무한 루프 방지)
   useEffect(() => {
     if (customers && customers.length > 0) {
-      saveCustomers(customers);
+      // Firebase 저장은 별도로 처리하고, localStorage만 업데이트
+      localStorage.setItem('customerList', JSON.stringify(customers));
     }
   }, [customers]);
 
@@ -386,10 +377,7 @@ const CustomerManagement: React.FC = () => {
       // 새 고객 추가
       const newCustomer: Customer = {
         ...selectedCustomer,
-        id:
-          currentCustomers.length > 0
-            ? Math.max(...currentCustomers.map(c => c.id)) + 1
-            : 1,
+        id: Date.now(), // 고유한 ID 생성 (타임스탬프 사용)
         projects: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -400,14 +388,14 @@ const CustomerManagement: React.FC = () => {
       alert('새로운 고객이 추가되었습니다.');
     }
 
-    // Firebase에 자동 저장
+    // localStorage에 저장 (Firebase 저장은 별도로 처리)
     try {
-      console.log('Firebase에 고객 데이터 저장 시작');
+      console.log('localStorage에 고객 데이터 저장 시작');
       await saveCustomers(updatedCustomers);
-      console.log('Firebase에 고객 데이터 저장 완료');
+      console.log('localStorage에 고객 데이터 저장 완료');
     } catch (error) {
-      console.error('Firebase 저장 실패:', error);
-      alert('고객 정보가 저장되었지만 Firebase 동기화에 실패했습니다. 인터넷 연결을 확인해주세요.');
+      console.error('localStorage 저장 실패:', error);
+      alert('고객 정보 저장에 실패했습니다.');
     }
   };
 
@@ -434,10 +422,7 @@ const CustomerManagement: React.FC = () => {
     const currentCustomers = customers || [];
     const newCustomer: Customer = {
       ...customer,
-      id:
-        currentCustomers.length > 0
-          ? Math.max(...currentCustomers.map(c => c.id)) + 1
-          : 1,
+      id: Date.now(), // 고유한 ID 생성 (타임스탬프 사용)
       name: `${customer.name} (복사본)`,
       projects: [],
       createdAt: new Date().toISOString(),

@@ -13,12 +13,66 @@ import {
   onSnapshot,
   serverTimestamp 
 } from 'firebase/firestore';
+import { auth } from '../firebase/config';
+import { ensureFirebaseAuth } from './auth';
+
+// Firebase Functions 호출을 위한 유틸리티 함수
+const callFirebaseFunction = async (functionName: string, data: any, method: string = 'POST') => {
+  try {
+    // JWT 토큰 가져오기 (기존 로그인 시스템에서)
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('JWT 토큰이 없습니다. 다시 로그인해주세요.');
+    }
+
+    const requestOptions: RequestInit = {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    };
+
+    // GET, DELETE 메서드가 아닌 경우에만 body 추가
+    if (method !== 'GET' && method !== 'DELETE') {
+      requestOptions.body = JSON.stringify(data);
+    }
+
+    const response = await fetch(`https://us-central1-windowerp-3.cloudfunctions.net/${functionName}`, requestOptions);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Firebase Function 호출 실패: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error(`Firebase Function ${functionName} 호출 실패:`, error);
+    throw error;
+  }
+};
+
+// Firebase Auth 상태 확인 함수
+const checkFirebaseAuth = () => {
+  const user = auth.currentUser;
+  console.log('Firebase Auth 상태:', {
+    isAuthenticated: !!user,
+    userId: user?.uid,
+    email: user?.email,
+    displayName: user?.displayName
+  });
+  return user;
+};
 
 // 견적서 데이터 서비스
 export const estimateService = {
   // 견적서 목록 가져오기
   async getEstimates() {
     try {
+      // Firebase Auth 상태 확인
+      const user = checkFirebaseAuth();
+      
       const estimatesRef = collection(db, 'estimates');
       const q = query(estimatesRef, orderBy('savedAt', 'desc'));
       const snapshot = await getDocs(q);
@@ -28,6 +82,11 @@ export const estimateService = {
       }));
     } catch (error) {
       console.error('견적서 목록 가져오기 실패:', error);
+      console.error('에러 상세 정보:', {
+        code: (error as any).code,
+        message: (error as any).message,
+        stack: (error as any).stack
+      });
       throw error;
     }
   },
@@ -45,19 +104,18 @@ export const estimateService = {
     });
   },
 
-  // 견적서 저장
+  // 견적서 저장 (Firebase Functions를 통한 저장)
   async saveEstimate(estimateData: any) {
     try {
-      const estimatesRef = collection(db, 'estimates');
-      const docRef = await addDoc(estimatesRef, {
-        ...estimateData,
-        savedAt: serverTimestamp(),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      return docRef.id;
+      console.log('Firebase Functions를 통한 견적서 저장 시작:', estimateData);
+      
+      // Firebase Functions를 통해 저장
+      const result = await callFirebaseFunction('saveEstimate', estimateData);
+      
+      console.log('Firebase Functions를 통한 견적서 저장 성공:', result);
+      return result.id || result.estimateId;
     } catch (error) {
-      console.error('견적서 저장 실패:', error);
+      console.error('Firebase Functions를 통한 견적서 저장 실패:', error);
       throw error;
     }
   },
@@ -136,18 +194,18 @@ export const customerService = {
     });
   },
 
-  // 고객 저장
+  // 고객 저장 (Firebase Functions를 통한 저장)
   async saveCustomer(customerData: any) {
     try {
-      const customersRef = collection(db, 'customers');
-      const docRef = await addDoc(customersRef, {
-        ...customerData,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      return docRef.id;
+      console.log('Firebase Functions를 통한 고객 저장 시작:', customerData);
+      
+      // Firebase Functions를 통해 저장
+      const result = await callFirebaseFunction('saveCustomer', customerData);
+      
+      console.log('Firebase Functions를 통한 고객 저장 성공:', result);
+      return result.id || result.customerId;
     } catch (error) {
-      console.error('고객 저장 실패:', error);
+      console.error('Firebase Functions를 통한 고객 저장 실패:', error);
       throw error;
     }
   },
@@ -209,32 +267,34 @@ export const contractService = {
     });
   },
 
-  // 계약서 저장
+  // 계약서 저장 (Firebase Functions를 통한 저장)
   async saveContract(contractData: any) {
     try {
-      const contractsRef = collection(db, 'contracts');
-      const docRef = await addDoc(contractsRef, {
-        ...contractData,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      return docRef.id;
+      console.log('Firebase Functions를 통한 계약서 저장 시작:', contractData);
+      
+      // Firebase Functions를 통해 저장
+      const result = await callFirebaseFunction('saveContract', contractData);
+      
+      console.log('Firebase Functions를 통한 계약서 저장 성공:', result);
+      return result.id || result.contractId;
     } catch (error) {
-      console.error('계약서 저장 실패:', error);
+      console.error('Firebase Functions를 통한 계약서 저장 실패:', error);
       throw error;
     }
   },
 
-  // 계약서 업데이트
+  // 계약서 업데이트 (Firebase Functions를 통한 업데이트)
   async updateContract(contractId: string, contractData: any) {
     try {
-      const contractRef = doc(db, 'contracts', contractId);
-      await updateDoc(contractRef, {
-        ...contractData,
-        updatedAt: serverTimestamp()
-      });
+      console.log('Firebase Functions를 통한 계약서 업데이트 시작:', { contractId, contractData });
+      
+      // Firebase Functions를 통해 업데이트
+      const result = await callFirebaseFunction('updateContract', { contractId, ...contractData });
+      
+      console.log('Firebase Functions를 통한 계약서 업데이트 성공:', result);
+      return result;
     } catch (error) {
-      console.error('계약서 업데이트 실패:', error);
+      console.error('Firebase Functions를 통한 계약서 업데이트 실패:', error);
       throw error;
     }
   },
@@ -282,32 +342,34 @@ export const orderService = {
     });
   },
 
-  // 주문서 저장
+  // 주문서 저장 (Firebase Functions를 통한 저장)
   async saveOrder(orderData: any) {
     try {
-      const ordersRef = collection(db, 'orders');
-      const docRef = await addDoc(ordersRef, {
-        ...orderData,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      return docRef.id;
+      console.log('Firebase Functions를 통한 주문서 저장 시작:', orderData);
+      
+      // Firebase Functions를 통해 저장
+      const result = await callFirebaseFunction('saveOrder', orderData);
+      
+      console.log('Firebase Functions를 통한 주문서 저장 성공:', result);
+      return result.id || result.orderId;
     } catch (error) {
-      console.error('주문서 저장 실패:', error);
+      console.error('Firebase Functions를 통한 주문서 저장 실패:', error);
       throw error;
     }
   },
 
-  // 주문서 업데이트
+  // 주문서 업데이트 (Firebase Functions를 통한 업데이트)
   async updateOrder(orderId: string, orderData: any) {
     try {
-      const orderRef = doc(db, 'orders', orderId);
-      await updateDoc(orderRef, {
-        ...orderData,
-        updatedAt: serverTimestamp()
-      });
+      console.log('Firebase Functions를 통한 주문서 업데이트 시작:', { orderId, orderData });
+      
+      // Firebase Functions를 통해 업데이트
+      const result = await callFirebaseFunction('updateOrder', { orderId, ...orderData });
+      
+      console.log('Firebase Functions를 통한 주문서 업데이트 성공:', result);
+      return result;
     } catch (error) {
-      console.error('주문서 업데이트 실패:', error);
+      console.error('Firebase Functions를 통한 주문서 업데이트 실패:', error);
       throw error;
     }
   },
@@ -355,43 +417,54 @@ export const productService = {
     });
   },
 
-  // 제품 저장
+  // 제품 저장 (Functions 사용)
   async saveProduct(productData: any) {
     try {
-      const productsRef = collection(db, 'products');
-      const docRef = await addDoc(productsRef, {
-        ...productData,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      return docRef.id;
+      console.log('Firebase Functions를 통해 제품 저장 시작');
+      const result = await callFirebaseFunction('saveProduct', productData);
+      console.log('Firebase Functions 제품 저장 완료:', result);
+      return result.id;
     } catch (error) {
-      console.error('제품 저장 실패:', error);
+      console.error('Firebase Functions 제품 저장 실패:', error);
       throw error;
     }
   },
 
-  // 제품 업데이트
+  // 제품 배치 저장
+  async saveProductsBatch(productsData: any[]) {
+    try {
+      console.log('Firebase Functions를 통해 제품 배치 저장 시작');
+      const result = await callFirebaseFunction('saveProductsBatch', { products: productsData });
+      console.log('Firebase Functions 제품 배치 저장 완료:', result);
+      return result;
+    } catch (error) {
+      console.error('Firebase Functions 제품 배치 저장 실패:', error);
+      throw error;
+    }
+  },
+
+  // 제품 업데이트 (Functions 사용)
   async updateProduct(productId: string, productData: any) {
     try {
-      const productRef = doc(db, 'products', productId);
-      await updateDoc(productRef, {
-        ...productData,
-        updatedAt: serverTimestamp()
-      });
+      console.log('Firebase Functions를 통해 제품 업데이트 시작');
+      const result = await callFirebaseFunction('updateProduct', { productId, ...productData }, 'PUT');
+      console.log('Firebase Functions 제품 업데이트 완료:', result);
+      return result;
     } catch (error) {
-      console.error('제품 업데이트 실패:', error);
+      console.error('Firebase Functions 제품 업데이트 실패:', error);
       throw error;
     }
   },
 
-  // 제품 삭제
+  // 제품 삭제 (Functions 사용)
   async deleteProduct(productId: string) {
     try {
-      const productRef = doc(db, 'products', productId);
-      await deleteDoc(productRef);
+      console.log('Firebase Functions를 통해 제품 삭제 시작');
+      const result = await callFirebaseFunction('deleteProduct', { productId }, 'DELETE');
+      console.log('Firebase Functions 제품 삭제 완료:', result);
+      return result;
     } catch (error) {
-      console.error('제품 삭제 실패:', error);
+      console.error('Firebase Functions 제품 삭제 실패:', error);
       throw error;
     }
   }
@@ -428,43 +501,54 @@ export const optionService = {
     });
   },
 
-  // 옵션 저장
+  // 옵션 저장 (Functions 사용)
   async saveOption(optionData: any) {
     try {
-      const optionsRef = collection(db, 'options');
-      const docRef = await addDoc(optionsRef, {
-        ...optionData,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      return docRef.id;
+      console.log('Firebase Functions를 통해 옵션 저장 시작');
+      const result = await callFirebaseFunction('saveOption', optionData);
+      console.log('Firebase Functions 옵션 저장 완료:', result);
+      return result.id;
     } catch (error) {
-      console.error('옵션 저장 실패:', error);
+      console.error('Firebase Functions 옵션 저장 실패:', error);
       throw error;
     }
   },
 
-  // 옵션 업데이트
+  // 옵션 업데이트 (Functions 사용)
   async updateOption(optionId: string, optionData: any) {
     try {
-      const optionRef = doc(db, 'options', optionId);
-      await updateDoc(optionRef, {
-        ...optionData,
-        updatedAt: serverTimestamp()
-      });
+      console.log('Firebase Functions를 통해 옵션 업데이트 시작');
+      const result = await callFirebaseFunction('updateOption', { optionId, ...optionData }, 'PUT');
+      console.log('Firebase Functions 옵션 업데이트 완료:', result);
+      return result;
     } catch (error) {
-      console.error('옵션 업데이트 실패:', error);
+      console.error('Firebase Functions 옵션 업데이트 실패:', error);
       throw error;
     }
   },
 
-  // 옵션 삭제
+  // 옵션 삭제 (Functions 사용)
   async deleteOption(optionId: string) {
     try {
-      const optionRef = doc(db, 'options', optionId);
-      await deleteDoc(optionRef);
+      console.log('Firebase Functions를 통해 옵션 삭제 시작');
+      const result = await callFirebaseFunction(`deleteOption?optionId=${optionId}`, {}, 'DELETE');
+      console.log('Firebase Functions 옵션 삭제 완료:', result);
+      return result;
     } catch (error) {
-      console.error('옵션 삭제 실패:', error);
+      console.error('Firebase Functions 옵션 삭제 실패:', error);
+      throw error;
+    }
+  },
+
+  // 모든 옵션 삭제
+  async deleteAllOptions() {
+    try {
+      console.log('Firebase Functions를 통해 모든 옵션 삭제 시작');
+      const result = await callFirebaseFunction('deleteAllOptions', {}, 'DELETE');
+      console.log('Firebase Functions 모든 옵션 삭제 완료:', result);
+      return result;
+    } catch (error) {
+      console.error('Firebase Functions 모든 옵션 삭제 실패:', error);
       throw error;
     }
   }
@@ -887,18 +971,18 @@ export const userService = {
 
 // 실측 데이터 서비스
 export const measurementService = {
-  // 실측 데이터 목록 가져오기
+  // 실측 데이터 목록 가져오기 (Firebase Functions를 통한 조회)
   async getMeasurements() {
     try {
-      const measurementsRef = collection(db, 'measurements');
-      const q = query(measurementsRef, orderBy('createdAt', 'desc'));
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      console.log('Firebase Functions를 통한 실측 데이터 목록 조회 시작');
+      
+      // Firebase Functions를 통해 조회
+      const result = await callFirebaseFunction('getMeasurements', {});
+      
+      console.log('Firebase Functions를 통한 실측 데이터 목록 조회 성공:', result);
+      return result;
     } catch (error) {
-      console.error('실측 데이터 목록 가져오기 실패:', error);
+      console.error('Firebase Functions를 통한 실측 데이터 목록 조회 실패:', error);
       throw error;
     }
   },
@@ -916,43 +1000,50 @@ export const measurementService = {
     });
   },
 
-  // 실측 데이터 저장
+  // 실측 데이터 저장 (Firebase Functions를 통한 저장)
   async saveMeasurement(measurementData: any) {
     try {
-      const measurementsRef = collection(db, 'measurements');
-      const docRef = await addDoc(measurementsRef, {
-        ...measurementData,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      return docRef.id;
+      console.log('Firebase Functions를 통한 실측 데이터 저장 시작:', measurementData);
+      
+      // Firebase Functions를 통해 저장
+      const result = await callFirebaseFunction('saveMeasurement', measurementData);
+      
+      console.log('Firebase Functions를 통한 실측 데이터 저장 성공:', result);
+      return result.id;
     } catch (error) {
-      console.error('실측 데이터 저장 실패:', error);
+      console.error('Firebase Functions를 통한 실측 데이터 저장 실패:', error);
       throw error;
     }
   },
 
-  // 실측 데이터 업데이트
+  // 실측 데이터 업데이트 (Firebase Functions를 통한 업데이트)
   async updateMeasurement(measurementId: string, measurementData: any) {
     try {
-      const measurementRef = doc(db, 'measurements', measurementId);
-      await updateDoc(measurementRef, {
-        ...measurementData,
-        updatedAt: serverTimestamp()
-      });
+      console.log('Firebase Functions를 통한 실측 데이터 업데이트 시작:', { measurementId, measurementData });
+      
+      // Firebase Functions를 통해 업데이트
+      const result = await callFirebaseFunction('updateMeasurement', { measurementId, ...measurementData });
+      
+      console.log('Firebase Functions를 통한 실측 데이터 업데이트 성공:', result);
+      return result;
     } catch (error) {
-      console.error('실측 데이터 업데이트 실패:', error);
+      console.error('Firebase Functions를 통한 실측 데이터 업데이트 실패:', error);
       throw error;
     }
   },
 
-  // 실측 데이터 삭제
+  // 실측 데이터 삭제 (Firebase Functions를 통한 삭제)
   async deleteMeasurement(measurementId: string) {
     try {
-      const measurementRef = doc(db, 'measurements', measurementId);
-      await deleteDoc(measurementRef);
+      console.log('Firebase Functions를 통한 실측 데이터 삭제 시작:', measurementId);
+      
+      // Firebase Functions를 통해 삭제
+      const result = await callFirebaseFunction('deleteMeasurement', { measurementId });
+      
+      console.log('Firebase Functions를 통한 실측 데이터 삭제 성공:', result);
+      return result;
     } catch (error) {
-      console.error('실측 데이터 삭제 실패:', error);
+      console.error('Firebase Functions를 통한 실측 데이터 삭제 실패:', error);
       throw error;
     }
   }
@@ -991,32 +1082,34 @@ export const deliveryService = {
     });
   },
 
-  // 납품 저장
+  // 납품 저장 (Firebase Functions를 통한 저장)
   async saveDelivery(deliveryData: any) {
     try {
-      const deliveriesRef = collection(db, 'deliveries');
-      const docRef = await addDoc(deliveriesRef, {
-        ...deliveryData,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      return docRef.id;
+      console.log('Firebase Functions를 통한 납품 저장 시작:', deliveryData);
+      
+      // Firebase Functions를 통해 저장
+      const result = await callFirebaseFunction('saveDelivery', deliveryData);
+      
+      console.log('Firebase Functions를 통한 납품 저장 성공:', result);
+      return result.id || result.deliveryId;
     } catch (error) {
-      console.error('납품 저장 실패:', error);
+      console.error('Firebase Functions를 통한 납품 저장 실패:', error);
       throw error;
     }
   },
 
-  // 납품 업데이트
+  // 납품 업데이트 (Firebase Functions를 통한 업데이트)
   async updateDelivery(deliveryId: string, deliveryData: any) {
     try {
-      const deliveryRef = doc(db, 'deliveries', deliveryId);
-      await updateDoc(deliveryRef, {
-        ...deliveryData,
-        updatedAt: serverTimestamp()
-      });
+      console.log('Firebase Functions를 통한 납품 업데이트 시작:', { deliveryId, deliveryData });
+      
+      // Firebase Functions를 통해 업데이트
+      const result = await callFirebaseFunction('updateDelivery', { deliveryId, ...deliveryData });
+      
+      console.log('Firebase Functions를 통한 납품 업데이트 성공:', result);
+      return result;
     } catch (error) {
-      console.error('납품 업데이트 실패:', error);
+      console.error('Firebase Functions를 통한 납품 업데이트 실패:', error);
       throw error;
     }
   },

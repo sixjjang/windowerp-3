@@ -34,6 +34,7 @@ import {
   Alert,
   useMediaQuery,
   useTheme,
+  CircularProgress,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -45,21 +46,14 @@ import AddCircleIcon from '@mui/icons-material/AddCircle';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import * as XLSX from 'xlsx';
-import {
-  DragDropContext,
-  Droppable,
-  Draggable,
-  DroppableProvided,
-  DraggableProvided,
-  DropResult,
-} from 'react-beautiful-dnd';
+
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { optionService } from '../../utils/firebaseDataService';
 
 interface OptionItem {
-  id: number;
+  id?: string;
   vendor: string;
   optionName: string;
   productCode: string;
@@ -67,9 +61,10 @@ interface OptionItem {
   purchaseCost: number;
   details: string;
   optionType: string;
+  calculationMethod: string;
   note: string;
-  createdAt?: string;
-  updatedAt?: string;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 interface OptionValidation {
@@ -98,7 +93,8 @@ const optionHeaders: ColumnHeader[] = [
   { field: 'salePrice', label: '판매가' },
   { field: 'purchaseCost', label: '원가' },
   { field: 'details', label: '상세정보' },
-  { field: 'note', label: '적용타입' },
+  { field: 'optionType', label: '적용타입' },
+  { field: 'calculationMethod', label: '계산방식' },
 ];
 
 const sortKeys: (keyof OptionItem)[] = [
@@ -112,939 +108,707 @@ const sortKeys: (keyof OptionItem)[] = [
   'note',
 ];
 
-const initialOptions: OptionItem[] = [
-  {
-    id: 1,
-    vendor: 'A상사',
-    optionName: '방염',
-    productCode: 'FIRE001',
-    salePrice: 10000,
-    purchaseCost: 8000,
-    details: '방염 처리 옵션',
-    optionType: '커튼',
-    note: '',
-  },
-  {
-    id: 2,
-    vendor: 'B상사',
-    optionName: '방수',
-    productCode: 'WATER001',
-    salePrice: 12000,
-    purchaseCost: 9000,
-    details: '방수 처리 옵션',
-    optionType: '블라인드',
-    note: '',
-  },
-];
-
-const OPTION_STORAGE_KEY = 'erp_options';
-const OPTION_TYPES_STORAGE_KEY = 'erp_option_types';
-const DEBOUNCE_DELAY = 500; // 디바운스 딜레이 (ms)
-
-// 옵션 타입 기본값 - EstimateManagement와 일관되게 수정
+// 옵션 타입 기본값
 const defaultTabLabels = [
   '커튼옵션',
   '블라인드옵션',
   '커튼전동',
   '블라인드전동',
   '헌터옵션',
+  '시공옵션',
   '기타옵션',
 ];
 
-// 옵션 로드 함수 개선 - EstimateManagement와 일관되게 수정
-function loadOptions(): OptionItem[][] {
-  try {
-    const data = localStorage.getItem(OPTION_STORAGE_KEY);
-    if (!data) return [[], [], [], [], [], []];
-
-    const parsed = JSON.parse(data);
-    const optionTypes = loadOptionTypes();
-
-    // 2차원 배열이면 각 옵션에 updatedAt 추가
-    if (Array.isArray(parsed) && Array.isArray(parsed[0])) {
-      // 기존 2차원 배열이 새로운 순서와 다를 수 있으므로 재정렬
-      const reorderedOptions: OptionItem[][] = optionTypes.map(type => {
-        const typeWithoutOption = type.replace('옵션', '');
-        const allOptions = parsed.flat();
-        return allOptions
-          .filter((opt: any) => opt.optionType === typeWithoutOption)
-          .map((opt: any) => ({
-            ...opt,
-            updatedAt:
-              opt.updatedAt || opt.createdAt || new Date().toISOString(),
-          }));
-      });
-      return reorderedOptions;
-    }
-
-    // 1차원 배열이면 옵션 타입별로 분리하고 updatedAt 추가 (EstimateManagement와 동일한 순서)
-    return optionTypes.map(type => {
-      const typeWithoutOption = type.replace('옵션', '');
-      return parsed
-        .filter((o: OptionItem) => o.optionType === typeWithoutOption)
-        .map((opt: OptionItem) => ({
-          ...opt,
-          updatedAt: opt.updatedAt || opt.createdAt || new Date().toISOString(),
-        }));
-    });
-  } catch (error) {
-    console.error('옵션 로드 중 오류:', error);
-    return [[], [], [], [], [], []];
-  }
-}
-
-// 옵션 저장 함수 개선
-function saveOptions(options: OptionItem[][]): void {
-  try {
-    localStorage.setItem(OPTION_STORAGE_KEY, JSON.stringify(options));
-  } catch (error) {
-    console.error('옵션 저장 중 오류:', error);
-    alert('옵션 저장 중 오류가 발생했습니다.');
-  }
-}
-
-// 옵션 타입 마이그레이션 함수 추가
-function migrateOptionTypes(): void {
-  try {
-    const data = localStorage.getItem(OPTION_TYPES_STORAGE_KEY);
-    if (!data) return;
-
-    const oldTypes = JSON.parse(data);
-    const newTypes = [
-      '커튼옵션',
-      '블라인드옵션',
-      '커튼전동',
-      '블라인드전동',
-      '헌터옵션',
-      '기타옵션',
-    ];
-
-    // 기존 순서가 다르면 새로운 순서로 업데이트
-    if (JSON.stringify(oldTypes) !== JSON.stringify(newTypes)) {
-      saveOptionTypes(newTypes);
-      console.log('옵션 타입 순서가 새로운 순서로 마이그레이션되었습니다.');
-    }
-  } catch (error) {
-    console.error('옵션 타입 마이그레이션 중 오류:', error);
-  }
-}
-
-// 옵션 타입 로드 함수 개선 - 마이그레이션 포함
-function loadOptionTypes(): string[] {
-  try {
-    // 마이그레이션 실행
-    migrateOptionTypes();
-
-    const data = localStorage.getItem(OPTION_TYPES_STORAGE_KEY);
-    const types = data ? JSON.parse(data) : null;
-    return Array.isArray(types) && types.length > 0
-      ? types
-      : [...defaultTabLabels];
-  } catch (error) {
-    console.error('옵션 타입 로드 중 오류:', error);
-    return [...defaultTabLabels];
-  }
-}
-
-// 옵션 타입 저장 함수 개선
-function saveOptionTypes(types: string[]): void {
-  try {
-    localStorage.setItem(OPTION_TYPES_STORAGE_KEY, JSON.stringify(types));
-  } catch (error) {
-    console.error('옵션 타입 저장 중 오류:', error);
-    alert('옵션 타입 저장 중 오류가 발생했습니다.');
-  }
-}
-
-// 옵션 유효성 검사 함수
 function validateOption(option: OptionItem): OptionValidation {
-  // % 적용타입일 때는 판매가가 필요 없음
-  const isPercentType = option.note && option.note.includes('%');
-  
   return {
     vendor: option.vendor.trim().length > 0,
     optionName: option.optionName.trim().length > 0,
-    salePrice: isPercentType ? true : option.salePrice > 0,
+    salePrice: option.salePrice >= 0,
     optionType: option.optionType.trim().length > 0,
   };
 }
 
-const initialOption: OptionItem = {
-  id: 0,
-  vendor: '',
-  optionName: '',
-  productCode: '',
-  salePrice: 0,
-  purchaseCost: 0,
-  details: '',
-  optionType: '',
-  note: '',
-};
-
 const OptionManagement: React.FC = () => {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  
-  const [tab, setTab] = useState(0);
-  const [options, setOptions] = useState<OptionItem[][]>(() => loadOptions());
-  const [tabLabels, setTabLabels] = useState<string[]>(() => loadOptionTypes());
-  const [selectedOption, setSelectedOption] =
-    useState<OptionItem>(initialOption);
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  const [options, setOptions] = useState<OptionItem[]>([]);
+  const [selectedOption, setSelectedOption] = useState<OptionItem>({
+    vendor: '',
+    optionName: '',
+    productCode: '',
+    salePrice: 0,
+    purchaseCost: 0,
+    details: '',
+    optionType: '',
+    calculationMethod: '',
+    note: '',
+  });
   const [editMode, setEditMode] = useState(false);
   const [editIndex, setEditIndex] = useState<number | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [validation, setValidation] = useState<OptionValidation>(defaultValidation);
+  const [tabValue, setTabValue] = useState(0);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<keyof OptionItem | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [addTypeDialogOpen, setAddTypeDialogOpen] = useState(false);
-  const [newOptionType, setNewOptionType] = useState('');
-  const [validation, setValidation] =
-    useState<OptionValidation>(defaultValidation);
-  const [errorMessage, setErrorMessage] = useState<string>('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [optionTypes, setOptionTypes] = useState<string[]>(defaultTabLabels);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 디바운스된 저장 함수
-  const debouncedSave = useCallback((newOptions: OptionItem[][]) => {
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    saveTimeoutRef.current = setTimeout(() => {
-      saveOptions(newOptions);
-    }, DEBOUNCE_DELAY);
-  }, []);
-
-  // options가 바뀔 때마다 디바운스된 저장 실행
+  // Firebase에서 데이터 로드
   useEffect(() => {
-    debouncedSave(options);
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        console.log('Firebase에서 옵션 데이터 로드 시작');
+        
+        // 옵션 데이터 로드
+        const optionsData = await optionService.getOptions();
+        console.log('Firebase에서 가져온 원본 데이터:', optionsData);
+        
+        // 데이터 구조 검증 및 변환
+        const validatedOptions = optionsData.map((option: any) => {
+          console.log('개별 옵션 데이터:', option);
+          return {
+            id: option.id,
+            vendor: option.vendor || '',
+            optionName: option.optionName || '',
+            productCode: option.productCode || '',
+            salePrice: Number(option.salePrice) || 0,
+            purchaseCost: Number(option.purchaseCost) || 0,
+            details: option.details || '',
+            optionType: option.optionType || '',
+            calculationMethod: option.calculationMethod || '고정가',
+            note: option.note || '',
+            createdAt: option.createdAt,
+            updatedAt: option.updatedAt
+          };
+        });
+        
+        console.log('검증된 옵션 데이터:', validatedOptions);
+        setOptions(validatedOptions);
+        
+        console.log('Firebase 옵션 데이터 로드 완료:', {
+          options: validatedOptions.length,
+          optionsData: validatedOptions
+        });
+      } catch (error) {
+        console.error('Firebase 데이터 로드 실패:', error);
+        setError('데이터 로드에 실패했습니다. 인터넷 연결을 확인해주세요.');
+      } finally {
+        setLoading(false);
       }
     };
-  }, [options, debouncedSave]);
 
-  // tabLabels가 바뀔 때마다 localStorage에 저장
-  useEffect(() => {
-    saveOptionTypes(tabLabels);
-  }, [tabLabels]);
-
-  // 새로운 탭이 추가될 때 해당 탭의 옵션 배열도 추가
-  useEffect(() => {
-    if (options.length < tabLabels.length) {
-      const newOptions = [...options];
-      while (newOptions.length < tabLabels.length) {
-        newOptions.push([]);
-      }
-      setOptions(newOptions);
-    }
-  }, [tabLabels, options.length]);
-
-  // 탭이 변경될 때 해당 탭의 옵션 배열이 없으면 빈 배열로 초기화
-  useEffect(() => {
-    if (options[tab] === undefined) {
-      setOptions(prev => {
-        const newOptions = [...prev];
-        while (newOptions.length <= tab) {
-          newOptions.push([]);
-        }
-        return newOptions;
-      });
-    }
-  }, [tab, options]);
-
-  // tab이 tabLabels 범위를 벗어나면 0으로 설정
-  useEffect(() => {
-    if (tab >= tabLabels.length && tabLabels.length > 0) {
-      setTab(0);
-    }
-  }, [tab, tabLabels.length]);
-
-  // 컴포넌트 마운트 시 tabLabels가 유효한 배열이 되도록 보장
-  useEffect(() => {
-    if (!tabLabels || tabLabels.length === 0) {
-      setTabLabels([...defaultTabLabels]);
-    }
+    loadData();
   }, []);
 
-  // 컴포넌트 마운트 시 옵션 데이터 마이그레이션 및 재정렬
-  useEffect(() => {
-    const currentOptions = loadOptions();
-    const currentTabLabels = loadOptionTypes();
+  // 현재 탭의 옵션 타입
+  const getCurrentTabType = () => {
+    const tabLabel = optionTypes[tabValue];
+    console.log('현재 탭 라벨:', tabLabel, '탭 인덱스:', tabValue);
+    
+    // 시트명과 탭 제목이 동일하므로 매핑 불필요
+    console.log('옵션 타입:', tabLabel);
+    return tabLabel;
+  };
 
-    // 옵션 데이터가 새로운 순서와 다르면 재정렬
-    if (JSON.stringify(currentTabLabels) !== JSON.stringify(tabLabels)) {
-      setTabLabels(currentTabLabels);
-      setOptions(currentOptions);
-    }
-  }, []);
-
-  // 검색 필터 개선
-  const filteredOptions = useMemo(() => {
-    const currentOptions = options[tab] || [];
-    const searchTerm = search.trim().toLowerCase();
-
-    if (!searchTerm) return currentOptions;
-
-    return currentOptions.filter(o => {
-      return (
-        o.vendor.toLowerCase().includes(searchTerm) ||
-        o.optionName.toLowerCase().includes(searchTerm) ||
-        o.details.toLowerCase().includes(searchTerm) ||
-        o.optionType.toLowerCase().includes(searchTerm) ||
-        o.note.toLowerCase().includes(searchTerm) ||
-        o.salePrice.toString().includes(searchTerm) ||
-        o.purchaseCost.toString().includes(searchTerm)
-      );
+  // 현재 탭의 옵션들 필터링
+  const currentTabOptions = useMemo(() => {
+    const currentType = getCurrentTabType();
+    console.log('현재 탭 타입:', currentType);
+    console.log('전체 옵션들:', options);
+    
+    // 현재 탭 타입에 맞는 옵션들만 필터링
+    const filteredOptions = options.filter(option => {
+      const optionType = option.optionType || '';
+      const matches = optionType === currentType;
+      console.log(`옵션 "${option.optionName}" 타입: "${optionType}" vs 현재 타입: "${currentType}" -> ${matches}`);
+      return matches;
     });
-  }, [options, tab, search]);
+    
+    console.log(`타입 "${currentType}"에 해당하는 옵션 ${filteredOptions.length}개`);
+    return filteredOptions;
+  }, [options, tabValue, optionTypes]);
 
-  // 정렬 로직 개선
+  // 검색 필터링
+  const filteredOptions = useMemo(() => {
+    return currentTabOptions.filter(option =>
+      search === '' ||
+      option.optionName.toLowerCase().includes(search.toLowerCase()) ||
+      option.vendor.toLowerCase().includes(search.toLowerCase()) ||
+      option.productCode.toLowerCase().includes(search.toLowerCase()) ||
+      option.details.toLowerCase().includes(search.toLowerCase())
+    );
+  }, [currentTabOptions, search]);
+
+  // 정렬
   const sortedOptions = useMemo(() => {
     if (!sortBy) return filteredOptions;
-
+    
     return [...filteredOptions].sort((a, b) => {
-      const aValue = a[sortBy];
-      const bValue = b[sortBy];
-
-      if (typeof aValue === 'number' && typeof bValue === 'number') {
-        return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+      const aVal = a[sortBy];
+      const bVal = b[sortBy];
+      
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       }
-
-      const aStr = String(aValue).toLowerCase();
-      const bStr = String(bValue).toLowerCase();
-      return sortOrder === 'asc'
-        ? aStr.localeCompare(bStr)
-        : bStr.localeCompare(aStr);
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      return 0;
     });
   }, [filteredOptions, sortBy, sortOrder]);
 
-  // Modal Handlers
   const handleOpenModal = () => setIsModalOpen(true);
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
-    setSelectedOption(initialOption);
+    setSelectedOption({
+      vendor: '',
+      optionName: '',
+      productCode: '',
+      salePrice: 0,
+      purchaseCost: 0,
+      details: '',
+      optionType: '',
+      calculationMethod: '',
+      note: '',
+    });
     setEditMode(false);
     setEditIndex(null);
     setValidation(defaultValidation);
-    setErrorMessage('');
   };
 
   const handleAddNewClick = () => {
+    setSelectedOption({
+      vendor: '',
+      optionName: '',
+      productCode: '',
+      salePrice: 0,
+      purchaseCost: 0,
+      details: '',
+      optionType: getCurrentTabType(),
+      calculationMethod: '',
+      note: '',
+    });
     setEditMode(false);
-    setSelectedOption(initialOption);
+    setEditIndex(null);
+    setValidation(defaultValidation);
     handleOpenModal();
   };
 
-  // 옵션 추가/수정 핸들러 개선
   const handleAddOption = async () => {
-    const currentTabType = getCurrentTabType();
-    const optionWithType = {
-      ...selectedOption,
-      optionType: currentTabType,
-    };
+    const newValidation = validateOption(selectedOption);
+    setValidation(newValidation);
 
-    const validationResult = validateOption(optionWithType);
-    setValidation(validationResult);
-
-    if (!Object.values(validationResult).every(Boolean)) {
-      setErrorMessage('필수 항목을 모두 입력해주세요.');
+    if (!Object.values(newValidation).every(Boolean)) {
+      alert('필수 항목을 모두 입력해주세요.');
       return;
     }
 
-    const newOption: OptionItem = {
-      ...optionWithType,
-      id: editMode ? selectedOption.id : Date.now(),
-      updatedAt: new Date().toISOString(),
-      createdAt: editMode ? selectedOption.createdAt : new Date().toISOString(),
-    };
-
-    const updatedOptions = options.map((arr, i) => {
-      if (i === tab) {
-        if (editMode && editIndex !== null) {
-          const currentTabOptions = [...arr];
-          currentTabOptions[editIndex] = newOption;
-          return currentTabOptions;
-        } else {
-          return [...arr, newOption];
-        }
-      }
-      return arr;
-    });
-
-    setOptions(updatedOptions);
-
-    // localStorage에 저장
-    saveOptions(updatedOptions);
-
-    // Firebase에 자동 저장
     try {
       console.log('Firebase에 옵션 데이터 저장 시작');
-      if (editMode && editIndex !== null) {
+      
+      if (editMode && selectedOption.id) {
         // 기존 옵션 업데이트
-        await optionService.updateOption(newOption.id.toString(), newOption);
+        await optionService.updateOption(selectedOption.id, selectedOption);
+        setOptions(prev => prev.map(o => o.id === selectedOption.id ? selectedOption : o));
       } else {
         // 새 옵션 저장
-        await optionService.saveOption(newOption);
+        const newOptionId = await optionService.saveOption(selectedOption);
+        const newOption = { ...selectedOption, id: newOptionId };
+        setOptions(prev => [...prev, newOption]);
       }
+      
       console.log('Firebase에 옵션 데이터 저장 완료');
+      handleCloseModal();
     } catch (error) {
       console.error('Firebase 저장 실패:', error);
-      alert('옵션 정보가 저장되었지만 Firebase 동기화에 실패했습니다. 인터넷 연결을 확인해주세요.');
+      alert('옵션 저장에 실패했습니다. 인터넷 연결을 확인해주세요.');
     }
-
-    handleCloseModal();
   };
 
-  // 입력 핸들러 개선
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    const newOption = {
-      ...selectedOption,
-      [name]:
-        name === 'salePrice' || name === 'purchaseCost'
-          ? value === ''
-            ? 0
-            : Number(value)
-          : value,
-    };
-    setSelectedOption(newOption);
+    const { name, value, type } = e.target;
+    const newValue = type === 'number' ? Number(value) : value;
+    
+    setSelectedOption(prev => ({
+      ...prev,
+      [name]: newValue,
+    }));
 
     // 실시간 유효성 검사
-    if (name in defaultValidation) {
-      const currentTabType = getCurrentTabType();
-      const optionWithType = {
-        ...newOption,
-        optionType: currentTabType,
-      };
-      setValidation(prev => ({
-        ...prev,
-        [name]: validateOption(optionWithType)[name as keyof OptionValidation],
-      }));
-    }
+    const updatedOption = { ...selectedOption, [name]: newValue };
+    const newValidation = validateOption(updatedOption);
+    setValidation(newValidation);
+  };
 
-    // 에러 메시지 초기화
-    if (errorMessage) {
-      setErrorMessage('');
-    }
+  const handleSelectChange = (e: any) => {
+    const { name, value } = e.target;
+    setSelectedOption(prev => ({
+      ...prev,
+      [name]: value,
+    }));
+
+    // 실시간 유효성 검사
+    const updatedOption = { ...selectedOption, [name]: value };
+    const newValidation = validateOption(updatedOption);
+    setValidation(newValidation);
   };
 
   const handleEdit = (idx: number) => {
-    const currentOptions = sortedOptions;
-    if (idx >= 0 && idx < currentOptions.length) {
-      const originalIndex = options[tab].findIndex(
-        opt => opt.id === currentOptions[idx].id
-      );
-      setSelectedOption(currentOptions[idx]);
-      setEditMode(true);
-      setEditIndex(originalIndex);
-      handleOpenModal();
-    }
+    setSelectedOption(sortedOptions[idx]);
+    setEditMode(true);
+    setEditIndex(idx);
+    setValidation(defaultValidation);
+    handleOpenModal();
   };
 
-  const handleCopy = (idx: number) => {
-    const currentOptions = sortedOptions;
-    if (idx >= 0 && idx < currentOptions.length) {
-      const optionToCopy = currentOptions[idx];
-      const copy = {
+  const handleCopy = async (idx: number) => {
+    try {
+      const optionToCopy = sortedOptions[idx];
+      const newOption = { 
         ...optionToCopy,
-        id: Date.now(),
-        optionName: `${optionToCopy.optionName} (복사본)`,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        optionType: getCurrentTabType(), // 현재 탭의 타입으로 설정
+        calculationMethod: optionToCopy.calculationMethod || '고정가'
       };
-      setOptions(prev =>
-        prev.map((arr, i) => (i === tab ? [...arr, copy] : arr))
-      );
+      delete newOption.id; // 새 ID 생성 위해 제거
+      
+      const newOptionId = await optionService.saveOption(newOption);
+      const savedOption = { ...newOption, id: newOptionId };
+      setOptions(prev => [...prev, savedOption]);
+      
+      console.log(`옵션 복사 완료: ${optionToCopy.optionName} -> 타입: ${getCurrentTabType()}`);
+    } catch (error) {
+      console.error('옵션 복사 실패:', error);
+      alert('옵션 복사에 실패했습니다.');
     }
   };
 
-  const handleDelete = (idx: number) => {
-    const currentOptions = sortedOptions;
-    if (idx >= 0 && idx < currentOptions.length) {
-      if (window.confirm('정말로 이 옵션을 삭제하시겠습니까?')) {
-        const optionToDeleteId = currentOptions[idx].id;
-        setOptions(prev =>
-          prev.map((arr, i) =>
-            i === tab ? arr.filter(opt => opt.id !== optionToDeleteId) : arr
-          )
-        );
+  const handleDelete = async (idx: number) => {
+    const optionToDelete = sortedOptions[idx];
+    if (!optionToDelete.id) return;
+    
+    if (window.confirm('정말로 이 옵션을 삭제하시겠습니까?')) {
+      try {
+        await optionService.deleteOption(optionToDelete.id);
+        setOptions(prev => prev.filter(o => o.id !== optionToDelete.id));
+      } catch (error) {
+        console.error('옵션 삭제 실패:', error);
+        alert('옵션 삭제에 실패했습니다.');
       }
     }
   };
 
-  // 현재 탭 라벨을 안전하게 가져오는 함수
-  const getCurrentTabLabel = () => {
-    return (tabLabels && tabLabels[tab]) || defaultTabLabels[tab] || '';
-  };
-
-  // 현재 탭 라벨에서 '옵션'을 제거한 값을 안전하게 가져오는 함수
-  const getCurrentTabType = () => {
-    const label = getCurrentTabLabel();
-    return label && typeof label === 'string' ? label.replace('옵션', '') : '';
-  };
-
-  // Excel Upload 개선 - 옵션 타입 순서에 맞게 수정
-  const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // 파일 확장자 검증
-    const fileExtension = file.name.split('.').pop()?.toLowerCase();
-    if (!['xlsx', 'xls'].includes(fileExtension || '')) {
-      setErrorMessage('엑셀 파일(.xlsx, .xls)만 업로드 가능합니다.');
-      return;
-    }
-
+    
+    console.log('파일 선택됨:', file.name, '크기:', file.size);
+    
     const reader = new FileReader();
-    reader.onload = evt => {
+    reader.onload = async (evt) => {
+      const data = evt.target?.result;
+      if (!data) {
+        console.error('파일 읽기 실패');
+        alert('파일을 읽을 수 없습니다.');
+        return;
+      }
+      
       try {
-        const bstr = evt.target?.result;
-        if (!bstr) {
-          setErrorMessage('파일을 읽을 수 없습니다.');
-          return;
-        }
-
-        const wb = XLSX.read(bstr, { type: 'binary' });
-        const sheetNames = wb.SheetNames;
+        console.log('엑셀 파일 파싱 시작');
+        const workbook = XLSX.read(data, { type: 'binary' });
+        const sheetNames = workbook.SheetNames;
+        
+        console.log('발견된 시트 목록:', sheetNames);
         
         if (sheetNames.length === 0) {
-          setErrorMessage('엑셀 파일에 시트가 없습니다.');
+          alert('엑셀 파일에 시트가 없습니다.');
           return;
         }
-
-        console.log('엑셀 파일의 시트들:', sheetNames);
-
-        // 각 시트별로 데이터 처리
-        const allValidatedData: { [key: string]: OptionItem[] } = {};
-        let totalUploadedCount = 0;
-        let newTabTypes: string[] = [];
-
-        sheetNames.forEach((sheetName, sheetIndex) => {
+        
+        let totalUploaded = 0;
+        let totalSheetsProcessed = 0;
+        const uploadedOptions: OptionItem[] = [];
+        const newOptionTypes: string[] = [];
+        
+        // 모든 시트를 순회하며 옵션 데이터 처리
+        for (const sheetName of sheetNames) {
+          console.log(`\n=== 시트 "${sheetName}" 처리 시작 ===`);
+          
           try {
-            const ws = wb.Sheets[sheetName];
-            const data: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
-
-            if (data.length <= 1) {
-              console.log(`시트 "${sheetName}"에 데이터가 없습니다.`);
-              return;
+            const sheet = workbook.Sheets[sheetName];
+            if (!sheet) {
+              console.log(`시트 "${sheetName}"가 비어있습니다.`);
+              continue;
             }
-
-            // 헤더 제거하고 데이터만 추출
-            const dataRows = data.slice(1);
-
-            // 데이터 검증 및 변환
-            const validatedData: OptionItem[] = (
-              dataRows.map((row: any, index) => {
-                // 행이 배열 형태인지 확인
-                if (!Array.isArray(row)) {
-                  throw new Error(
-                    `시트 "${sheetName}" 행 ${index + 2}: 데이터 형식이 올바르지 않습니다.`
-                  );
-                }
-
-                // 빈 행은 건너뛰기
-                const isEmptyRow = row.every(
-                  (cell: any) =>
-                    cell === null ||
-                    cell === undefined ||
-                    cell === '' ||
-                    (typeof cell === 'string' && cell.trim() === '')
-                );
-
-                if (isEmptyRow) {
-                  return null;
-                }
-
-                // 필수 필드 검증
-                const vendor = String(row[0] || '').trim();
-                const optionName = String(row[1] || '').trim();
-
-                if (!vendor || !optionName) {
-                  throw new Error(
-                    `시트 "${sheetName}" 행 ${index + 2}: 공급업체와 옵션명은 필수 항목입니다.`
-                  );
-                }
-
-                // 시트명을 옵션 타입으로 사용 (기존 탭과 매칭)
-                let optionType = sheetName;
-                
-                // 기존 탭 라벨과 매칭 시도
-                const existingTabLabels = loadOptionTypes();
-                const matchingTab = existingTabLabels.find(tab => 
-                  tab === sheetName || 
-                  tab.replace('옵션', '') === sheetName ||
-                  tab === sheetName.replace('옵션', '') + '옵션'
-                );
-                
-                if (matchingTab) {
-                  optionType = matchingTab.replace('옵션', '');
-                } else {
-                  // 새로운 탭 타입인 경우
-                  if (!newTabTypes.includes(sheetName)) {
-                    newTabTypes.push(sheetName);
-                  }
-                  optionType = sheetName;
-                }
-
-                return {
-                  id: Date.now() + sheetIndex * 1000 + index, // 고유 ID 생성
-                  vendor: vendor,
-                  optionName: optionName,
-                  productCode: String(row[2] || '').trim(),
-                  salePrice: Number(row[3]) || 0,
-                  purchaseCost: Number(row[4]) || 0,
-                  details: String(row[5] || '').trim(),
-                  optionType: optionType,
-                  note: String(row[6] || '').trim(),
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                };
-              }) as any[]
-            ).filter((item: any): item is OptionItem => item !== null);
-
-            if (validatedData.length > 0) {
-              allValidatedData[sheetName] = validatedData;
-              totalUploadedCount += validatedData.length;
-              console.log(`시트 "${sheetName}"에서 ${validatedData.length}개 옵션 로드됨`);
-            }
-          } catch (error) {
-            console.error(`시트 "${sheetName}" 처리 중 오류:`, error);
-            throw new Error(`시트 "${sheetName}" 처리 중 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-          }
-        });
-
-        if (totalUploadedCount === 0) {
-          setErrorMessage('업로드할 수 있는 유효한 데이터가 없습니다.');
-          return;
-        }
-
-        // 새로운 탭 타입이 있으면 추가
-        if (newTabTypes.length > 0) {
-          const currentTabTypes = loadOptionTypes();
-          const updatedTabTypes = [...currentTabTypes];
-          
-          newTabTypes.forEach(newType => {
-            const tabLabel = newType.endsWith('옵션') ? newType : newType + '옵션';
-            if (!updatedTabTypes.includes(tabLabel)) {
-              updatedTabTypes.push(tabLabel);
-            }
-          });
-          
-          saveOptionTypes(updatedTabTypes);
-          setTabLabels(updatedTabTypes);
-          console.log('새로운 탭 타입 추가됨:', newTabTypes);
-        }
-
-        // 기존 옵션 데이터와 새로운 데이터 병합
-        setOptions(prevOptions => {
-          const updatedOptions = [...prevOptions];
-          const currentTabTypes = loadOptionTypes();
-          
-          // 각 시트의 데이터를 해당하는 탭에 추가
-          Object.entries(allValidatedData).forEach(([sheetName, data]) => {
-            // 시트명을 탭 인덱스로 변환
-            const tabIndex = currentTabTypes.findIndex(tab => 
-              tab === sheetName || 
-              tab.replace('옵션', '') === sheetName ||
-              tab === sheetName.replace('옵션', '') + '옵션'
-            );
             
-            if (tabIndex !== -1) {
-              // 기존 탭에 데이터 추가
-              if (updatedOptions[tabIndex]) {
-                updatedOptions[tabIndex] = [...updatedOptions[tabIndex], ...data];
-              } else {
-                updatedOptions[tabIndex] = [...data];
-              }
-            } else {
-              // 새로운 탭인 경우 배열 끝에 추가
-              updatedOptions.push(data);
+            // 시트의 범위 확인
+            const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
+            console.log(`시트 "${sheetName}" 범위:`, range);
+            
+            // 헤더가 있는지 확인 (최소 2행 필요: 헤더 + 데이터)
+            if (range.e.r < 1) {
+              console.log(`시트 "${sheetName}"에 데이터가 없습니다.`);
+              continue;
             }
-          });
-          
-          console.log('최종 병합된 옵션:', updatedOptions);
-          return updatedOptions;
+            
+            // JSON으로 변환 (헤더 포함)
+            const json: any[] = XLSX.utils.sheet_to_json(sheet, { 
+              header: 1,
+              defval: '', // 빈 셀을 빈 문자열로 처리
+              raw: false  // 모든 값을 문자열로 처리
+            });
+            
+            console.log(`시트 "${sheetName}" JSON 데이터:`, json);
+            
+            if (json.length <= 1) {
+              console.log(`시트 "${sheetName}"에 데이터 행이 없습니다.`);
+              continue;
+            }
+            
+            const [header, ...rows] = json;
+            console.log(`시트 "${sheetName}" 헤더:`, header);
+            console.log(`시트 "${sheetName}" 데이터 행 수:`, rows.length);
+            
+            // 각 행을 옵션으로 변환
+            const sheetOptions: OptionItem[] = [];
+            for (let i = 0; i < rows.length; i++) {
+              const row = rows[i];
+              console.log(`행 ${i + 1}:`, row);
+              
+                             // 빈 행 건너뛰기
+               if (!row || row.every((cell: any) => !cell || cell.toString().trim() === '')) {
+                 console.log(`행 ${i + 1}은 빈 행입니다. 건너뜁니다.`);
+                 continue;
+               }
+              
+              const option: OptionItem = {
+                vendor: (row[0] || '').toString().trim(),
+                optionName: (row[1] || '').toString().trim(),
+                productCode: (row[2] || '').toString().trim(),
+                salePrice: Number(row[3]) || 0,
+                purchaseCost: Number(row[4]) || 0,
+                details: (row[5] || '').toString().trim(),
+                optionType: sheetName, // 시트명을 옵션 타입으로 강제 설정
+                calculationMethod: (row[6] || '고정가').toString().trim(),
+                note: (row[7] || '').toString().trim(),
+              };
+              
+              console.log(`변환된 옵션:`, option);
+              
+              // 유효한 데이터만 저장 (공급업체와 옵션명이 필수)
+              if (option.vendor && option.optionName) {
+                sheetOptions.push(option);
+                console.log(`유효한 옵션으로 추가됨: ${option.vendor} - ${option.optionName}`);
+              } else {
+                console.log(`유효하지 않은 옵션 건너뜀: 공급업체="${option.vendor}", 옵션명="${option.optionName}"`);
+              }
+            }
+            
+            console.log(`시트 "${sheetName}"에서 ${sheetOptions.length}개 유효한 옵션 발견`);
+            
+            // Firebase에 옵션들 저장
+            for (const option of sheetOptions) {
+              try {
+                await optionService.saveOption(option);
+                uploadedOptions.push(option);
+                totalUploaded++;
+                console.log(`옵션 저장 성공: ${option.vendor} - ${option.optionName}`);
+              } catch (saveError) {
+                console.error(`옵션 저장 실패: ${option.vendor} - ${option.optionName}`, saveError);
+              }
+            }
+            
+            // 새로운 옵션 타입이면 목록에 추가
+            if (!optionTypes.includes(sheetName)) {
+              newOptionTypes.push(sheetName);
+              console.log(`새 옵션 타입 "${sheetName}" 발견`);
+            }
+            
+            totalSheetsProcessed++;
+            console.log(`=== 시트 "${sheetName}" 처리 완료 ===\n`);
+            
+          } catch (sheetError) {
+            console.error(`시트 "${sheetName}" 처리 중 오류:`, sheetError);
+          }
+        }
+        
+        // 새로운 옵션 타입들을 한 번에 추가
+        if (newOptionTypes.length > 0) {
+          setOptionTypes(prev => [...prev, ...newOptionTypes]);
+          console.log(`새 옵션 타입들 추가됨:`, newOptionTypes);
+        }
+        
+        // 데이터 다시 로드
+        console.log('Firebase에서 업데이트된 데이터 로드 중...');
+        const updatedOptions = await optionService.getOptions();
+        setOptions(updatedOptions as OptionItem[]);
+        
+        console.log('엑셀 업로드 완료:', {
+          totalSheets: sheetNames.length,
+          totalSheetsProcessed,
+          totalUploaded,
+          uploadedOptions: uploadedOptions.length,
+          newOptionTypes
         });
-
-        setErrorMessage('');
         
-        // 성공 메시지
-        const successMessage = `엑셀 업로드가 완료되었습니다.\n` +
-          `총 ${totalUploadedCount}개의 옵션이 업로드되었습니다.\n` +
-          `처리된 시트: ${Object.keys(allValidatedData).join(', ')}` +
-          (newTabTypes.length > 0 ? `\n새로 추가된 탭: ${newTabTypes.join(', ')}` : '');
+        const resultMessage = `엑셀 업로드 완료!\n\n` +
+          `📊 처리 결과:\n` +
+          `• 총 시트 수: ${sheetNames.length}개\n` +
+          `• 처리된 시트: ${totalSheetsProcessed}개\n` +
+          `• 업로드된 옵션: ${totalUploaded}개\n` +
+          `• 새 옵션 타입: ${newOptionTypes.length}개\n\n` +
+          `📋 시트별 옵션 타입이 자동으로 설정되었습니다.`;
         
-        alert(successMessage);
+        alert(resultMessage);
         
       } catch (error) {
-        console.error('엑셀 업로드 오류:', error);
-        setErrorMessage(
-          `엑셀 업로드 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`
-        );
+        console.error('엑셀 업로드 실패:', error);
+        alert(`엑셀 업로드에 실패했습니다.\n\n오류: ${error}\n\n파일 형식을 확인해주세요.`);
       }
     };
-
+    
     reader.onerror = () => {
-      setErrorMessage('파일을 읽는 중 오류가 발생했습니다.');
+      console.error('파일 읽기 오류');
+      alert('파일을 읽는 중 오류가 발생했습니다.');
     };
-
+    
     reader.readAsBinaryString(file);
-
-    // 파일 입력 초기화
-    if (e.target) {
-      e.target.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Excel Download (All Tabs)
   const handleExcelDownload = () => {
-    try {
-      const wb = XLSX.utils.book_new();
-      const optionTypes = loadOptionTypes();
-      
-      optionTypes.forEach((tabLabel, index) => {
-        const currentOptions = options[index] || [];
-        if (currentOptions.length > 0) {
-          const data = currentOptions.map(o => [
-            o.vendor,
-            o.optionName,
-            o.productCode,
-            o.salePrice,
-            o.purchaseCost,
-            o.details,
-            o.note,
-          ]);
-          const ws = XLSX.utils.aoa_to_sheet([
-            optionHeaders.map(h => h.label),
-            ...data,
-          ]);
-          XLSX.utils.book_append_sheet(wb, ws, tabLabel);
-        }
-      });
-      
-      XLSX.writeFile(wb, `옵션관리_전체_${new Date().toISOString().split('T')[0]}.xlsx`);
-    } catch (error) {
-      console.error('엑셀 다운로드 오류:', error);
-      setErrorMessage('엑셀 다운로드 중 오류가 발생했습니다.');
-    }
+    const data = currentTabOptions.map(option => [
+      option.vendor,
+      option.optionName,
+      option.productCode,
+      option.salePrice,
+      option.purchaseCost,
+      option.details,
+      option.optionType,
+      option.note,
+    ]);
+    
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['공급업체', '옵션명', '제품코드', '판매가', '원가', '상세정보', '적용타입', '비고'],
+      ...data
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '옵션목록');
+    XLSX.writeFile(wb, `옵션목록_${getCurrentTabType()}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Excel Template Download (All Tabs)
   const handleTemplateDownload = () => {
-    try {
-      const wb = XLSX.utils.book_new();
-      const optionTypes = loadOptionTypes();
-      
-      optionTypes.forEach((tabLabel) => {
-        const ws = XLSX.utils.aoa_to_sheet([optionHeaders.map(h => h.label)]);
-        XLSX.utils.book_append_sheet(wb, ws, tabLabel);
-      });
-      
-      XLSX.writeFile(wb, `옵션관리_템플릿_${new Date().toISOString().split('T')[0]}.xlsx`);
-    } catch (error) {
-      console.error('템플릿 다운로드 오류:', error);
-      setErrorMessage('템플릿 다운로드 중 오류가 발생했습니다.');
-    }
+    const wb = XLSX.utils.book_new();
+    
+    // 옵션 관리 탭 제목과 동일한 시트명 사용
+    const sheetNames = ['커튼옵션', '블라인드옵션', '커튼전동', '블라인드전동', '헌터옵션', '기타옵션'];
+    
+    sheetNames.forEach(sheetName => {
+      const ws = XLSX.utils.aoa_to_sheet([
+        ['공급업체', '옵션명', '제품코드', '판매가', '원가', '상세정보', '적용타입', '비고'],
+        ['예시업체', '예시옵션', 'EX001', 50000, 30000, '예시 상세정보', sheetName, '예시 비고']
+      ]);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+    
+    XLSX.writeFile(wb, '옵션목록_다중시트_양식.xlsx');
   };
 
-  // Reset
-  const handleReset = () => {
-    if (
-      window.confirm(
-        '모든 데이터를 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.'
-      )
-    ) {
-      localStorage.removeItem(OPTION_STORAGE_KEY);
-      localStorage.removeItem(OPTION_TYPES_STORAGE_KEY);
-      setOptions([[], [], [], [], [], []]);
-      setTabLabels([...defaultTabLabels]);
-      setSelectedOption(initialOption);
-      setEditMode(false);
-      setEditIndex(null);
+  const handleReset = async () => {
+    try {
+      // 사용자 확인
+      if (!window.confirm('모든 옵션 데이터를 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+        return;
+      }
+
+      console.log('옵션 데이터 초기화 시작');
+      
+      // Firebase에서 모든 옵션 데이터를 한 번에 삭제
+      await optionService.deleteAllOptions();
+      
+      // 로컬 상태 초기화
+      setOptions([]);
       setSearch('');
       setSortBy(null);
       setSortOrder('asc');
-      setTab(0);
-      setErrorMessage('');
+      setTabValue(0);
+      setSelectedOption({
+        vendor: '',
+        optionName: '',
+        productCode: '',
+        salePrice: 0,
+        purchaseCost: 0,
+        details: '',
+        optionType: '',
+        calculationMethod: '',
+        note: '',
+      });
+      setEditMode(false);
+      setEditIndex(null);
+      setIsModalOpen(false);
+      setValidation(defaultValidation);
+      
+      console.log('옵션 데이터 초기화 완료');
+      alert('모든 옵션 데이터가 초기화되었습니다.');
+    } catch (error) {
+      console.error('옵션 데이터 초기화 실패:', error);
+      alert('옵션 데이터 초기화에 실패했습니다.');
     }
   };
 
-  // 정렬 핸들러
   const handleSort = (key: keyof OptionItem) => {
     if (sortBy === key) {
-      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
       setSortBy(key);
       setSortOrder('asc');
     }
   };
 
-  // 드래그 앤 드롭
-  const onDragEnd = (result: DropResult) => {
-    if (!result.destination) return;
-    setOptions(prev =>
-      prev.map((arr, i) => {
-        if (i !== tab) return arr;
-        const reordered = Array.from(arr);
-        const [removed] = reordered.splice(result.source.index, 1);
-        reordered.splice(result.destination!.index, 0, removed);
-        return reordered;
-      })
-    );
-  };
 
-  // 새로운 옵션 타입 추가
+
   const handleAddOptionType = () => {
-    if (!newOptionType.trim()) {
-      setErrorMessage('옵션 타입 이름을 입력해주세요.');
-      return;
+    const newType = prompt('새 옵션 타입을 입력하세요:');
+    if (newType && !optionTypes.includes(newType)) {
+      setOptionTypes(prev => [...prev, newType]);
     }
-
-    const newType = `${newOptionType.trim()}옵션`;
-    if (tabLabels.includes(newType)) {
-      setErrorMessage('이미 존재하는 옵션 타입입니다.');
-      return;
-    }
-
-    setTabLabels(prev => [...prev, newType]);
-    setOptions(prev => [...prev, []]);
-    setNewOptionType('');
-    setAddTypeDialogOpen(false);
-    setErrorMessage('');
   };
 
-  // 옵션 타입 삭제
   const handleDeleteOptionType = (index: number) => {
-    if (tabLabels.length <= 3) {
-      setErrorMessage('기본 옵션 타입은 삭제할 수 없습니다.');
+    if (window.confirm('이 옵션 타입을 삭제하시겠습니까?')) {
+      setOptionTypes(prev => prev.filter((_, i) => i !== index));
+      if (tabValue >= index) {
+        setTabValue(Math.max(0, tabValue - 1));
+      }
+    }
+  };
+
+  // 옵션 타입 일괄 수정 함수
+  const handleFixOptionTypes = async () => {
+    if (!window.confirm('모든 옵션의 타입을 탭 제목에 맞게 수정하시겠습니까?\n\n이 작업은 시간이 걸릴 수 있습니다.')) {
       return;
     }
 
-    if (window.confirm(`"${tabLabels[index]}" 옵션 타입을 삭제하시겠습니까?`)) {
-      const newTabLabels = tabLabels.filter((_, i) => i !== index);
-      const newOptions = options.filter((_, i) => i !== index);
-      setTabLabels(newTabLabels);
-      setOptions(newOptions);
-
-      // 현재 탭이 삭제된 탭이었다면 첫 번째 탭으로 이동
-      if (tab >= index) {
-        setTab(Math.max(0, tab - 1));
+    try {
+      console.log('옵션 타입 일괄 수정 시작');
+      
+      // 모든 옵션을 가져와서 타입을 수정
+      const allOptions = await optionService.getOptions();
+      let updatedCount = 0;
+      
+      for (const option of allOptions as OptionItem[]) {
+        if (option.id) {
+          // 옵션명이나 상세정보에서 타입을 추측
+          let newType = '기타옵션'; // 기본값
+          
+          const optionName = option.optionName.toLowerCase();
+          const details = option.details.toLowerCase();
+          
+          if (optionName.includes('커튼') || details.includes('커튼')) {
+            if (optionName.includes('전동') || details.includes('전동')) {
+              newType = '커튼전동';
+            } else {
+              newType = '커튼옵션';
+            }
+          } else if (optionName.includes('블라인드') || details.includes('블라인드')) {
+            if (optionName.includes('전동') || details.includes('전동')) {
+              newType = '블라인드전동';
+            } else {
+              newType = '블라인드옵션';
+            }
+          } else if (optionName.includes('헌터') || details.includes('헌터')) {
+            newType = '헌터옵션';
+          }
+          
+          // 타입이 다르면 업데이트
+          if (option.optionType !== newType) {
+            await optionService.updateOption(option.id, { ...option, optionType: newType });
+            updatedCount++;
+            console.log(`옵션 타입 수정: ${option.optionName} (${option.optionType} → ${newType})`);
+          }
+        }
       }
-      setErrorMessage('');
+      
+      // 데이터 다시 로드
+      const updatedOptions = await optionService.getOptions();
+      setOptions(updatedOptions as OptionItem[]);
+      
+      console.log(`옵션 타입 일괄 수정 완료: ${updatedCount}개 수정됨`);
+      alert(`옵션 타입 일괄 수정 완료!\n\n수정된 옵션: ${updatedCount}개`);
+      
+    } catch (error) {
+      console.error('옵션 타입 일괄 수정 실패:', error);
+      alert('옵션 타입 수정에 실패했습니다.');
     }
   };
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress />
+        <Typography variant="h6" sx={{ ml: 2 }}>
+          Firebase에서 데이터를 불러오는 중...
+        </Typography>
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <Alert severity="error" sx={{ maxWidth: 600 }}>
+          <Typography variant="h6">데이터 로드 실패</Typography>
+          <Typography>{error}</Typography>
+          <Button 
+            variant="contained" 
+            onClick={() => window.location.reload()} 
+            sx={{ mt: 2 }}
+          >
+            다시 시도
+          </Button>
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        옵션 관리
-      </Typography>
-
-      {/* 에러 메시지 */}
-      {errorMessage && (
-        <Alert
-          severity="error"
-          sx={{ mb: 2 }}
-          onClose={() => setErrorMessage('')}
-        >
-          {errorMessage}
-        </Alert>
-      )}
-
-      {/* 탭 메뉴 */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+    <Grid container spacing={2}>
+      <Grid item xs={12}>
         <Box
           sx={{
             display: 'flex',
-            justifyContent: 'space-between',
+            gap: 1,
+            flexWrap: 'wrap',
             alignItems: 'center',
           }}
         >
-          <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-            {tabLabels.map((label, i) => (
-              <Tab key={i} label={label} />
-            ))}
-          </Tabs>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              size="small"
-              startIcon={<AddCircleIcon />}
-              onClick={() => setAddTypeDialogOpen(true)}
-            >
-              옵션 타입 추가
-            </Button>
-            {tabLabels.length > 3 && (
-              <Button
-                size="small"
-                startIcon={<RemoveCircleIcon />}
-                onClick={() => handleDeleteOptionType(tab)}
-                color="error"
-              >
-                현재 타입 삭제
-              </Button>
-            )}
-          </Box>
-        </Box>
-      </Box>
-
-      {/* 액션 버튼들 */}
-      <Grid container spacing={2} sx={{ mb: 2 }}>
-        <Grid item xs={12} sm="auto">
           <Button
             variant="contained"
             startIcon={<AddIcon />}
             onClick={handleAddNewClick}
           >
-            새 옵션 추가
+            옵션 등록
           </Button>
-        </Grid>
-        <Grid item xs={12} sm>
-          <TextField
-            fullWidth
-            label="검색"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            InputProps={{
-              endAdornment: search && (
-                <IconButton size="small" onClick={() => setSearch('')}>
-                  <ClearIcon />
-                </IconButton>
-              ),
-            }}
-          />
-        </Grid>
-        <Grid item xs={12} sm="auto">
-          <FormControl sx={{ minWidth: 120 }}>
-            <InputLabel>정렬 기준</InputLabel>
-            <Select
-              value={sortBy || ''}
-              onChange={e => setSortBy(e.target.value as keyof OptionItem)}
-            >
-              <MenuItem value="">없음</MenuItem>
-              <MenuItem value="vendor">공급업체</MenuItem>
-              <MenuItem value="optionName">옵션명</MenuItem>
-              <MenuItem value="productCode">제품코드</MenuItem>
-              <MenuItem value="salePrice">판매가</MenuItem>
-              <MenuItem value="purchaseCost">원가</MenuItem>
-              <MenuItem value="updatedAt">수정일</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid
-          item
-          xs={12}
-          sm="auto"
-          sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}
-        >
           <Button
             variant="contained"
             color="success"
             startIcon={<FileUploadIcon />}
-            onClick={() => fileInputRef.current?.click()}
+            component="label"
           >
-            통합 엑셀 업로드
+            옵션 업로드
+            <input
+              type="file"
+              accept=".xlsx"
+              hidden
+              ref={fileInputRef}
+              onChange={handleExcelUpload}
+            />
           </Button>
           <Button
             variant="contained"
@@ -1052,7 +816,7 @@ const OptionManagement: React.FC = () => {
             startIcon={<FileDownloadIcon />}
             onClick={handleExcelDownload}
           >
-            전체 엑셀 다운로드
+            옵션 다운로드
           </Button>
           <Button
             variant="outlined"
@@ -1060,7 +824,7 @@ const OptionManagement: React.FC = () => {
             startIcon={<FileDownloadIcon />}
             onClick={handleTemplateDownload}
           >
-            전체 양식 다운로드
+            양식 다운로드
           </Button>
           <Button
             variant="outlined"
@@ -1070,669 +834,478 @@ const OptionManagement: React.FC = () => {
           >
             초기화
           </Button>
-        </Grid>
-      </Grid>
-
-      {/* 숨겨진 파일 입력 */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        style={{ display: 'none' }}
-        accept=".xlsx,.xls"
-        onChange={handleExcelUpload}
-      />
-
-      {/* 옵션 목록 */}
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead>
-            <TableRow sx={{ height: 32 }}>
-              <TableCell sx={{ p: 0.5 }}>공급업체</TableCell>
-              <TableCell sx={{ p: 0.5 }}>옵션명</TableCell>
-              <TableCell sx={{ p: 0.5 }}>제품코드</TableCell>
-              <TableCell sx={{ p: 0.5 }}>판매가</TableCell>
-              <TableCell sx={{ p: 0.5 }}>원가</TableCell>
-              <TableCell sx={{ p: 0.5 }}>상세정보</TableCell>
-              <TableCell sx={{ p: 0.5 }}>적용타입</TableCell>
-              <TableCell sx={{ p: 0.5 }}>타입</TableCell>
-              <TableCell sx={{ p: 0.5 }}>작업</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {sortedOptions.map((option, index) => (
-              <TableRow key={option.id} sx={{ height: 32 }}>
-                <TableCell sx={{ p: 0.5 }}>{option.vendor}</TableCell>
-                <TableCell sx={{ p: 0.5 }}>{option.optionName}</TableCell>
-                <TableCell sx={{ p: 0.5 }}>{option.productCode}</TableCell>
-                <TableCell sx={{ p: 0.5 }}>
-                  {option.salePrice.toLocaleString()}
-                </TableCell>
-                <TableCell sx={{ p: 0.5 }}>
-                  {option.purchaseCost.toLocaleString()}
-                </TableCell>
-                <TableCell sx={{ p: 0.5 }}>{option.details}</TableCell>
-                <TableCell sx={{ p: 0.5 }}>{option.note}</TableCell>
-                <TableCell sx={{ p: 0.5 }}>{option.optionType}</TableCell>
-                <TableCell sx={{ p: 0.5 }}>
-                  <IconButton size="small" onClick={() => handleEdit(index)}>
-                    <EditIcon />
-                  </IconButton>
-                  <IconButton size="small" onClick={() => handleCopy(index)}>
-                    <AddIcon />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    onClick={() => handleDelete(index)}
-                    color="error"
-                  >
-                    <DeleteIcon />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      {/* 옵션 타입 추가 다이얼로그 */}
-      <Dialog
-        open={addTypeDialogOpen}
-        onClose={() => setAddTypeDialogOpen(false)}
-        fullScreen={isMobile}
-        PaperProps={{
-          sx: {
-            ...(isMobile && {
-              margin: 0,
-              borderRadius: 0,
-              height: '100vh',
-              maxHeight: '100vh',
-            }),
-          },
-        }}
-      >
-        <DialogTitle
-          sx={{
-            ...(isMobile && {
-              backgroundColor: theme.palette.background.paper,
-              borderBottom: `1px solid ${theme.palette.divider}`,
-              padding: 2,
-            }),
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {isMobile && (
-              <IconButton
-                onClick={() => setAddTypeDialogOpen(false)}
-                sx={{ mr: 1 }}
-              >
-                <ArrowBackIcon />
-              </IconButton>
-            )}
-            <Typography variant={isMobile ? 'h6' : 'h5'}>
-              새 옵션 타입 추가
-            </Typography>
-          </Box>
-        </DialogTitle>
-        <DialogContent
-          sx={{
-            ...(isMobile && {
-              padding: 2,
-              flex: 1,
-              overflow: 'auto',
-            }),
-          }}
-        >
-          <TextField
-            autoFocus
-            margin="dense"
-            label="옵션 타입 이름"
-            fullWidth
-            value={newOptionType}
-            onChange={e => setNewOptionType(e.target.value)}
-            onKeyPress={e => {
-              if (e.key === 'Enter') {
-                handleAddOptionType();
+          <Button
+            variant="outlined"
+            color="info"
+            onClick={async () => {
+              try {
+                const testOptions = [
+                  {
+                    vendor: '테스트업체1',
+                    optionName: '커튼로드',
+                    productCode: 'CT001',
+                    salePrice: 50000,
+                    purchaseCost: 30000,
+                    details: '커튼 설치용 로드',
+                    optionType: '커튼',
+                    calculationMethod: '고정가',
+                    note: '테스트 데이터'
+                  },
+                  {
+                    vendor: '테스트업체2',
+                    optionName: '블라인드로드',
+                    productCode: 'BL001',
+                    salePrice: 40000,
+                    purchaseCost: 25000,
+                    details: '블라인드 설치용 로드',
+                    optionType: '블라인드',
+                    calculationMethod: '고정가',
+                    note: '테스트 데이터'
+                  }
+                ];
+                
+                for (const option of testOptions) {
+                  await optionService.saveOption(option);
+                }
+                
+                // 데이터 다시 로드
+                const updatedOptions = await optionService.getOptions();
+                setOptions(updatedOptions as OptionItem[]);
+                
+                alert('테스트 데이터가 추가되었습니다.');
+              } catch (error) {
+                console.error('테스트 데이터 추가 실패:', error);
+                alert('테스트 데이터 추가에 실패했습니다.');
               }
             }}
-            size={isMobile ? 'medium' : 'small'}
-            sx={{
-              ...(isMobile && {
-                fontSize: '1rem',
-                '& .MuiInputBase-input': {
-                  fontSize: '1rem',
-                  padding: '16px 14px',
-                },
-              }),
-            }}
-          />
-        </DialogContent>
-        <DialogActions
-          sx={{
-            ...(isMobile && {
-              padding: 2,
-              backgroundColor: theme.palette.background.paper,
-              borderTop: `1px solid ${theme.palette.divider}`,
-            }),
-          }}
-        >
+          >
+            테스트 데이터 추가
+          </Button>
           <Button
-            onClick={() => {
-              setAddTypeDialogOpen(false);
-              setNewOptionType('');
-              setErrorMessage('');
-            }}
-            size={isMobile ? 'large' : 'medium'}
-            sx={{
-              ...(isMobile && {
-                fontSize: '1rem',
-                padding: '12px 24px',
-                minWidth: '80px',
-              }),
-            }}
+            variant="outlined"
+            color="warning"
+            onClick={handleFixOptionTypes}
+            sx={{ ml: 1 }}
           >
-            취소
+            옵션 타입 수정
           </Button>
-          <Button 
-            onClick={handleAddOptionType} 
-            variant="contained"
-            size={isMobile ? 'large' : 'medium'}
-            sx={{
-              ...(isMobile && {
-                fontSize: '1rem',
-                padding: '12px 24px',
-                minWidth: '80px',
-              }),
-            }}
-          >
-            추가
-          </Button>
-        </DialogActions>
-      </Dialog>
+          <TextField
+            size="small"
+            placeholder="검색 (옵션명, 공급업체, 제품코드)"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            sx={{ minWidth: 220 }}
+          />
+        </Box>
+      </Grid>
 
-      {/* 옵션 추가/수정 모달 */}
-      <Dialog
-        open={isModalOpen}
-        onClose={handleCloseModal}
-        maxWidth="md"
+      <Grid item xs={12}>
+        <Paper sx={{ 
+          width: '100%', 
+          display: 'flex', 
+          alignItems: 'center', 
+          mb: 2,
+          backgroundColor: 'var(--surface-color)',
+          color: 'var(--text-color)'
+        }}>
+          <Tabs
+            value={tabValue}
+            onChange={(e, newValue) => setTabValue(newValue)}
+            variant="scrollable"
+            scrollButtons="auto"
+            sx={{ 
+              borderBottom: 1, 
+              borderColor: 'var(--border-color)', 
+              flex: 1,
+              '& .MuiTab-root': {
+                color: 'var(--text-color)',
+              },
+              '& .Mui-selected': {
+                color: 'var(--primary-color)',
+              }
+            }}
+          >
+            {optionTypes.map((type, idx) => (
+              <Tab key={type} label={type} />
+            ))}
+          </Tabs>
+          <IconButton onClick={handleAddOptionType} color="primary" sx={{ ml: 1 }}>
+            <AddIcon />
+          </IconButton>
+        </Paper>
+      </Grid>
+
+      {loading && (
+        <Grid item xs={12}>
+          <Paper sx={{ 
+            p: 4, 
+            textAlign: 'center',
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)'
+          }}>
+            <CircularProgress sx={{ mb: 2 }} />
+            <Typography variant="h6" color="var(--text-secondary-color)" gutterBottom>
+              데이터를 불러오는 중...
+            </Typography>
+          </Paper>
+        </Grid>
+      )}
+
+      {error && (
+        <Grid item xs={12}>
+          <Alert severity="error" sx={{ mb: 2 }}>
+            <Typography variant="body1">{error}</Typography>
+          </Alert>
+        </Grid>
+      )}
+
+      {!loading && !error && currentTabOptions.length === 0 && (
+        <Grid item xs={12}>
+          <Paper sx={{ 
+            p: 4, 
+            textAlign: 'center',
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)'
+          }}>
+            <Typography variant="h6" color="var(--text-secondary-color)" gutterBottom>
+              등록된 옵션이 없습니다
+            </Typography>
+            <Typography variant="body2" color="var(--text-secondary-color)">
+              옵션을 등록하거나 엑셀 파일을 업로드해주세요.
+            </Typography>
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" color="var(--text-secondary-color)">
+                현재 탭: {optionTypes[tabValue]} | 전체 옵션 수: {options.length}개
+              </Typography>
+            </Box>
+          </Paper>
+        </Grid>
+      )}
+
+      <Grid item xs={12}>
+        <TableContainer component={Paper} sx={{
+          backgroundColor: 'var(--surface-color)',
+          '& .MuiPaper-root': {
+            backgroundColor: 'var(--surface-color)',
+          }
+        }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow sx={{ 
+                height: 40,
+                backgroundColor: 'var(--background-color)'
+              }}>
+                {optionHeaders.map((header, idx) => (
+                  <TableCell
+                    key={header.field}
+                    onClick={() => handleSort(sortKeys[idx])}
+                    sx={{
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      maxWidth: 140,
+                      fontWeight: 'bold',
+                      fontSize: '1rem',
+                      p: 1,
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      color: 'var(--text-color)',
+                      backgroundColor: 'var(--background-color)',
+                    }}
+                    title={header.label}
+                    align="center"
+                  >
+                    {header.label}
+                    {sortBy === sortKeys[idx] && (sortOrder === 'asc' ? ' ▲' : ' ▼')}
+                  </TableCell>
+                ))}
+                <TableCell sx={{ 
+                  p: 1, 
+                  fontWeight: 'bold', 
+                  fontSize: '1rem', 
+                  whiteSpace: 'nowrap',
+                  color: 'var(--text-color)',
+                  backgroundColor: 'var(--background-color)',
+                }} align="center">작업</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {sortedOptions.map((option, idx) => (
+                <TableRow
+                  key={option.id || `option-${idx}`}
+                  sx={{
+                    background: editIndex === idx ? 'var(--primary-color)20' : 'var(--surface-color)',
+                    height: 40,
+                    fontSize: '0.95rem',
+                    color: 'var(--text-color)',
+                    '&:hover': {
+                      background: 'var(--hover-color)',
+                    },
+                  }}
+                >
+                  <TableCell sx={{ 
+                    p: 1, 
+                    whiteSpace: 'nowrap', 
+                    maxWidth: 140, 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis',
+                    color: 'var(--text-color)'
+                  }} align="center">
+                    {option.vendor}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    p: 1, 
+                    whiteSpace: 'nowrap', 
+                    maxWidth: 140, 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis',
+                    color: 'var(--text-color)'
+                  }} align="center">
+                    {option.optionName}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    p: 1, 
+                    whiteSpace: 'nowrap', 
+                    maxWidth: 140, 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis',
+                    color: 'var(--text-color)'
+                  }} align="center">
+                    {option.productCode}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    p: 1, 
+                    whiteSpace: 'nowrap', 
+                    maxWidth: 140, 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis',
+                    color: 'var(--text-color)'
+                  }} align="center">
+                    {option.salePrice.toLocaleString()}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    p: 1, 
+                    whiteSpace: 'nowrap', 
+                    maxWidth: 140, 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis',
+                    color: 'var(--text-color)'
+                  }} align="center">
+                    {option.purchaseCost.toLocaleString()}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    p: 1, 
+                    whiteSpace: 'nowrap', 
+                    maxWidth: 140, 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis',
+                    color: 'var(--text-color)'
+                  }} align="center">
+                    {option.details}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    p: 1, 
+                    whiteSpace: 'nowrap', 
+                    maxWidth: 140, 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis',
+                    color: 'var(--text-color)'
+                  }} align="center">
+                    {option.optionType}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    p: 1, 
+                    whiteSpace: 'nowrap', 
+                    maxWidth: 140, 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis',
+                    color: 'var(--text-color)'
+                  }} align="center">
+                    {option.calculationMethod}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    p: 1, 
+                    whiteSpace: 'nowrap',
+                    color: 'var(--text-color)'
+                  }} align="center">
+                    <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleEdit(idx)}
+                        sx={{ color: 'primary.main' }}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleCopy(idx)}
+                        sx={{ color: 'info.main' }}
+                      >
+                        <AddIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleDelete(idx)}
+                        sx={{ color: 'error.main' }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Grid>
+
+      {/* 옵션 등록/수정 모달 */}
+      <Dialog 
+        open={isModalOpen} 
+        onClose={handleCloseModal} 
+        maxWidth="md" 
         fullWidth
-        fullScreen={isMobile}
         PaperProps={{
           sx: {
-            ...(isMobile && {
-              margin: 0,
-              borderRadius: 0,
-              height: '100vh',
-              maxHeight: '100vh',
-            }),
-          },
+            backgroundColor: 'var(--background-color)',
+            color: 'var(--text-color)',
+          }
         }}
       >
-        <DialogTitle
-          sx={{
-            ...(isMobile && {
-              backgroundColor: theme.palette.background.paper,
-              borderBottom: `1px solid ${theme.palette.divider}`,
-              padding: 2,
-            }),
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {isMobile && (
-              <IconButton
-                onClick={handleCloseModal}
-                sx={{ mr: 1 }}
-              >
-                <ArrowBackIcon />
-              </IconButton>
-            )}
-            <Typography variant={isMobile ? 'h6' : 'h5'}>
-              {editMode ? '옵션 수정' : '새 옵션 추가'}
-            </Typography>
-          </Box>
+        <DialogTitle sx={{ color: 'var(--text-color)' }}>
+          {editMode ? '옵션 수정' : '옵션 등록'}
         </DialogTitle>
-        <DialogContent
-          sx={{
-            ...(isMobile && {
-              padding: 2,
-              flex: 1,
-              overflow: 'auto',
-            }),
-          }}
-        >
-          {/* 적용타입 계산 방식 설명 */}
-          <Paper
-            sx={{
-              p: isMobile ? 1.5 : 2,
-              mb: isMobile ? 1.5 : 2,
-              backgroundColor: '#f5f5f5',
-              border: '1px solid #e0e0e0',
-            }}
-          >
-            <Typography
-              variant="subtitle2"
-              sx={{ 
-                fontWeight: 'bold', 
-                mb: 1, 
-                color: '#1976d2',
-                ...(isMobile && {
-                  fontSize: '0.875rem',
-                }),
-              }}
-            >
-              💰 적용타입별 금액 계산 방식
-            </Typography>
-            <Grid container spacing={isMobile ? 0.5 : 1}>
-              <Grid item xs={12} sm={6}>
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    mb: 0.5,
-                    ...(isMobile && {
-                      fontSize: '0.75rem',
-                    }),
-                  }}
-                >
-                  <strong>📏 폭당:</strong> 단가 × 폭수 × 수량
-                </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{ 
-                    color: '#666', 
-                    display: 'block', 
-                    mb: 1,
-                    ...(isMobile && {
-                      fontSize: '0.7rem',
-                    }),
-                  }}
-                >
-                  예시: 방염처리 5,000원/폭, 제품 3폭 → 5,000 × 3 = 15,000원
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    mb: 0.5,
-                    ...(isMobile && {
-                      fontSize: '0.75rem',
-                    }),
-                  }}
-                >
-                  <strong>📐 m당:</strong> 단가 × 가로(mm) / 1000 × 수량
-                </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{ 
-                    color: '#666', 
-                    display: 'block', 
-                    mb: 1,
-                    ...(isMobile && {
-                      fontSize: '0.7rem',
-                    }),
-                  }}
-                >
-                  예시: 라인 2,000원/m, 가로 2,500mm → 2,000 × 2.5 = 5,000원
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    mb: 0.5,
-                    ...(isMobile && {
-                      fontSize: '0.75rem',
-                    }),
-                  }}
-                >
-                  <strong>➕ 추가:</strong> 단가 × 수량
-                </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{ 
-                    color: '#666', 
-                    display: 'block', 
-                    mb: 1,
-                    ...(isMobile && {
-                      fontSize: '0.7rem',
-                    }),
-                  }}
-                >
-                  예시: 설치비 10,000원 → 10,000원 (고정)
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    mb: 0.5,
-                    ...(isMobile && {
-                      fontSize: '0.75rem',
-                    }),
-                  }}
-                >
-                  <strong>✅ 포함:</strong> 0원
-                </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{ 
-                    color: '#666', 
-                    display: 'block', 
-                    mb: 1,
-                    ...(isMobile && {
-                      fontSize: '0.7rem',
-                    }),
-                  }}
-                >
-                  예시: 기본 부속품 등 → 무료
-                </Typography>
-              </Grid>
-              <Grid item xs={12}>
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    mb: 0.5,
-                    ...(isMobile && {
-                      fontSize: '0.75rem',
-                    }),
-                  }}
-                >
-                  <strong>📊 m²당:</strong> 단가 × 면적(m²) × 수량
-                </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{ 
-                    color: '#666', 
-                    display: 'block',
-                    ...(isMobile && {
-                      fontSize: '0.7rem',
-                    }),
-                  }}
-                >
-                  예시: 특수처리 3,000원/m², 면적 2.5m² → 3,000 × 2.5 = 7,500원
-                </Typography>
-              </Grid>
+        <DialogContent sx={{ color: 'var(--text-color)' }}>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="공급업체"
+                name="vendor"
+                value={selectedOption.vendor}
+                onChange={handleInputChange}
+                required
+                error={!validation.vendor}
+                helperText={!validation.vendor ? '공급업체를 입력하세요' : ''}
+              />
             </Grid>
-          </Paper>
-
-          <Paper sx={{ 
-            p: isMobile ? 1.5 : 2, 
-            mt: isMobile ? 1.5 : 2, 
-            boxShadow: 'none', 
-            border: 'none' 
-          }}>
-            <Grid container spacing={isMobile ? 1.5 : 2}>
-              <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  required
-                  label="공급업체"
-                  name="vendor"
-                  value={selectedOption.vendor}
-                  onChange={handleInputChange}
-                  error={!validation.vendor}
-                  helperText={!validation.vendor && '공급업체를 입력해주세요'}
-                  size={isMobile ? 'medium' : 'small'}
-                  sx={{
-                    ...(isMobile && {
-                      '& .MuiInputBase-input': {
-                        fontSize: '1rem',
-                        padding: '16px 14px',
-                      },
-                    }),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  required
-                  label="옵션명"
-                  name="optionName"
-                  value={selectedOption.optionName}
-                  onChange={handleInputChange}
-                  error={!validation.optionName}
-                  helperText={!validation.optionName && '옵션명을 입력해주세요'}
-                  size={isMobile ? 'medium' : 'small'}
-                  sx={{
-                    ...(isMobile && {
-                      '& .MuiInputBase-input': {
-                        fontSize: '1rem',
-                        padding: '16px 14px',
-                      },
-                    }),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  label="제품코드"
-                  name="productCode"
-                  value={selectedOption.productCode}
-                  onChange={handleInputChange}
-                  placeholder="제품코드를 입력하세요"
-                  size={isMobile ? 'medium' : 'small'}
-                  sx={{
-                    ...(isMobile && {
-                      '& .MuiInputBase-input': {
-                        fontSize: '1rem',
-                        padding: '16px 14px',
-                      },
-                    }),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  required={!selectedOption.note?.includes('%')}
-                  type="number"
-                  label="판매가"
-                  name="salePrice"
-                  value={
-                    selectedOption.salePrice === 0
-                      ? ''
-                      : selectedOption.salePrice
-                  }
-                  onChange={handleInputChange}
-                  error={!validation.salePrice}
-                  helperText={
-                    !validation.salePrice && !selectedOption.note?.includes('%')
-                      ? '판매가를 입력해주세요'
-                      : selectedOption.note?.includes('%')
-                      ? '% 적용타입에서는 판매가가 필요 없습니다'
-                      : ''
-                  }
-                  size={isMobile ? 'medium' : 'small'}
-                  sx={{
-                    ...(isMobile && {
-                      '& .MuiInputBase-input': {
-                        fontSize: '1rem',
-                        padding: '16px 14px',
-                      },
-                    }),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  type="number"
-                  label="원가"
-                  name="purchaseCost"
-                  value={
-                    selectedOption.purchaseCost === 0
-                      ? ''
-                      : selectedOption.purchaseCost
-                  }
-                  onChange={handleInputChange}
-                  size={isMobile ? 'medium' : 'small'}
-                  sx={{
-                    ...(isMobile && {
-                      '& .MuiInputBase-input': {
-                        fontSize: '1rem',
-                        padding: '16px 14px',
-                      },
-                    }),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  label="상세정보"
-                  name="details"
-                  value={selectedOption.details}
-                  onChange={handleInputChange}
-                  size={isMobile ? 'medium' : 'small'}
-                  sx={{
-                    ...(isMobile && {
-                      '& .MuiInputBase-input': {
-                        fontSize: '1rem',
-                        padding: '16px 14px',
-                      },
-                    }),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <FormControl fullWidth size={isMobile ? 'medium' : 'small'}>
-                  <InputLabel>적용타입</InputLabel>
-                  <Select
-                    name="note"
-                    value={selectedOption.note}
-                    onChange={(e) => {
-                      const { name, value } = e.target;
-                      const newOption = {
-                        ...selectedOption,
-                        [name]: value,
-                      };
-                      setSelectedOption(newOption);
-                      
-                      // 실시간 유효성 검사
-                      const currentTabType = getCurrentTabType();
-                      const optionWithType = {
-                        ...newOption,
-                        optionType: currentTabType,
-                      };
-                      setValidation(prev => ({
-                        ...prev,
-                        salePrice: validateOption(optionWithType).salePrice,
-                      }));
-                      
-                      // 에러 메시지 초기화
-                      if (errorMessage) {
-                        setErrorMessage('');
-                      }
-                    }}
-                    label="적용타입"
-                    sx={{
-                      ...(isMobile && {
-                        '& .MuiSelect-select': {
-                          fontSize: '1rem',
-                          padding: '16px 14px',
-                        },
-                      }),
-                    }}
-                  >
-                    <MenuItem value="폭당">폭당</MenuItem>
-                    <MenuItem value="m당">m당</MenuItem>
-                    <MenuItem value="추가">추가</MenuItem>
-                    <MenuItem value="포함">포함</MenuItem>
-                    <MenuItem value="m2당">m2당</MenuItem>
-                    <MenuItem value="5%">5%</MenuItem>
-                    <MenuItem value="10%">10%</MenuItem>
-                    <MenuItem value="15%">15%</MenuItem>
-                    <MenuItem value="20%">20%</MenuItem>
-                    <MenuItem value="25%">25%</MenuItem>
-                    <MenuItem value="30%">30%</MenuItem>
-                    <MenuItem value="직접입력">직접입력</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              {selectedOption.note === '직접입력' && (
-                <Grid item xs={12} md={4}>
-                  <TextField
-                    fullWidth
-                    label="퍼센트 입력"
-                    name="customPercent"
-                    placeholder="예: 12%"
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value.endsWith('%') || value === '') {
-                        const newOption = {
-                          ...selectedOption,
-                          note: value
-                        };
-                        setSelectedOption(newOption);
-                        
-                        // 실시간 유효성 검사
-                        const currentTabType = getCurrentTabType();
-                        const optionWithType = {
-                          ...newOption,
-                          optionType: currentTabType,
-                        };
-                        setValidation(prev => ({
-                          ...prev,
-                          salePrice: validateOption(optionWithType).salePrice,
-                        }));
-                      }
-                    }}
-                    size={isMobile ? 'medium' : 'small'}
-                    sx={{
-                      ...(isMobile && {
-                        '& .MuiInputBase-input': {
-                          fontSize: '1rem',
-                          padding: '16px 14px',
-                        },
-                      }),
-                    }}
-                  />
-                </Grid>
-              )}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="옵션명"
+                name="optionName"
+                value={selectedOption.optionName}
+                onChange={handleInputChange}
+                required
+                error={!validation.optionName}
+                helperText={!validation.optionName ? '옵션명을 입력하세요' : ''}
+              />
             </Grid>
-          </Paper>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="제품코드"
+                name="productCode"
+                value={selectedOption.productCode}
+                onChange={handleInputChange}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="판매가"
+                name="salePrice"
+                type="number"
+                value={selectedOption.salePrice}
+                onChange={handleInputChange}
+                required
+                error={!validation.salePrice}
+                helperText={!validation.salePrice ? '올바른 판매가를 입력하세요' : ''}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="원가"
+                name="purchaseCost"
+                type="number"
+                value={selectedOption.purchaseCost}
+                onChange={handleInputChange}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth required error={!validation.optionType}>
+                <InputLabel>적용타입</InputLabel>
+                <Select
+                  name="optionType"
+                  value={selectedOption.optionType}
+                  onChange={handleSelectChange}
+                  label="적용타입"
+                >
+                  {optionTypes.map(type => (
+                    <MenuItem key={type} value={type.replace('옵션', '').replace('전동', '')}>
+                      {type}
+                    </MenuItem>
+                  ))}
+                </Select>
+                {!validation.optionType && (
+                  <Typography variant="caption" color="error">
+                    적용타입을 선택하세요
+                  </Typography>
+                )}
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>계산방식</InputLabel>
+                <Select
+                  name="calculationMethod"
+                  value={selectedOption.calculationMethod}
+                  onChange={handleSelectChange}
+                  label="계산방식"
+                >
+                  <MenuItem value="고정가">고정가</MenuItem>
+                  <MenuItem value="면적당">면적당</MenuItem>
+                  <MenuItem value="미터당">미터당</MenuItem>
+                  <MenuItem value="개당">개당</MenuItem>
+                  <MenuItem value="세트당">세트당</MenuItem>
+                  <MenuItem value="퍼센트">퍼센트</MenuItem>
+                  <MenuItem value="기타">기타</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="상세정보"
+                name="details"
+                value={selectedOption.details}
+                onChange={handleInputChange}
+                multiline
+                rows={2}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="비고"
+                name="note"
+                value={selectedOption.note}
+                onChange={handleInputChange}
+                multiline
+                rows={2}
+              />
+            </Grid>
+          </Grid>
         </DialogContent>
-        <DialogActions
-          sx={{
-            ...(isMobile && {
-              padding: 2,
-              backgroundColor: theme.palette.background.paper,
-              borderTop: `1px solid ${theme.palette.divider}`,
-            }),
-          }}
-        >
-          <Button 
-            onClick={handleCloseModal}
-            size={isMobile ? 'large' : 'medium'}
-            sx={{
-              ...(isMobile && {
-                fontSize: '1rem',
-                padding: '12px 24px',
-                minWidth: '80px',
-              }),
-            }}
-          >
-            취소
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleAddOption}
-            startIcon={editMode ? <EditIcon /> : <AddIcon />}
-            size={isMobile ? 'large' : 'medium'}
-            sx={{
-              ...(isMobile && {
-                fontSize: '1rem',
-                padding: '12px 24px',
-                minWidth: '80px',
-              }),
-            }}
-          >
-            {editMode ? '수정' : '추가'}
+        <DialogActions sx={{ color: 'var(--text-color)' }}>
+          <Button onClick={handleCloseModal} sx={{ color: 'var(--text-color)' }}>취소</Button>
+          <Button onClick={handleAddOption} variant="contained">
+            {editMode ? '수정' : '등록'}
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </Grid>
   );
 };
 

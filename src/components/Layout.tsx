@@ -62,9 +62,11 @@ import {
   Close as CloseIcon,
   Lock as LockIcon,
   Person as PersonIcon,
+  Palette as PaletteIcon,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import NotificationPanel from './NotificationPanel';
+import ThemeSettings from './ThemeSettings';
 import {
   useNotificationStore,
   initializeNotificationStore,
@@ -76,91 +78,95 @@ import { API_BASE } from '../utils/auth';
 const StyledDrawer = styled(Drawer)(({ theme }) => ({
   '& .MuiDrawer-paper': {
     width: 280,
-    background: 'linear-gradient(180deg, #2A2A2A 0%, #1A1A1A 100%)',
-    borderRight: '1px solid rgba(255, 107, 157, 0.2)',
+    background: theme.palette.mode === 'dark' 
+      ? 'linear-gradient(180deg, #1A1A1A 0%, #2D2D2D 100%)'
+      : 'linear-gradient(180deg, #FFFFFF 0%, #F8F9FA 100%)',
+    borderRight: `1px solid ${theme.palette.mode === 'dark' 
+      ? `${theme.palette.primary.main}20` 
+      : `${theme.palette.primary.main}10`}`,
     backdropFilter: 'blur(10px)',
-    boxShadow: '4px 0 20px rgba(255, 107, 157, 0.15)',
+    boxShadow: theme.palette.mode === 'dark'
+      ? `4px 0 20px ${theme.palette.primary.main}15`
+      : '4px 0 20px rgba(0, 0, 0, 0.1)',
     position: 'relative',
-    '&::before': {
-      content: '""',
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: `
-        radial-gradient(circle at 20% 20%, rgba(255, 107, 157, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 80% 80%, rgba(255, 71, 87, 0.1) 0%, transparent 50%)
-      `,
-      pointerEvents: 'none',
-    },
   },
 }));
 
 const StyledAppBar = styled(AppBar)(({ theme }) => ({
-  background: 'linear-gradient(90deg, #2A2A2A 0%, #1A1A1A 100%)',
+  background: theme.palette.mode === 'dark'
+    ? 'linear-gradient(90deg, #1A1A1A 0%, #2D2D2D 100%)'
+    : 'linear-gradient(90deg, #FFFFFF 0%, #F8F9FA 100%)',
   backdropFilter: 'blur(10px)',
-  borderBottom: '1px solid rgba(255, 107, 157, 0.2)',
-  boxShadow: '0 2px 20px rgba(255, 107, 157, 0.15)',
+  borderBottom: `1px solid ${theme.palette.mode === 'dark'
+    ? `${theme.palette.primary.main}20`
+    : `${theme.palette.primary.main}10`}`,
+  boxShadow: theme.palette.mode === 'dark'
+    ? `0 2px 20px ${theme.palette.primary.main}15`
+    : '0 2px 20px rgba(0, 0, 0, 0.1)',
   position: 'relative',
-  '&::before': {
-    content: '""',
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: `
-      radial-gradient(circle at 10% 50%, rgba(255, 107, 157, 0.1) 0%, transparent 50%),
-      radial-gradient(circle at 90% 50%, rgba(255, 71, 87, 0.1) 0%, transparent 50%)
-    `,
-    pointerEvents: 'none',
+  '& .MuiToolbar-root': {
+    color: theme.palette.mode === 'dark' ? '#FFFFFF' : '#000000',
   },
 }));
 
-const StyledListItemButton = styled(ListItemButton)(({ theme }) => ({
-  margin: '0 1px',
-  minHeight: 22,
-  borderRadius: 12,
-  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-  '&:hover': {
-    background: 'rgba(255, 107, 157, 0.1)',
-    transform: 'translateX(8px)',
-    boxShadow: '0 4px 20px rgba(255, 107, 157, 0.2)',
-  },
-  '&.Mui-selected': {
-    background: 'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)',
-    color: 'white',
-    boxShadow: '0 4px 20px rgba(255, 107, 157, 0.3)',
+const StyledListItemButton = styled(ListItemButton)(({ theme }) => {
+  // 현재 테마의 primary와 secondary 색상 가져오기
+  const primaryColor = theme.palette.primary.main;
+  const secondaryColor = theme.palette.secondary.main;
+  
+  return {
+    margin: '0 1px',
+    minHeight: 22,
+    borderRadius: 12,
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    color: theme.palette.mode === 'dark' ? '#FFFFFF' : '#000000',
     '&:hover': {
-      background: 'linear-gradient(135deg, #FFB3D1 0%, #FF6B7A 100%)',
+      background: theme.palette.mode === 'dark' 
+        ? `${primaryColor}15` 
+        : `${primaryColor}10`,
+      transform: 'translateX(8px)',
+      boxShadow: theme.palette.mode === 'dark'
+        ? `0 4px 20px ${primaryColor}20`
+        : `0 4px 20px ${primaryColor}15`,
     },
-  },
-}));
+    '&.Mui-selected': {
+      background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+      color: 'white',
+      boxShadow: theme.palette.mode === 'dark'
+        ? `0 4px 20px ${primaryColor}30`
+        : `0 4px 20px ${primaryColor}25`,
+      '&:hover': {
+        background: `linear-gradient(135deg, ${secondaryColor} 0%, ${primaryColor} 100%)`,
+      },
+    },
+  };
+});
 
 const StyledListItemIcon = styled(ListItemIcon)(({ theme }) => ({
   minWidth: 40,
   color: 'inherit',
   '& .MuiSvgIcon-root': {
     fontSize: '1.5rem',
-    filter: 'drop-shadow(0 2px 4px rgba(255, 107, 157, 0.3))',
+    filter: 'drop-shadow(0 2px 4px rgba(255, 255, 255, 0.2))',
   },
 }));
 
 const LogoContainer = styled(Box)(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
-  padding: '20px 16px',
-  marginBottom: '16px',
+  padding: '24px 20px',
+  marginBottom: '20px',
+  color: 'var(--text-color)',
+  position: 'relative',
   '&::after': {
     content: '""',
     position: 'absolute',
     bottom: 0,
-    left: '16px',
-    right: '16px',
+    left: '20px',
+    right: '20px',
     height: '1px',
-    background:
-      'linear-gradient(90deg, transparent 0%, rgba(255, 107, 157, 0.3) 50%, transparent 100%)',
+    background: 'linear-gradient(90deg, transparent 0%, var(--border-color) 50%, transparent 100%)',
+    opacity: 0.6,
   },
 }));
 
@@ -170,7 +176,9 @@ const MenuSection = styled(Box)(({ theme }) => ({
     padding: '8px 16px',
     fontSize: '0.8125rem',
     fontWeight: 600,
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: theme.palette.mode === 'dark' 
+      ? 'rgba(255, 255, 255, 0.7)' 
+      : 'rgba(0, 0, 0, 0.6)',
     textTransform: 'uppercase',
     letterSpacing: '1px',
   },
@@ -181,10 +189,10 @@ const FloatingDecoration = styled(Box)(({ theme }) => ({
   width: '60px',
   height: '60px',
   background:
-    'linear-gradient(135deg, rgba(255, 107, 157, 0.1) 0%, rgba(255, 71, 87, 0.1) 100%)',
+    'linear-gradient(135deg, var(--hover-color) 0%, var(--border-color) 100%)',
   borderRadius: '50%',
   backdropFilter: 'blur(10px)',
-  border: '1px solid rgba(255, 107, 157, 0.2)',
+  border: '1px solid var(--border-color)',
   animation: 'float 6s ease-in-out infinite',
   '&:nth-of-type(1)': {
     top: '20%',
@@ -387,6 +395,7 @@ const Layout: React.FC = () => {
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [refreshUserListFn, setRefreshUserListFn] = useState<(() => void) | null>(null);
+  const [themeSettingsOpen, setThemeSettingsOpen] = useState(false);
 
   // 기본 아바타 15종 정의
   const defaultAvatars = [
@@ -621,6 +630,8 @@ const Layout: React.FC = () => {
     requestNotificationPermission();
   }, []);
 
+  // 테마 설정은 Context에서 관리하므로 제거
+
   // 닉네임 변경 핸들러
   const handleNicknameChange = async () => {
     setNicknameError('');
@@ -731,6 +742,14 @@ const Layout: React.FC = () => {
     setNotificationPanelOpen(true);
   };
 
+  const handleThemeSettingsOpen = () => {
+    setThemeSettingsOpen(true);
+  };
+
+  const handleThemeSettingsClose = () => {
+    setThemeSettingsOpen(false);
+  };
+
   const drawer = (
     <Box
       sx={{
@@ -754,40 +773,104 @@ const Layout: React.FC = () => {
           sx={{
             display: 'flex',
             alignItems: 'center',
-            gap: 2,
+            gap: 1.5,
             cursor: 'pointer',
-            transition: 'background 0.2s',
+            transition: 'all 0.3s ease',
             '&:hover': {
-              background: 'rgba(255, 107, 157, 0.08)',
+              transform: 'translateY(-1px)',
+              '& .logo-icon': {
+                transform: 'scale(1.05) rotate(5deg)',
+              },
+              '& .logo-text': {
+                transform: 'translateX(2px)',
+              }
             },
-            borderRadius: 2,
-            p: 0.5,
+            borderRadius: 3,
+            p: 1,
           }}
         >
+          {/* 심플한 아이콘 컨테이너 */}
           <Box
+            className="logo-icon"
             sx={{
-              width: 40,
-              height: 40,
-              background: 'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)',
-              borderRadius: '12px',
+              width: 36,
+              height: 36,
+              background: (theme) => `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+              borderRadius: '10px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 20px rgba(255, 107, 157, 0.3)',
+              boxShadow: (theme) => `0 4px 15px ${theme.palette.primary.main}30`,
+              transition: 'all 0.3s ease',
+              position: 'relative',
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 100%)',
+                pointerEvents: 'none',
+              }
             }}
           >
-            <LocalFloristIcon sx={{ color: 'white', fontSize: '1.5rem' }} />
+            {/* 세련된 창문 아이콘 */}
+            <Box
+              sx={{
+                width: 18,
+                height: 18,
+                position: 'relative',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  border: '2px solid white',
+                  borderRadius: '3px',
+                },
+                '&::after': {
+                  content: '""',
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '2px',
+                  height: '10px',
+                  background: 'white',
+                  borderRadius: '1px',
+                }
+              }}
+            >
+              {/* 창문 내부 십자선 */}
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '10px',
+                  height: '2px',
+                  background: 'white',
+                  borderRadius: '1px',
+                }}
+              />
+            </Box>
           </Box>
-          <Box>
+          
+          {/* 텍스트 부분 */}
+          <Box className="logo-text" sx={{ transition: 'transform 0.3s ease' }}>
             <Typography
               variant="h6"
               sx={{
-                fontWeight: 800,
-                background: 'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-                fontSize: '1.25rem',
+                fontWeight: 700,
+                color: (theme) => theme.palette.mode === 'dark' ? '#FFFFFF' : '#000000',
+                fontSize: '1.1rem',
+                letterSpacing: '-0.5px',
+                lineHeight: 1.2,
               }}
             >
               윈도우갤러리
@@ -795,12 +878,16 @@ const Layout: React.FC = () => {
             <Typography
               variant="caption"
               sx={{
-                color: 'rgba(255, 255, 255, 0.6)',
-                fontSize: '0.75rem',
+                color: (theme) => theme.palette.mode === 'dark' 
+                  ? 'rgba(255, 255, 255, 0.7)' 
+                  : 'rgba(0, 0, 0, 0.6)',
+                fontSize: '0.7rem',
                 fontWeight: 500,
+                letterSpacing: '0.5px',
+                textTransform: 'uppercase',
               }}
             >
-              Window Gallery ERP
+              Window Gallery
             </Typography>
           </Box>
         </Box>
@@ -863,18 +950,24 @@ const Layout: React.FC = () => {
       </Box>
 
       {/* 하단 장식 */}
-      <Box
-        sx={{
-          padding: '16px',
-          textAlign: 'center',
-          borderTop: '1px solid rgba(255, 107, 157, 0.2)',
-          background: 'rgba(255, 107, 157, 0.05)',
-        }}
-      >
+              <Box
+          sx={{
+            padding: '16px',
+            textAlign: 'center',
+            borderTop: (theme) => `1px solid ${theme.palette.mode === 'dark' 
+              ? `${theme.palette.primary.main}20` 
+              : `${theme.palette.primary.main}10`}`,
+            background: (theme) => theme.palette.mode === 'dark'
+              ? `${theme.palette.primary.main}05`
+              : `${theme.palette.primary.main}03`,
+          }}
+        >
         <Typography
           variant="caption"
           sx={{
-            color: 'rgba(255, 255, 255, 0.5)',
+            color: (theme) => theme.palette.mode === 'dark'
+              ? 'rgba(255, 255, 255, 0.6)'
+              : 'rgba(0, 0, 0, 0.5)',
             fontSize: '0.75rem',
           }}
         >
@@ -922,24 +1015,8 @@ const Layout: React.FC = () => {
             display: 'flex',
             flexDirection: 'column',
             minHeight: '100vh',
-            background:
-              'linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 50%, #1A1A1A 100%)',
+            background: 'var(--background-color)',
             position: 'relative',
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `
-                radial-gradient(circle at 20% 80%, rgba(255, 107, 157, 0.05) 0%, transparent 50%),
-                radial-gradient(circle at 80% 20%, rgba(255, 71, 87, 0.05) 0%, transparent 50%),
-                radial-gradient(circle at 40% 40%, rgba(255, 179, 209, 0.03) 0%, transparent 50%)
-              `,
-              pointerEvents: 'none',
-              zIndex: 0,
-            },
             width: drawerOpen ? undefined : '100%',
           }}
         >
@@ -953,9 +1030,9 @@ const Layout: React.FC = () => {
                   onClick={handleDrawerToggle}
                   sx={{
                     mr: 2,
-                    color: 'rgba(255, 255, 255, 0.8)',
+                    color: (theme) => theme.palette.mode === 'dark' ? '#FFFFFF' : '#000000',
                     '&:hover': {
-                      color: '#FF6B9D',
+                      color: (theme) => theme.palette.primary.main,
                       transform: 'scale(1.1)',
                     },
                   }}
@@ -966,26 +1043,42 @@ const Layout: React.FC = () => {
                   variant="h6"
                   sx={{
                     fontWeight: 600,
-                    color: 'rgba(255, 255, 255, 0.9)',
+                    color: (theme) => theme.palette.mode === 'dark' ? '#FFFFFF' : '#000000',
                     display: { xs: 'none', sm: 'block' },
                   }}
                 >
                   {menuItems
                     .flatMap(section => section.items)
                     .find(item => item.path === location.pathname)?.text ||
-                    '윈도우갤러리 ERP'}
+                    '윈도우갤러리'}
                 </Typography>
               </Box>
 
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {/* 테마 설정 */}
+                <Tooltip title="테마 설정">
+                  <IconButton
+                    onClick={handleThemeSettingsOpen}
+                    sx={{
+                      color: (theme) => theme.palette.mode === 'dark' ? '#FFFFFF' : '#000000',
+                      '&:hover': {
+                        color: (theme) => theme.palette.primary.main,
+                        transform: 'scale(1.1)',
+                      },
+                    }}
+                  >
+                    <PaletteIcon />
+                  </IconButton>
+                </Tooltip>
+
                 {/* 알림 */}
                 <Tooltip title="알림">
                   <IconButton
                     onClick={handleNotificationClick}
                     sx={{
-                      color: 'rgba(255, 255, 255, 0.8)',
+                      color: (theme) => theme.palette.mode === 'dark' ? '#FFFFFF' : '#000000',
                       '&:hover': {
-                        color: '#FF6B9D',
+                        color: (theme) => theme.palette.primary.main,
                         transform: 'scale(1.1)',
                       },
                     }}
@@ -1001,10 +1094,10 @@ const Layout: React.FC = () => {
                   <IconButton
                     onClick={handleProfileMenuOpen}
                     sx={{
-                      color: 'rgba(255, 255, 255, 0.8)',
+                      color: (theme) => theme.palette.mode === 'dark' ? '#FFFFFF' : '#000000',
                       cursor: 'pointer',
                       '&:hover': {
-                        color: '#FF6B9D',
+                        color: (theme) => theme.palette.primary.main,
                         transform: 'scale(1.1)',
                       },
                     }}
@@ -1016,7 +1109,7 @@ const Layout: React.FC = () => {
                         height: 32,
                         background: profileImage
                           ? 'transparent'
-                          : 'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)',
+                          : 'var(--gradient-primary)',
                         fontSize: '0.875rem',
                         fontWeight: 600,
                       }}
@@ -1753,6 +1846,12 @@ const Layout: React.FC = () => {
           <NotificationPanel
             open={notificationPanelOpen}
             onClose={() => setNotificationPanelOpen(false)}
+          />
+
+          {/* 테마 설정 다이얼로그 */}
+          <ThemeSettings
+            open={themeSettingsOpen}
+            onClose={handleThemeSettingsClose}
           />
 
 

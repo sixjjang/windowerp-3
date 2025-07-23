@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, CssBaseline, Box } from '@mui/material';
-import { windowGalleryTheme } from './theme/theme';
+import { ThemeProvider as MuiThemeProvider, CssBaseline, Box } from '@mui/material';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { useTheme } from './contexts/ThemeContext';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
@@ -24,10 +25,11 @@ import ContractManagement from './pages/business/ContractManagement';
 import MeasurementData from './pages/business/MeasurementData';
 import HistoricalDataManagement from './pages/business/HistoricalDataManagement';
 import TimeTreeCallback from './pages/TimeTreeCallback';
-import TestHistorical from './pages/TestHistorical';
 import './styles/global.css';
 
-function App() {
+function AppContent() {
+  const { currentTheme } = useTheme();
+
   // 접근성 문제 해결: aria-hidden 제거
   useEffect(() => {
     const rootElement = document.getElementById('root');
@@ -45,14 +47,28 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // 테마 변경 이벤트 리스너
+  useEffect(() => {
+    const handleThemeChange = (event: CustomEvent) => {
+      console.log('테마 변경 이벤트 수신:', event.detail);
+      // 강제 리렌더링을 위한 상태 업데이트
+      document.body.style.setProperty('--force-render', Date.now().toString());
+    };
+
+    window.addEventListener('themeChanged', handleThemeChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('themeChanged', handleThemeChange as EventListener);
+    };
+  }, []);
+
   return (
-    <ThemeProvider theme={windowGalleryTheme}>
-      <CssBaseline />
+    <MuiThemeProvider theme={currentTheme}>
+      <CssBaseline enableColorScheme />
       <Box
         sx={{
           minHeight: '100vh',
-          background:
-            'linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 50%, #1A1A1A 100%)',
+          background: 'var(--background-color)',
           backgroundAttachment: 'fixed',
           position: 'relative',
           '&::before': {
@@ -63,10 +79,10 @@ function App() {
             right: 0,
             bottom: 0,
             background: `
-              radial-gradient(circle at 20% 80%, rgba(255, 107, 157, 0.1) 0%, transparent 50%),
-              radial-gradient(circle at 80% 20%, rgba(255, 71, 87, 0.1) 0%, transparent 50%),
-              radial-gradient(circle at 40% 40%, rgba(255, 179, 209, 0.05) 0%, transparent 50%)
+              radial-gradient(circle at 20% 80%, var(--primary-color) 0%, transparent 50%),
+              radial-gradient(circle at 80% 20%, var(--secondary-color) 0%, transparent 50%)
             `,
+            opacity: 0.1,
             pointerEvents: 'none',
             zIndex: 0,
           },
@@ -94,7 +110,7 @@ function App() {
             <Route path="accounting" element={<Accounting />} />
             <Route path="statistics" element={<Statistics />} />
             <Route path="tax-invoice" element={<TaxInvoice />} />
-            <Route path="test-historical" element={<TestHistorical />} />
+
             <Route path="admin/users" element={<AdminUserManagement />} />
             <Route
               path="business/contract-management"
@@ -104,6 +120,14 @@ function App() {
           </Route>
         </Routes>
       </Box>
+    </MuiThemeProvider>
+  );
+}
+
+function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
     </ThemeProvider>
   );
 }

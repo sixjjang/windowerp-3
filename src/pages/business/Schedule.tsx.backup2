@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
+import { UserContext } from '../../components/Layout';
 import {
   Grid,
   Paper,
@@ -56,24 +57,6 @@ import {
   Stack,
 } from '@mui/material';
 import {
-  ScheduleEvent,
-  ScheduleComment,
-  ScheduleNotification,
-  ScheduleShare,
-  ScheduleStats,
-  ScheduleType,
-  YearlyEvent,
-  TabPanelProps,
-} from '../../types/schedule';
-import {
-  KOREAN_HOLIDAYS,
-  lunarToSolar,
-  solarToLunar,
-  extractBuildingInfo,
-  generateAutoTitle,
-} from '../../utils/scheduleUtils';
-import TabPanel from '../../components/schedule/TabPanel';
-import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
@@ -87,7 +70,6 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   Close as CloseIcon,
-  ArrowBack as ArrowBackIcon,
   LocationOn as LocationIcon,
   Phone as PhoneIcon,
   Person as PersonIcon,
@@ -121,7 +103,6 @@ import {
   Category as CategoryIcon,
   Search as SearchIcon,
   Lock as LockIcon,
-  Sync as SyncIcon,
 } from '@mui/icons-material';
 import { useDeliveryStore } from '../../utils/deliveryStore';
 import MeasurementForm, {
@@ -134,36 +115,158 @@ import axios from 'axios';
 import { useNotificationStore } from '../../utils/notificationStore';
 import Popover from '@mui/material/Popover';
 import InsertEmoticonIcon from '@mui/icons-material/InsertEmoticon';
-import TimeTreeIntegration from '../../components/TimeTreeIntegration';
-import { getTimeTreeSettings, syncWithTimeTree } from '../../utils/timetreeUtils';
 
-// Firestore 실시간 채팅을 위한 import 추가
-import { db } from '../../firebase/config';
-import { 
-  collection, 
-  doc, 
-  addDoc, 
-  onSnapshot, 
-  orderBy, 
-  query, 
-  serverTimestamp,
-  deleteDoc,
-  updateDoc
-} from 'firebase/firestore';
+// 새로운 인터페이스들
+interface ScheduleComment {
+  id: string;
+  eventId: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  message: string;
+  timestamp: string;
+  attachments?: string[];
+  emoji?: string;
+}
+
+interface ScheduleNotification {
+  id: string;
+  eventId: string;
+  type: 'before_1_day' | 'before_1_hour' | 'on_time' | 'after_1_hour';
+  isEnabled: boolean;
+  message: string;
+}
+
+interface ScheduleShare {
+  id: string;
+  eventId: string;
+  sharedWith: string[];
+  permissions: 'view' | 'edit' | 'admin';
+  sharedAt: string;
+}
+
+interface ScheduleStats {
+  totalEvents: number;
+  completedEvents: number;
+  pendingEvents: number;
+  cancelledEvents: number;
+  eventsByType: { [key: string]: number };
+  eventsByMonth: { [key: string]: number };
+  averageCompletionTime: number;
+}
+
+// 일정 타입 관리 인터페이스
+interface ScheduleType {
+  id: string;
+  name: string;
+  color: string;
+  order: number;
+  isActive: boolean;
+  icon?: string;
+}
+
+interface ScheduleEvent {
+  id: string;
+  title: string;
+  date: string;
+  time: string;
+  type: string;
+  description?: string;
+  customerName?: string;
+  address?: string;
+  contact?: string;
+  deliveryId?: string;
+  asId?: string;
+  color?: string;
+  priority: '낮음' | '보통' | '높음';
+  status: '예정' | '진행중' | '완료' | '취소';
+  isLunar?: boolean;
+  isYearly?: boolean;
+  originalDate?: string;
+  startDate?: string;
+  endDate?: string;
+  endTime?: string; // 종료 시간 추가
+  measurementData?: MeasurementRowData[];
+  estimateNo?: string; // 견적번호 추가
+  // 새로운 필드들
+  comments?: ScheduleComment[];
+  notifications?: ScheduleNotification[];
+  shares?: ScheduleShare[];
+  repeatPattern?: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+  repeatEndDate?: string;
+  tags?: string[];
+  attachments?: string[];
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  assignedTo?: string[];
+}
+
+interface YearlyEvent {
+  title: string;
+  month: number;
+  day: number;
+  time: string;
+  description?: string;
+  isLunar: boolean;
+  isYearly: boolean;
+  priority: '낮음' | '보통' | '높음';
+}
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
 
 // 메모 인터페이스 추가
 
 // 카테고리 관리 인터페이스 추가
 
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`schedule-tabpanel-${index}`}
+      aria-labelledby={`schedule-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ p: { xs: 1, sm: 2, md: 3 } }}>{children}</Box>
+      )}
+    </div>
+  );
+}
+
+// 대한민국 2024년 주요 공휴일(설날, 추석 포함)
+const KOREAN_HOLIDAYS: { [date: string]: string } = {
+  '2024-01-01': '신정',
+  '2024-03-01': '삼일절',
+  '2024-05-05': '어린이날',
+  '2024-06-06': '현충일',
+  '2024-08-15': '광복절',
+  '2024-10-03': '개천절',
+  '2024-10-09': '한글날',
+  '2024-12-25': '성탄절',
+  // 설날
+  '2024-02-09': '설날 연휴',
+  '2024-02-10': '설날',
+  '2024-02-11': '설날 연휴',
+  // 추석
+  '2024-09-16': '추석 연휴',
+  '2024-09-17': '추석',
+  '2024-09-18': '추석 연휴',
+};
+
 const Schedule: React.FC = () => {
+  const { nickname } = useContext(UserContext);
   const { deliveries } = useDeliveryStore();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const { createScheduleNotification } = useNotificationStore();
-  
-  // 중복 처리 방지를 위한 ref
-  const processedDeliveryIds = useRef<Set<string>>(new Set());
 
   // 기본 상태 관리
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
@@ -352,13 +455,17 @@ const Schedule: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [speedDialOpen, setSpeedDialOpen] = useState(false);
 
-  const [userName, setUserName] = useState<string>('');
-  const [userDialogOpen, setUserDialogOpen] = useState(false);
+  // userName 상태 제거 - UserContext의 nickname 사용
+  // const [userName, setUserName] = useState<string>(
+  //   () => localStorage.getItem('schedule_user_name') || ''
+  // );
+  // const [userDialogOpen, setUserDialogOpen] = useState(false);
   
-  // 사용자 정보 상태 (채팅 권한 체크 제거)
+  // 채팅 권한 관련 상태
   const [currentUser, setCurrentUser] = useState<{ id: number; username: string; role: string } | null>(null);
-  const [hasChatPermission, setHasChatPermission] = useState<boolean>(true); // 항상 허용
-  const [permissionLoading, setPermissionLoading] = useState<boolean>(false); // 로딩 불필요
+  const [chatPermissions, setChatPermissions] = useState<{ [page: string]: boolean }>({});
+  const [hasChatPermission, setHasChatPermission] = useState<boolean>(false);
+  const [permissionLoading, setPermissionLoading] = useState<boolean>(true);
 
   // 통합 일정 모달 상태
   const [integratedEventDialogOpen, setIntegratedEventDialogOpen] = useState(false);
@@ -368,15 +475,6 @@ const Schedule: React.FC = () => {
   const [newIntegratedComment, setNewIntegratedComment] = useState('');
   const [integratedIsPeriodMode, setIntegratedIsPeriodMode] = useState(false);
 
-  // 실시간 채팅 관련 상태 추가
-  const [realTimeComments, setRealTimeComments] = useState<{ [eventId: string]: ScheduleComment[] }>({});
-  const [commentUnsubscribers, setCommentUnsubscribers] = useState<{ [eventId: string]: () => void }>({});
-  const [chatDataLoaded, setChatDataLoaded] = useState<{ [eventId: string]: boolean }>({});
-
-  // 타임트리 연동 상태
-  const [timeTreeDialogOpen, setTimeTreeDialogOpen] = useState(false);
-  const [timeTreeSettings] = useState(getTimeTreeSettings());
-
   // 새로운 상태 추가
   const [emojiAnchorEl, setEmojiAnchorEl] = useState<null | HTMLElement>(null);
 
@@ -384,25 +482,17 @@ const Schedule: React.FC = () => {
   const [integratedRepeatPattern, setIntegratedRepeatPattern] = useState<'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'>('none');
   const [integratedRepeatEndDate, setIntegratedRepeatEndDate] = useState<string>('');
 
-  // 닉네임이 없을 때만 다이얼로그 표시 (한 번만)
-  const [nicknameDialogShown, setNicknameDialogShown] = useState(false);
-  
-  useEffect(() => {
-    // 닉네임이 없고 아직 다이얼로그를 보여주지 않았을 때만 표시
-    if (!userName && !nicknameDialogShown) {
-      setUserDialogOpen(true);
-      setNicknameDialogShown(true);
-    }
-  }, [userName, nicknameDialogShown]);
+  // nickname 입력 관련 useEffect 삭제 - 프로필 설정에서만 변경
 
-  // 현재 사용자 정보 조회 (채팅 권한 체크 제거)
+  // 현재 사용자 정보 및 채팅 권한 조회
   const fetchCurrentUserAndPermissions = async () => {
     try {
       setPermissionLoading(true);
       const token = localStorage.getItem('token');
       
       if (!token) {
-        console.warn('토큰이 없습니다.');
+        console.warn('토큰이 없어 권한 체크를 건너뜁니다.');
+        setHasChatPermission(true); // 토큰이 없으면 기본적으로 허용
         setPermissionLoading(false);
         return;
       }
@@ -414,154 +504,51 @@ const Schedule: React.FC = () => {
       
       if (userResponse.data && userResponse.data.id) {
         setCurrentUser(userResponse.data);
-        // 채팅 권한은 항상 허용
-        setHasChatPermission(true);
+        
+        // 채팅 권한 조회
+        const permissionResponse = await axios.get(`${API_BASE}/chat-permissions`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        console.log('권한 응답 데이터:', permissionResponse.data);
+        console.log('현재 사용자 ID:', userResponse.data.id);
+        
+        if (permissionResponse.data && typeof permissionResponse.data === 'object') {
+          const permissions = permissionResponse.data;
+          const currentUserPermission = permissions[userResponse.data.id];
+          
+          console.log('현재 사용자 권한:', currentUserPermission);
+          
+          if (currentUserPermission && typeof currentUserPermission === 'object') {
+            setChatPermissions(currentUserPermission);
+            // 스케줄 채팅 권한 체크
+            const hasSchedulePermission = currentUserPermission.schedule === true;
+            console.log('스케줄 권한:', hasSchedulePermission);
+            setHasChatPermission(hasSchedulePermission);
+          } else {
+            // 권한 정보가 없으면 기본적으로 차단
+            console.log('권한 정보가 없음 - 차단');
+            setHasChatPermission(false);
+          }
+        } else {
+          console.log('권한 응답이 올바르지 않음 - 차단');
+          setHasChatPermission(false);
+        }
+      } else {
+        setHasChatPermission(false);
       }
     } catch (error) {
-      console.error('사용자 정보 조회 실패:', error);
+      console.error('권한 조회 실패:', error);
+      setHasChatPermission(false);
     } finally {
       setPermissionLoading(false);
     }
   };
 
-  // 닉네임 로드 함수
-  const loadNickname = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.warn('토큰이 없어서 닉네임을 로드할 수 없습니다.');
-        return;
-      }
-
-      const response = await fetch(`${API_BASE}/nickname`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.nickname && data.nickname.trim()) {
-          setUserName(data.nickname);
-          console.log('서버에서 닉네임 로드:', data.nickname);
-        } else {
-          console.log('서버에 저장된 닉네임이 없습니다.');
-        }
-      } else {
-        console.warn('닉네임 로드 실패:', response.status);
-      }
-    } catch (error) {
-      console.error('닉네임 로드 오류:', error);
-    }
-  };
-
-  // 컴포넌트 마운트 시 사용자 정보 조회
+  // 컴포넌트 마운트 시 권한 조회
   useEffect(() => {
     fetchCurrentUserAndPermissions();
-    loadNickname();
   }, []);
-
-  // 실시간 댓글 구독 함수 (개선됨)
-  const subscribeToComments = (eventId: string) => {
-    // 이미 로드된 경우 스킵
-    if (chatDataLoaded[eventId]) {
-      return;
-    }
-
-    // 기존 구독이 있으면 해제
-    if (commentUnsubscribers[eventId]) {
-      commentUnsubscribers[eventId]();
-    }
-
-    console.log(`채팅 데이터 구독 시작: ${eventId}`);
-
-    const commentsRef = collection(db, 'schedules', eventId, 'comments');
-    const q = query(commentsRef, orderBy('timestamp', 'asc'));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const comments: ScheduleComment[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        comments.push({
-          id: doc.id,
-          eventId: data.eventId,
-          userId: data.userId,
-          userName: data.userName,
-          userAvatar: data.userAvatar,
-          message: data.message,
-          timestamp: data.timestamp?.toDate?.()?.toISOString() || data.timestamp,
-          attachments: data.attachments || [],
-          emoji: data.emoji,
-        });
-      });
-      
-      console.log(`채팅 데이터 업데이트: ${eventId}`, comments.length);
-      
-      setRealTimeComments(prev => ({
-        ...prev,
-        [eventId]: comments
-      }));
-
-      // Firebase에 데이터가 제대로 저장되었는지 확인
-      console.log(`Firebase에서 채팅 데이터 로드 완료: ${eventId}`, {
-        commentCount: comments.length,
-        comments: comments.map(c => ({ id: c.id, message: c.message.substring(0, 50) }))
-      });
-
-      // 로드 완료 표시
-      setChatDataLoaded(prev => ({
-        ...prev,
-        [eventId]: true
-      }));
-    }, (error) => {
-      console.error('댓글 구독 오류:', error);
-      console.error('Firebase 인증 상태 확인 필요');
-    });
-
-    // 구독 해제 함수 저장
-    setCommentUnsubscribers(prev => ({
-      ...prev,
-      [eventId]: unsubscribe
-    }));
-  };
-
-  // 모든 일정의 채팅 데이터 자동 로딩 (Firebase에서 직접 로드)
-  useEffect(() => {
-    if (events.length > 0) {
-      console.log('모든 일정의 채팅 데이터 로딩 시작:', events.length);
-      
-      // 모든 이벤트에 대해 Firestore 구독 시작
-      events.forEach(event => {
-        if (!chatDataLoaded[event.id]) {
-          subscribeToComments(event.id);
-        }
-      });
-    }
-  }, [events, chatDataLoaded]);
-
-  // 채팅 다이얼로그가 열릴 때 실시간 구독 시작 (기존 로직 유지)
-  useEffect(() => {
-    if (selectedEventForChat && !chatDataLoaded[selectedEventForChat.id]) {
-      subscribeToComments(selectedEventForChat.id);
-    }
-  }, [selectedEventForChat]);
-
-  // 통합 모달이 열릴 때도 실시간 댓글 구독 시작 (기존 로직 유지)
-  useEffect(() => {
-    if (selectedEventForEdit && integratedEventDialogOpen && !chatDataLoaded[selectedEventForEdit.id]) {
-      subscribeToComments(selectedEventForEdit.id);
-    }
-  }, [selectedEventForEdit, integratedEventDialogOpen]);
-
-  // 컴포넌트 언마운트 시 모든 구독 해제
-  useEffect(() => {
-    return () => {
-      console.log('컴포넌트 언마운트 - 모든 채팅 구독 해제');
-      Object.values(commentUnsubscribers).forEach(unsubscribe => {
-        if (unsubscribe) unsubscribe();
-      });
-    };
-  }, [commentUnsubscribers]);
 
   // 납품관리 메모 변경 시 스케줄 업데이트
   useEffect(() => {
@@ -588,197 +575,66 @@ const Schedule: React.FC = () => {
     updateScheduleDescriptions();
   }, [deliveries]); // deliveries가 변경될 때마다 실행
 
-  // 실측 다이얼로그가 열릴 때 Firebase 구독 시작 및 견적번호 자동 연결
+  // 실측 다이얼로그가 열릴 때 견적번호 자동 연결
   useEffect(() => {
-    if (measurementDialogOpen && currentMeasurementEvent) {
-      // Firebase 구독 시작
-      if (!chatDataLoaded[currentMeasurementEvent.id]) {
-        subscribeToComments(currentMeasurementEvent.id);
-      }
-      
-      // 견적번호 자동 연결
-      if (!currentMeasurementEvent.estimateNo) {
-        const savedEstimates = JSON.parse(
-          localStorage.getItem('saved_estimates') || '[]'
+    if (
+      measurementDialogOpen &&
+      currentMeasurementEvent &&
+      !currentMeasurementEvent.estimateNo
+    ) {
+      const savedEstimates = JSON.parse(
+        localStorage.getItem('saved_estimates') || '[]'
+      );
+      const recentEstimates = savedEstimates
+        .filter(
+          (est: any) =>
+            est.status === '계약완료' ||
+            est.status === '진행' ||
+            est.status === 'signed'
+        )
+        .sort(
+          (a: any, b: any) =>
+            new Date(b.savedAt || b.estimateDate || 0).getTime() -
+            new Date(a.savedAt || a.estimateDate || 0).getTime()
         );
-        const recentEstimates = savedEstimates
-          .filter(
-            (est: any) =>
-              est.status === '계약완료' ||
-              est.status === '진행' ||
-              est.status === 'signed'
-          )
-          .sort(
-            (a: any, b: any) =>
-              new Date(b.savedAt || b.estimateDate || 0).getTime() -
-              new Date(a.savedAt || a.estimateDate || 0).getTime()
-          );
 
-        const latestEstimate = recentEstimates[0];
-        if (latestEstimate) {
-          const updatedEvent = {
-            ...currentMeasurementEvent,
-            estimateNo: latestEstimate.estimateNo,
-            updatedAt: new Date().toISOString(),
-          };
-          setEvents(prev =>
-            prev.map(event =>
-              event.id === currentMeasurementEvent.id ? updatedEvent : event
-            )
-          );
-          setCurrentMeasurementEvent(updatedEvent);
-          console.log('견적번호 자동 연결:', latestEstimate.estimateNo);
-        }
+      const latestEstimate = recentEstimates[0];
+      if (latestEstimate) {
+        const updatedEvent = {
+          ...currentMeasurementEvent,
+          estimateNo: latestEstimate.estimateNo,
+          updatedAt: new Date().toISOString(),
+        };
+        setEvents(prev =>
+          prev.map(event =>
+            event.id === currentMeasurementEvent.id ? updatedEvent : event
+          )
+        );
+        setCurrentMeasurementEvent(updatedEvent);
+        console.log('견적번호 자동 연결:', latestEstimate.estimateNo);
       }
     }
   }, [measurementDialogOpen, currentMeasurementEvent]);
 
-  const handleUserNameSave = async () => {
-    if (userName && userName.trim()) {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          setSnackbar({
-            open: true,
-            message: '로그인이 필요합니다.',
-            severity: 'error',
-          });
-          return;
-        }
-
-        const response = await fetch(`${API_BASE}/nickname`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ nickname: userName.trim() })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log('닉네임 서버 저장 성공:', data);
-          setUserDialogOpen(false);
-          setSnackbar({
-            open: true,
-            message: '닉네임이 저장되었습니다.',
-            severity: 'success',
-          });
-        } else {
-          const errorData = await response.json();
-          console.error('닉네임 저장 실패:', errorData);
-          setSnackbar({
-            open: true,
-            message: `닉네임 저장 실패: ${errorData.error}`,
-            severity: 'error',
-          });
-        }
-      } catch (error) {
-        console.error('닉네임 저장 오류:', error);
-        setSnackbar({
-          open: true,
-          message: '서버 연결 오류가 발생했습니다.',
-          severity: 'error',
-        });
-      }
-    }
-  };
-
-  const handleUserNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setUserName(e.target.value);
-  };
-
-  const handleUserNameReset = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setSnackbar({
-          open: true,
-          message: '로그인이 필요합니다.',
-          severity: 'error',
-        });
-        return;
-      }
-
-      // 서버에서 닉네임 삭제
-      const response = await fetch(`${API_BASE}/nickname`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ nickname: '' })
-      });
-
-      if (response.ok) {
-        setUserName('');
-        setUserDialogOpen(true);
-        setSnackbar({
-          open: true,
-          message: '닉네임이 초기화되었습니다.',
-          severity: 'success',
-        });
-      } else {
-        const errorData = await response.json();
-        console.error('닉네임 초기화 실패:', errorData);
-        setSnackbar({
-          open: true,
-          message: `닉네임 초기화 실패: ${errorData.error}`,
-          severity: 'error',
-        });
-      }
-    } catch (error) {
-      console.error('닉네임 초기화 오류:', error);
-      setSnackbar({
-        open: true,
-        message: '서버 연결 오류가 발생했습니다.',
-        severity: 'error',
-      });
-    }
-  };
+  // nickname 입력/변경 관련 핸들러 삭제 - 프로필 설정에서만 변경
 
   // 스케줄 데이터 로드
   useEffect(() => {
     const loadSchedules = async () => {
       try {
-        // 먼저 localStorage에서 데이터 로드 (빠른 로딩)
-        const localSchedules = localStorage.getItem('schedules');
-        if (localSchedules) {
-          const localData = JSON.parse(localSchedules);
-          setEvents(localData);
-        }
-
-        // Firebase Functions에서 데이터 로드
         const response = await fetch(`${API_BASE}/schedules`);
-        console.log('스케줄 로드 응답 상태:', response.status);
-        
         if (response.ok) {
-          const serverData = await response.json();
-          console.log('서버에서 받은 스케줄 데이터 개수:', serverData.length);
-          console.log('서버 스케줄 ID들:', serverData.map((event: any) => event.id));
-          console.log('서버 스케줄 상세 데이터:', serverData);
-          
-          // 서버 데이터를 그대로 사용 (실제 Firebase 문서 상태 반영)
-          // ID가 일관되게 유지되도록 처리
-          const processedData = serverData.map((event: any) => ({
-            ...event,
-            id: event.id || event.firestoreId || generateEventId()
-          }));
-          
-          setEvents(processedData);
-          localStorage.setItem('schedules', JSON.stringify(processedData));
+          const data = await response.json();
+          setEvents(data);
         } else {
           console.error('스케줄 로드 실패:', response.statusText);
-          // API 실패 시 localStorage 데이터 유지
-          const localSchedules = localStorage.getItem('schedules');
-          if (localSchedules) {
-            const localData = JSON.parse(localSchedules);
-            setEvents(localData);
-          }
+          // 에러가 발생해도 빈 배열로 설정
+          setEvents([]);
         }
       } catch (error) {
         console.error('스케줄 로드 오류:', error);
-        // 에러 발생 시 localStorage 데이터 유지
+        // 에러가 발생해도 빈 배열로 설정
+        setEvents([]);
       }
     };
 
@@ -786,7 +642,63 @@ const Schedule: React.FC = () => {
   }, []);
 
   // 음력 날짜를 양력으로 변환하는 함수
+  const lunarToSolar = (
+    lunarYear: number,
+    lunarMonth: number,
+    lunarDay: number
+  ): Date => {
+    // 간단한 음력-양력 변환 테이블 (2024년 기준)
+    // 실제로는 더 정확한 라이브러리 사용 권장
+    const lunarOffset = {
+      1: 30, // 1월은 약 30일 후
+      2: 29, // 2월은 약 29일 후
+      3: 30, // 3월은 약 30일 후
+      4: 29, // 4월은 약 29일 후
+      5: 30, // 5월은 약 30일 후
+      6: 29, // 6월은 약 29일 후
+      7: 30, // 7월은 약 30일 후
+      8: 30, // 8월은 약 30일 후
+      9: 29, // 9월은 약 29일 후
+      10: 30, // 10월은 약 30일 후
+      11: 29, // 11월은 약 29일 후
+      12: 30, // 12월은 약 30일 후
+    };
 
+    const baseDate = new Date(lunarYear, lunarMonth - 1, lunarDay);
+    const offset = lunarOffset[lunarMonth as keyof typeof lunarOffset] || 30;
+    baseDate.setDate(baseDate.getDate() + offset);
+
+    return baseDate;
+  };
+
+  // 양력 날짜를 음력으로 변환하는 함수
+  const solarToLunar = (
+    solarYear: number,
+    solarMonth: number,
+    solarDay: number
+  ): Date => {
+    // 간단한 양력-음력 변환
+    const lunarOffset = {
+      1: -30, // 1월은 약 30일 전
+      2: -29, // 2월은 약 29일 전
+      3: -30, // 3월은 약 30일 전
+      4: -29, // 4월은 약 29일 전
+      5: -30, // 5월은 약 30일 전
+      6: -29, // 6월은 약 29일 전
+      7: -30, // 7월은 약 30일 전
+      8: -30, // 8월은 약 30일 전
+      9: -29, // 9월은 약 29일 전
+      10: -30, // 10월은 약 30일 전
+      11: -29, // 11월은 약 29일 전
+      12: -30, // 12월은 약 30일 전
+    };
+
+    const baseDate = new Date(solarYear, solarMonth - 1, solarDay);
+    const offset = lunarOffset[solarMonth as keyof typeof lunarOffset] || -30;
+    baseDate.setDate(baseDate.getDate() + offset);
+
+    return baseDate;
+  };
 
   // 1년 일정 등록 핸들러
   const handleYearlyEventSave = () => {
@@ -826,7 +738,7 @@ const Schedule: React.FC = () => {
         const eventDate = `${year}-${month}-${day}`;
 
         const newEvent: ScheduleEvent = {
-          id: generateEventId(`yearly-${year}-${yearlyEvent.month}-${yearlyEvent.day}`),
+          id: `yearly-${year}-${yearlyEvent.month}-${yearlyEvent.day}`,
           title: yearlyEvent.title,
           date: eventDate,
           time: yearlyEvent.time,
@@ -848,11 +760,7 @@ const Schedule: React.FC = () => {
     }
 
     // 기존 일정에 추가
-    const updatedEvents = [...events, ...eventsToAdd];
-    setEvents(updatedEvents);
-    
-    // localStorage 업데이트
-    localStorage.setItem('schedules', JSON.stringify(updatedEvents));
+    setEvents(prev => [...prev, ...eventsToAdd]);
     setSnackbar({
       open: true,
       message: `${eventsToAdd.length}개의 일정이 등록되었습니다.`,
@@ -885,17 +793,8 @@ const Schedule: React.FC = () => {
 
   // 납품건에서 시공 일정 자동 생성
   useEffect(() => {
-    // 이미 처리된 delivery ID들 필터링
-    const newDeliveries = deliveries.filter(delivery => 
-      delivery.constructionDate && !processedDeliveryIds.current.has(delivery.id)
-    );
-    
-    // 새로운 delivery ID들을 processedDeliveryIds에 추가
-    newDeliveries.forEach(delivery => {
-      processedDeliveryIds.current.add(delivery.id);
-    });
-    
-    const deliveryEvents: ScheduleEvent[] = newDeliveries
+    const deliveryEvents: ScheduleEvent[] = deliveries
+      .filter(delivery => delivery.constructionDate)
       .map(delivery => {
         // 계약서에서 시공일자 우선 확인 (데이터 일관성 유지)
         let constructionDate = delivery.constructionDate;
@@ -933,7 +832,7 @@ const Schedule: React.FC = () => {
         }
 
         return {
-          id: `delivery-${delivery.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: `delivery-${delivery.id}`,
           title: `${delivery.customerName} - ${delivery.projectName}`,
           date: constructionDate,
           time: constructionTime,
@@ -952,14 +851,12 @@ const Schedule: React.FC = () => {
         };
       });
 
-        // AS 일정 자동 생성 (이미 처리된 AS ID들 필터링)
-    const processedAsIds = new Set<string>();
+    // AS 일정 자동 생성
     const asEvents: ScheduleEvent[] = deliveries.flatMap(
       delivery =>
         delivery.asRecords
-          ?.filter(as => as.visitDate && !processedAsIds.has(as.id))
+          ?.filter(as => as.visitDate)
           .map(as => {
-            processedAsIds.add(as.id);
             const visitDateTime = new Date(as.visitDate!);
             const year = visitDateTime.getFullYear();
             const month = String(visitDateTime.getMonth() + 1).padStart(2, '0');
@@ -971,7 +868,7 @@ const Schedule: React.FC = () => {
             const visitTime = `${hours}:${minutes}`;
 
             return {
-              id: `as-${as.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              id: `as-${as.id}`,
               title: `${delivery.customerName} - AS`,
               date: visitDate,
               time: visitTime,
@@ -997,35 +894,10 @@ const Schedule: React.FC = () => {
           }) || []
     );
 
-    // 기존 이벤트에서 delivery와 as 이벤트 ID들을 수집
-    const existingDeliveryIds = new Set(
-      events
-        .filter(event => event.id.startsWith('delivery-') || event.id.startsWith('as-'))
-        .map(event => event.id)
-    );
-    
-    // 중복되지 않는 이벤트만 필터링
-    const uniqueDeliveryEvents = deliveryEvents.filter(
-      event => !existingDeliveryIds.has(event.id)
-    );
-    const uniqueAsEvents = asEvents.filter(
-      event => !existingDeliveryIds.has(event.id)
-    );
-    
-    // 기존 수동 이벤트 + 새로운 고유한 delivery/as 이벤트들
     const existingManualEvents = events.filter(
       event => !event.id.startsWith('delivery-') && !event.id.startsWith('as-')
     );
-    
-    // 최종 이벤트 배열 생성 (중복 제거)
-    const finalEvents = [...existingManualEvents, ...uniqueDeliveryEvents, ...uniqueAsEvents];
-    
-    // 추가 중복 제거 (같은 ID를 가진 이벤트가 여러 개 있는 경우)
-    const uniqueEvents = finalEvents.filter((event, index, self) => 
-      index === self.findIndex(e => e.id === event.id)
-    );
-    
-    setEvents(uniqueEvents);
+    setEvents([...existingManualEvents, ...deliveryEvents, ...asEvents]);
   }, [deliveries]);
 
   // 현재 월의 날짜들 계산
@@ -1072,18 +944,14 @@ const Schedule: React.FC = () => {
   };
 
   // 특정 날짜의 이벤트들 (필터링 적용)
-  const getEventsForDateLocal = (date: Date) => {
+  const getEventsForDate = (date: Date) => {
+    // 타임존 문제 해결: 로컬 날짜 문자열 사용
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
     return getFilteredEvents().filter(event => {
       if (event.startDate && event.endDate) {
-        // 시작일과 종료일이 같은 경우는 정확히 그 날짜에만 표시
-        if (event.startDate === event.endDate) {
-          return event.startDate === dateStr;
-        }
-        // 시작일과 종료일이 다른 경우는 범위 검사
         return event.startDate <= dateStr && dateStr <= event.endDate;
       }
       return event.date === dateStr;
@@ -1098,7 +966,7 @@ const Schedule: React.FC = () => {
   // 날짜 클릭 핸들러
   const handleDateClick = (date: Date) => {
     setSelectedDate(date);
-    const eventsForDate = getEventsForDateLocal(date);
+    const eventsForDate = getEventsForDate(date);
     if (eventsForDate.length > 0) {
       setSelectedEvents(eventsForDate);
       setDetailDialogOpen(true);
@@ -1146,26 +1014,7 @@ const Schedule: React.FC = () => {
 
     // 실측일정인 경우 실측 데이터 입력 다이얼로그 열기
     if (event.type === '실측') {
-      console.log('실측일정 클릭:', event);
-      console.log('기존 실측 데이터:', event.measurementData);
-      
-      // localStorage에서 최신 데이터 확인
-      try {
-        const existingSchedules = JSON.parse(localStorage.getItem('schedules') || '[]');
-        const latestEvent = existingSchedules.find((schedule: any) => 
-          schedule.id === event.id
-        );
-        if (latestEvent && latestEvent.measurementData) {
-          console.log('localStorage에서 최신 데이터 발견:', latestEvent.measurementData);
-          setCurrentMeasurementEvent(latestEvent);
-        } else {
-          setCurrentMeasurementEvent(event);
-        }
-      } catch (error) {
-        console.warn('localStorage 확인 실패:', error);
-        setCurrentMeasurementEvent(event);
-      }
-      
+      setCurrentMeasurementEvent(event);
       setMeasurementDialogOpen(true);
       return;
     }
@@ -1177,22 +1026,8 @@ const Schedule: React.FC = () => {
       return;
     }
 
-    // 기간설정 여부 판단 (더 정확한 로직)
-    const isPeriod = !!(event.startDate && event.endDate && 
-      event.startDate !== event.endDate && 
-      event.startDate !== event.date);
-    
-    console.log('일정 편집 - 기간설정 판단:', {
-      eventId: event.id,
-      eventTitle: event.title,
-      eventDate: event.date,
-      eventStartDate: event.startDate,
-      eventEndDate: event.endDate,
-      isPeriod: isPeriod,
-      startDateEqualsDate: event.startDate === event.date,
-      startDateEqualsEndDate: event.startDate === event.endDate
-    });
-    
+    // 기간설정 여부 판단
+    const isPeriod = !!(event.startDate && event.endDate && event.startDate !== event.endDate);
     setIntegratedIsPeriodMode(isPeriod);
 
     setSelectedEventForEdit(event);
@@ -1206,23 +1041,13 @@ const Schedule: React.FC = () => {
       status: event.status,
       isLunar: event.isLunar || false,
       isYearly: event.isYearly || false,
-      // 기간설정이 아닌 경우 startDate, endDate, endTime을 undefined로 설정
-      startDate: isPeriod ? event.startDate : undefined,
-      endDate: isPeriod ? event.endDate : undefined,
-      endTime: isPeriod ? (event.endTime || event.time || '10:00') : undefined,
+      startDate: isPeriod ? event.startDate : event.date,
+      endDate: isPeriod ? event.endDate : event.date,
+      endTime: isPeriod ? (event.endTime || event.time || '10:00') : (event.time || '10:00'),
       estimateNo: (event as any).estimateNo || '',
     });
     setIntegratedEventComments(event.comments || []);
     setIntegratedEventDialogOpen(true);
-  };
-
-  // 일정 삭제 핸들러 (월간뷰에서 직접 삭제)
-  const handleEventDelete = async (event: ScheduleEvent, e: React.MouseEvent) => {
-    e.stopPropagation();
-    
-    if (window.confirm(`"${event.title}" 일정을 삭제하시겠습니까?`)) {
-      await handleDeleteEvent(event.id);
-    }
   };
 
   // 빈 공간 클릭 핸들러 (일정이 있어도 빈 공간 클릭 시 새 일정 등록)
@@ -1346,7 +1171,7 @@ const Schedule: React.FC = () => {
           border: isToday ? '2px solid #40c4ff' : '1px solid #3d3d3d',
           cursor: 'pointer',
           '&:hover': {
-                              backgroundColor: isToday ? 'var(--hover-color)' : 'var(--surface-color)',
+            backgroundColor: isToday ? '#40c4ff30' : '#3a4a5a',
           },
         }}
         onClick={() => handleDateClick(date)}
@@ -1370,9 +1195,9 @@ const Schedule: React.FC = () => {
           {date.getDate()}
         </Typography>
 
-        {events.slice(0, 2).map((event, index) => (
+        {events.slice(0, 2).map(event => (
           <Box
-            key={`${event.id}-${index}`}
+            key={event.id}
             sx={{
               backgroundColor: event.color || getEventColor(event.type),
               color: '#fff',
@@ -1408,7 +1233,6 @@ const Schedule: React.FC = () => {
         updatedAt: new Date().toISOString(),
       };
 
-      // 먼저 로컬 상태 업데이트 (즉시 반영)
       setEvents(prev =>
         prev.map(event =>
           event.id === currentMeasurementEvent.id ? updatedEvent : event
@@ -1417,78 +1241,29 @@ const Schedule: React.FC = () => {
 
       // 백엔드에 실측 데이터 저장
       try {
-        console.log('실측 데이터 서버 저장 시작:', currentMeasurementEvent.id);
-        console.log('저장할 데이터:', data);
-        
-        const response = await fetch(`${API_BASE}/schedules/${currentMeasurementEvent.id}`, {
+        await fetch(`${API_BASE}/schedules/${currentMeasurementEvent.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updatedEvent),
         });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('서버 응답 상세:', {
-            status: response.status,
-            statusText: response.statusText,
-            body: errorText
-          });
-          throw new Error(`서버 응답 오류: ${response.status} ${response.statusText} - ${errorText}`);
-        }
-
-        const result = await response.json();
-        console.log('실측 데이터 서버 저장 성공:', result);
-
-        // localStorage에도 백업 저장
-        try {
-          const existingSchedules = JSON.parse(localStorage.getItem('schedules') || '[]');
-          const updatedSchedules = existingSchedules.map((schedule: any) =>
-            schedule.id === currentMeasurementEvent.id ? updatedEvent : schedule
-          );
-          localStorage.setItem('schedules', JSON.stringify(updatedSchedules));
-          console.log('localStorage 백업 저장 완료');
-        } catch (localStorageError) {
-          console.warn('localStorage 백업 저장 실패:', localStorageError);
-        }
-
-        setSnackbar({
-          open: true,
-          message: '실측 데이터가 성공적으로 저장되었습니다.',
-          severity: 'success',
-        });
-
-        // 모달 닫기
-        setMeasurementDialogOpen(false);
       } catch (error) {
         console.error('실측 데이터 저장 실패:', error);
-        
-        // 에러 발생 시 로컬 상태 롤백
-        setEvents(prev =>
-          prev.map(event =>
-            event.id === currentMeasurementEvent.id ? currentMeasurementEvent : event
-          )
-        );
-
-        setSnackbar({
-          open: true,
-          message: `실측 데이터 저장에 실패했습니다. 다시 시도해주세요. (${error instanceof Error ? error.message : '알 수 없는 오류'})`,
-          severity: 'error',
-        });
       }
+
+      // final 견적서 생성 (여러 행)
+      await createFinalEstimate(currentMeasurementEvent, data);
+
+      setSnackbar({
+        open: true,
+        message: '실측 데이터가 저장되었습니다.',
+        severity: 'success',
+      });
     } else {
       // 새 실측 이벤트 추가
-      // 자동 제목 생성 (주소 기반)
-      let baseTitle: string;
-      if (newEvent.address && newEvent.address.trim()) {
-        // 주소가 있으면 자동 제목 생성
-        baseTitle = generateAutoTitle(newEvent.type || '실측', newEvent.address, newEvent.time || '09:00');
-      } else {
-        // 주소가 없으면 기존 로직 사용
-        const typePrefix = newEvent.type ? `${newEvent.type}-` : '';
-        baseTitle = newEvent.title?.startsWith(typePrefix)
-          ? newEvent.title
-          : `${typePrefix}${newEvent.title}`;
-      }
+      const typePrefix = newEvent.type ? `${newEvent.type}-` : '';
+      const baseTitle = newEvent.title?.startsWith(typePrefix)
+        ? newEvent.title
+        : `${typePrefix}${newEvent.title}`;
 
       if (
         !newEvent.title ||
@@ -1566,7 +1341,7 @@ const Schedule: React.FC = () => {
         estimateNo: estimateNo || '',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        createdBy: userName || 'current_user',
+        createdBy: nickname || 'current_user',
       };
 
       try {
@@ -1592,7 +1367,7 @@ const Schedule: React.FC = () => {
           createScheduleNotification(
             eventData.title,
             `새로운 ${eventData.type} 일정이 생성되었습니다.`,
-            userName || '사용자',
+            nickname || '사용자',
             result.id
           );
 
@@ -1603,7 +1378,6 @@ const Schedule: React.FC = () => {
           });
         } else {
           const errorData = await response.json();
-          console.error('스케줄 저장 실패:', errorData);
           setSnackbar({
             open: true,
             message: `저장 실패: ${errorData.error}`,
@@ -1644,88 +1418,6 @@ const Schedule: React.FC = () => {
   };
 
   // final 견적서 생성 함수
-  const handleCreateFinalEstimate = async (data: MeasurementRowData[]) => {
-    if (currentMeasurementEvent) {
-      await createFinalEstimate(currentMeasurementEvent, data);
-    }
-  };
-
-  // 실시간 데이터 변경 핸들러
-  const handleMeasurementDataChange = (data: MeasurementRowData[]) => {
-    if (currentMeasurementEvent) {
-      console.log('실측 데이터 실시간 변경:', data);
-      
-      // currentMeasurementEvent 즉시 업데이트
-      const updatedEvent = {
-        ...currentMeasurementEvent,
-        measurementData: data,
-        updatedAt: new Date().toISOString(),
-      };
-      
-      setCurrentMeasurementEvent(updatedEvent);
-      
-      // 로컬 상태도 즉시 업데이트
-      setEvents(prev =>
-        prev.map(event =>
-          event.id === currentMeasurementEvent.id ? updatedEvent : event
-        )
-      );
-    }
-  };
-
-  // 자동 저장 핸들러
-  const handleAutoSave = async (data: MeasurementRowData[]) => {
-    if (currentMeasurementEvent) {
-      console.log('실측 데이터 자동 저장 중...');
-      
-      const updatedEvent = {
-        ...currentMeasurementEvent,
-        measurementData: data,
-        updatedAt: new Date().toISOString(),
-      };
-
-      // 즉시 로컬 상태 업데이트 (사용자 경험 개선)
-      setEvents(prev =>
-        prev.map(event =>
-          event.id === currentMeasurementEvent.id ? updatedEvent : event
-        )
-      );
-
-      // currentMeasurementEvent도 업데이트
-      setCurrentMeasurementEvent(updatedEvent);
-
-      try {
-        const response = await fetch(`${API_BASE}/schedules/${currentMeasurementEvent.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedEvent),
-        });
-
-        if (response.ok) {
-          console.log('실측 데이터 자동 저장 완료');
-          
-          // localStorage에도 백업 저장
-          try {
-            const existingSchedules = JSON.parse(localStorage.getItem('schedules') || '[]');
-            const updatedSchedules = existingSchedules.map((schedule: any) =>
-              schedule.id === currentMeasurementEvent.id ? updatedEvent : schedule
-            );
-            localStorage.setItem('schedules', JSON.stringify(updatedSchedules));
-            console.log('자동 저장 localStorage 백업 완료');
-          } catch (localStorageError) {
-            console.warn('자동 저장 localStorage 백업 실패:', localStorageError);
-          }
-        } else {
-          // 자동 저장 실패는 조용히 처리 (사용자에게 알리지 않음)
-          console.warn('실측 데이터 자동 저장 실패 (조용히 처리):', response.status);
-        }
-      } catch (error) {
-        // 자동 저장 오류도 조용히 처리
-        console.warn('실측 데이터 자동 저장 오류 (조용히 처리):', error);
-      }
-    }
-  };
-
   const createFinalEstimate = async (
     event: ScheduleEvent,
     measurementData: MeasurementRowData[]
@@ -1806,7 +1498,7 @@ const Schedule: React.FC = () => {
                   : matched.lineLength,
               memo: matched.memo,
               measuredAt: new Date().toISOString(),
-              measuredBy: userName || '사용자',
+              measuredBy: nickname || '사용자',
             };
 
             // 폭수와 주름양 재계산
@@ -1891,7 +1583,7 @@ const Schedule: React.FC = () => {
       // final 견적서 생성
       const finalEstimate = {
         ...originalEstimate,
-        id: Date.now() + Math.random(),
+        id: Date.now(),
         estimateNo: finalEstimateNo,
         name:
           finalNumber === 1
@@ -1903,7 +1595,7 @@ const Schedule: React.FC = () => {
         // 실측 정보 추가
         measurementInfo: {
           measuredAt: new Date().toISOString(),
-          measuredBy: userName || '사용자',
+          measuredBy: nickname || '사용자',
           eventId: event.id,
           eventTitle: event.title,
           customerName: event.customerName,
@@ -1911,36 +1603,19 @@ const Schedule: React.FC = () => {
         },
       };
 
-      // 기존 final 견적서가 있는지 확인하고 중복 방지
-      const existingFinalIndex = savedEstimates.findIndex(
-        (est: any) => est.estimateNo === finalEstimateNo
-      );
-      
-      if (existingFinalIndex !== -1) {
-        // 기존 final 견적서가 있으면 업데이트
-        savedEstimates[existingFinalIndex] = finalEstimate;
-        console.log('기존 Final 견적서를 업데이트했습니다:', finalEstimateNo);
-      } else {
-        // 새로운 final 견적서 추가
-        savedEstimates.push(finalEstimate);
-        console.log('새로운 Final 견적서를 생성했습니다:', finalEstimateNo);
-      }
-      
+      // final 견적서를 저장된 견적서 목록에 추가
+      savedEstimates.push(finalEstimate);
       localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
 
-      console.log('Final 견적서 처리 완료:', finalEstimateNo);
+      console.log('Final 견적서가 생성되었습니다:', finalEstimateNo);
       console.log(
         '업데이트된 제품 정보:',
         updatedRows.filter((row: any) => row.space && row.productName)
       );
 
-      const message = existingFinalIndex !== -1 
-        ? `Final 견적서가 업데이트되었습니다. (${finalEstimateNo}) - 실측 데이터가 반영되었습니다.`
-        : `Final 견적서가 생성되었습니다. (${finalEstimateNo}) - 실측 데이터가 반영되었습니다.`;
-
       setSnackbar({
         open: true,
-        message,
+        message: `Final 견적서가 생성되었습니다. (${finalEstimateNo}) - 실측 데이터가 반영되었습니다.`,
         severity: 'success',
       });
     } catch (error) {
@@ -1954,9 +1629,6 @@ const Schedule: React.FC = () => {
   };
 
   // 이벤트 추가/수정
-  // 주소에서 건물명과 호수를 추출하는 함수
-
-
   const handleSaveEvent = async () => {
     if (!newEvent.title || !newEvent.date || !newEvent.time) {
       setSnackbar({
@@ -1974,18 +1646,11 @@ const Schedule: React.FC = () => {
       return;
     }
 
-    // 자동 제목 생성 (주소 기반)
-    let baseTitle: string;
-    if (newEvent.address && newEvent.address.trim()) {
-      // 주소가 있으면 자동 제목 생성
-      baseTitle = generateAutoTitle(newEvent.type || '상담', newEvent.address, newEvent.time || '09:00');
-    } else {
-      // 주소가 없으면 기존 로직 사용
-      const typePrefix = newEvent.type ? `${newEvent.type}-` : '';
-      baseTitle = (newEvent.title || '').startsWith(typePrefix)
-        ? newEvent.title
-        : `${typePrefix}${newEvent.title || ''}`;
-    }
+    // 유형-제목 중복 방지
+    const typePrefix = newEvent.type ? `${newEvent.type}-` : '';
+    const baseTitle = (newEvent.title || '').startsWith(typePrefix)
+      ? newEvent.title
+      : `${typePrefix}${newEvent.title || ''}`;
 
     try {
       // 기간설정이 있는 경우 하나의 일정만 생성
@@ -2031,12 +1696,7 @@ const Schedule: React.FC = () => {
             ...eventData,
             id: result.id,
           } as ScheduleEvent;
-          const updatedEvents = [...events, newEventWithId];
-          setEvents(updatedEvents);
-          
-          // localStorage에도 저장
-          localStorage.setItem('schedules', JSON.stringify(updatedEvents));
-          
+          setEvents(prev => [...prev, newEventWithId]);
           setSnackbar({
             open: true,
             message: '기간 일정이 추가되었습니다.',
@@ -2054,7 +1714,7 @@ const Schedule: React.FC = () => {
       } else {
         // 단일 일정으로 저장
         const eventData = {
-          id: editingEvent ? editingEvent.id : generateEventId(),
+          id: editingEvent ? editingEvent.id : `event-${Date.now()}`,
           title: baseTitle,
           date: newEvent.date || new Date().toISOString().split('T')[0],
           time: newEvent.time || '09:00',
@@ -2084,13 +1744,6 @@ const Schedule: React.FC = () => {
           : `${API_BASE}/schedules`;
 
         const method = editingEvent ? 'PUT' : 'POST';
-        
-        console.log('스케줄 저장 요청:', {
-          method,
-          url,
-          editingEventId: editingEvent?.id,
-          eventData
-        });
 
         const response = await fetch(url, {
           method,
@@ -2099,24 +1752,19 @@ const Schedule: React.FC = () => {
           },
           body: JSON.stringify(eventData),
         });
-        
-        console.log('스케줄 저장 응답 상태:', response.status);
 
         if (response.ok) {
           const result = await response.json();
-          console.log('스케줄 저장 성공:', result);
 
           if (editingEvent) {
             // 편집 모드: 기존 이벤트 업데이트
-            const updatedEvents = events.map(event =>
-              event.id === editingEvent.id
-                ? ({ ...event, ...eventData } as ScheduleEvent)
-                : event
+            setEvents(prev =>
+              prev.map(event =>
+                event.id === editingEvent.id
+                  ? ({ ...event, ...eventData } as ScheduleEvent)
+                  : event
+              )
             );
-            setEvents(updatedEvents);
-
-            // localStorage에도 저장
-            localStorage.setItem('schedules', JSON.stringify(updatedEvents));
 
             // 날짜가 변경되었는지 확인하고 currentDate 업데이트
             if (editingEvent.date !== eventData.date) {
@@ -2135,12 +1783,7 @@ const Schedule: React.FC = () => {
               ...eventData,
               id: result.id,
             } as ScheduleEvent;
-            const updatedEvents = [...events, newEventWithId];
-            setEvents(updatedEvents);
-            
-            // localStorage에도 저장
-            localStorage.setItem('schedules', JSON.stringify(updatedEvents));
-            
+            setEvents(prev => [...prev, newEventWithId]);
             setSnackbar({
               open: true,
               message: '새 일정이 추가되었습니다.',
@@ -2196,40 +1839,22 @@ const Schedule: React.FC = () => {
   const handleDeleteEvent = async (eventId: string) => {
     if (window.confirm('이 일정을 삭제하시겠습니까?')) {
       try {
-        console.log('삭제 요청 시작:', { eventId });
-        
-        // 서버에서 먼저 삭제 시도 (실제 Firebase 문서 삭제)
-        const deleteUrl = `${API_BASE}/schedules/${encodeURIComponent(eventId)}`;
-        console.log('삭제 URL:', deleteUrl);
-        
-        const response = await fetch(deleteUrl, {
+        const response = await fetch(`${API_BASE}/schedules/${eventId}`, {
           method: 'DELETE',
         });
 
-        console.log('삭제 응답 상태:', response.status);
-        console.log('삭제 응답 헤더:', Object.fromEntries(response.headers.entries()));
-
         if (response.ok) {
-          const responseData = await response.json();
-          console.log('서버 삭제 성공:', responseData);
-          
-          // 서버 삭제 성공 시에만 로컬에서도 삭제
-          const updatedEvents = events.filter(event => event.id !== eventId);
-          setEvents(updatedEvents);
-          localStorage.setItem('schedules', JSON.stringify(updatedEvents));
-          
+          setEvents(prev => prev.filter(event => event.id !== eventId));
           setSnackbar({
             open: true,
             message: '일정이 삭제되었습니다.',
             severity: 'success',
           });
         } else {
-          console.warn('서버 삭제 실패');
           const errorData = await response.json();
-          console.error('삭제 실패 상세:', errorData);
           setSnackbar({
             open: true,
-            message: `서버 삭제 실패: ${errorData.error}`,
+            message: `삭제 실패: ${errorData.error}`,
             severity: 'error',
           });
         }
@@ -2246,8 +1871,6 @@ const Schedule: React.FC = () => {
 
   // 이벤트 편집
   const handleEditEvent = (event: ScheduleEvent) => {
-    console.log('편집할 이벤트:', event);
-    console.log('이벤트 ID:', event.id);
     setEditingEvent(event);
     // 기간 설정 모드 여부 확인
     const hasPeriod = !!(event.endDate && event.endDate !== event.startDate);
@@ -2279,102 +1902,47 @@ const Schedule: React.FC = () => {
     if (!selectedEventForEdit) return;
 
     try {
-      // 단일 일정 vs 기간 설정 일정 처리
-      let updatedEvent: ScheduleEvent;
-      
-      if (integratedIsPeriodMode) {
-        // 기간 설정 일정
-        updatedEvent = {
-          ...selectedEventForEdit,
-          ...integratedEventData,
-          repeatPattern: integratedRepeatPattern,
-          repeatEndDate: integratedRepeatEndDate,
-          comments: integratedEventComments,
-          // 기간 설정 필드 유지
-          startDate: integratedEventData.startDate,
-          endDate: integratedEventData.endDate,
-          endTime: integratedEventData.endTime,
-          updatedAt: new Date().toISOString(),
-        };
-      } else {
-        // 단일 일정 - 기간 설정 관련 필드 완전 제거
-        updatedEvent = {
-          ...selectedEventForEdit,
-          ...integratedEventData,
-          repeatPattern: integratedRepeatPattern,
-          repeatEndDate: integratedRepeatEndDate,
-          comments: integratedEventComments,
-          // 단일 일정의 경우 date만 사용
-          date: integratedEventData.date || selectedEventForEdit.date,
-          // 기간 설정 관련 필드 완전 제거
-          startDate: undefined,
-          endDate: undefined,
-          endTime: undefined,
-          updatedAt: new Date().toISOString(),
-        };
-      }
+      const updatedEvent: ScheduleEvent = {
+        ...selectedEventForEdit,
+        ...integratedEventData,
+        repeatPattern: integratedRepeatPattern,
+        repeatEndDate: integratedRepeatEndDate,
+        comments: integratedEventComments,
+        // 기간 설정이 해제된 경우 endDate 제거
+        endDate: integratedIsPeriodMode ? integratedEventData.endDate : undefined,
+        endTime: integratedIsPeriodMode ? integratedEventData.endTime : undefined,
+        updatedAt: new Date().toISOString(),
+      };
 
-      console.log('통합 모달 저장 요청:', {
-        eventId: selectedEventForEdit.id,
-        integratedIsPeriodMode,
-        integratedEventData,
-        updatedEvent
-      });
-
-      // 서버에 업데이트 요청
-      const url = `${API_BASE}/schedules/${selectedEventForEdit.id}`;
-      const response = await fetch(url, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updatedEvent),
-      });
-
-      console.log('통합 모달 저장 응답 상태:', response.status);
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log('통합 모달 저장 성공:', result);
-
-        // 서버 저장 성공 시 로컬 상태 업데이트
-        setEvents(prev =>
-          prev.map(event =>
-            event.id === selectedEventForEdit.id ? updatedEvent : event
-          )
-        );
-
-        // localStorage 업데이트
-        const updatedEvents = events.map(event =>
+      // 기존 이벤트 업데이트
+      setEvents(prev =>
+        prev.map(event =>
           event.id === selectedEventForEdit.id ? updatedEvent : event
-        );
-        localStorage.setItem('schedules', JSON.stringify(updatedEvents));
+        )
+      );
 
-        setSnackbar({
-          open: true,
-          message: '일정이 성공적으로 수정되었습니다.',
-          severity: 'success',
-        });
+      // localStorage 업데이트
+      const updatedEvents = events.map(event =>
+        event.id === selectedEventForEdit.id ? updatedEvent : event
+      );
+      localStorage.setItem('schedules', JSON.stringify(updatedEvents));
 
-        setIntegratedEventDialogOpen(false);
-        setSelectedEventForEdit(null);
-        setIntegratedEventData({});
-        setIntegratedEventComments([]);
-        setIntegratedIsPeriodMode(false);
-      } else {
-        const errorData = await response.json();
-        console.error('통합 모달 저장 실패:', errorData);
-        setSnackbar({
-          open: true,
-          message: `서버 저장 실패: ${errorData.error}`,
-          severity: 'error',
-        });
-      }
+      setSnackbar({
+        open: true,
+        message: '일정이 성공적으로 수정되었습니다.',
+        severity: 'success',
+      });
+
+      setIntegratedEventDialogOpen(false);
+      setSelectedEventForEdit(null);
+      setIntegratedEventData({});
+      setIntegratedEventComments([]);
+      setIntegratedIsPeriodMode(false);
     } catch (error) {
       console.error('일정 수정 중 오류 발생:', error);
       setSnackbar({
         open: true,
-        message: '서버 연결 오류가 발생했습니다.',
+        message: '일정 수정 중 오류가 발생했습니다.',
         severity: 'error',
       });
     }
@@ -2386,52 +1954,29 @@ const Schedule: React.FC = () => {
 
     if (window.confirm('정말로 이 일정을 삭제하시겠습니까?')) {
       try {
-        console.log('통합 모달 삭제 요청:', { eventId: selectedEventForEdit.id });
+        // 이벤트 목록에서 제거
+        setEvents(prev => prev.filter(event => event.id !== selectedEventForEdit.id));
 
-        // 서버에서 삭제 요청
-        const url = `${API_BASE}/schedules/${selectedEventForEdit.id}`;
-        const response = await fetch(url, {
-          method: 'DELETE',
+        // localStorage 업데이트
+        const updatedEvents = events.filter(event => event.id !== selectedEventForEdit.id);
+        localStorage.setItem('schedules', JSON.stringify(updatedEvents));
+
+        setSnackbar({
+          open: true,
+          message: '일정이 성공적으로 삭제되었습니다.',
+          severity: 'success',
         });
 
-        console.log('통합 모달 삭제 응답 상태:', response.status);
-
-        if (response.ok) {
-          const result = await response.json();
-          console.log('통합 모달 삭제 성공:', result);
-
-          // 서버 삭제 성공 시 로컬 상태 업데이트
-          setEvents(prev => prev.filter(event => event.id !== selectedEventForEdit.id));
-
-          // localStorage 업데이트
-          const updatedEvents = events.filter(event => event.id !== selectedEventForEdit.id);
-          localStorage.setItem('schedules', JSON.stringify(updatedEvents));
-
-          setSnackbar({
-            open: true,
-            message: '일정이 성공적으로 삭제되었습니다.',
-            severity: 'success',
-          });
-
-          setIntegratedEventDialogOpen(false);
-          setSelectedEventForEdit(null);
-          setIntegratedEventData({});
-          setIntegratedEventComments([]);
-          setIntegratedIsPeriodMode(false);
-        } else {
-          const errorData = await response.json();
-          console.error('통합 모달 삭제 실패:', errorData);
-          setSnackbar({
-            open: true,
-            message: `서버 삭제 실패: ${errorData.error}`,
-            severity: 'error',
-          });
-        }
+        setIntegratedEventDialogOpen(false);
+        setSelectedEventForEdit(null);
+        setIntegratedEventData({});
+        setIntegratedEventComments([]);
+        setIntegratedIsPeriodMode(false);
       } catch (error) {
         console.error('일정 삭제 중 오류 발생:', error);
         setSnackbar({
           open: true,
-          message: '서버 연결 오류가 발생했습니다.',
+          message: '일정 삭제 중 오류가 발생했습니다.',
           severity: 'error',
         });
       }
@@ -2439,55 +1984,30 @@ const Schedule: React.FC = () => {
   };
 
   // 통합 모달에서 댓글 추가
-  const handleIntegratedCommentSubmit = async () => {
+  const handleIntegratedCommentSubmit = () => {
     if (!newIntegratedComment || !newIntegratedComment.trim() || !selectedEventForEdit) return;
-
-    try {
-      console.log('Firebase에 댓글 저장 시작:', {
-        eventId: selectedEventForEdit.id,
-        message: newIntegratedComment.trim(),
-        userName: userName || '사용자'
-      });
-
-      // Firestore에 댓글 저장 (실시간 동기화)
-      const commentsRef = collection(db, 'schedules', selectedEventForEdit.id, 'comments');
-      
-      // emoji 필드 처리 (undefined 제거)
-      const emojiMatch = newIntegratedComment.match(/[😊👍❤️🎉🔥💯👏🙏😍🤔😅😢]/);
-      const commentData: any = {
-        eventId: selectedEventForEdit.id,
-        userId: currentUser?.id?.toString() || 'current_user',
-        userName: userName || '사용자',
-        userAvatar: currentUser?.username || '',
-        message: newIntegratedComment.trim(),
-        timestamp: serverTimestamp(),
-      };
-      
-      // emoji가 있을 때만 필드 추가
-      if (emojiMatch && emojiMatch[0]) {
-        commentData.emoji = emojiMatch[0];
-      }
-      
-      const docRef = await addDoc(commentsRef, commentData);
-
-      console.log('Firebase에 댓글 저장 완료:', docRef.id);
-
-      // 입력 필드 초기화
-      setNewIntegratedComment('');
-      
+    
+    // 채팅 권한 체크
+    if (!hasChatPermission) {
       setSnackbar({
         open: true,
-        message: '댓글이 실시간으로 전송되었습니다.',
-        severity: 'success',
-      });
-    } catch (error) {
-      console.error('댓글 저장 실패:', error);
-      setSnackbar({
-        open: true,
-        message: '댓글 전송에 실패했습니다.',
+        message: '채팅 권한이 없습니다. 관리자에게 문의하세요.',
         severity: 'error',
       });
+      return;
     }
+
+    const newComment: ScheduleComment = {
+      id: Date.now().toString(),
+      eventId: selectedEventForEdit.id,
+      userId: 'current_user',
+      userName: nickname || '사용자',
+      message: newIntegratedComment,
+      timestamp: new Date().toISOString(),
+    };
+
+    setIntegratedEventComments(prev => [...prev, newComment]);
+    setNewIntegratedComment('');
   };
 
   // 실측 이벤트 편집 시 MeasurementForm 표시
@@ -2512,30 +2032,6 @@ const Schedule: React.FC = () => {
     setCurrentDate(newDate);
   };
 
-  // 타임트리 동기화 함수
-  const handleTimeTreeSync = async (syncedEvents: any[]) => {
-    try {
-      // 동기화된 이벤트로 로컬 이벤트 업데이트
-      setEvents(syncedEvents);
-      
-      // localStorage에도 저장
-      localStorage.setItem('schedules', JSON.stringify(syncedEvents));
-      
-      setSnackbar({
-        open: true,
-        message: '타임트리 동기화가 완료되었습니다.',
-        severity: 'success',
-      });
-    } catch (error) {
-      console.error('타임트리 동기화 처리 오류:', error);
-      setSnackbar({
-        open: true,
-        message: '타임트리 동기화 처리 중 오류가 발생했습니다.',
-        severity: 'error',
-      });
-    }
-  };
-
   // 월간 뷰 렌더링
   const renderMonthView = () => (
     <Box
@@ -2556,16 +2052,16 @@ const Schedule: React.FC = () => {
               sx={{
                 p: 1,
                 textAlign: 'center',
-                backgroundColor: 'var(--surface-color)',
+                backgroundColor: '#263040',
                 color:
-                  index === 0 ? '#ff6b6b' : index === 6 ? '#4fc3f7' : 'var(--text-color)',
+                  index === 0 ? '#ff6b6b' : index === 6 ? '#4fc3f7' : '#e0e6ed',
                 minHeight: '40px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Typography variant="subtitle2" sx={{ fontSize: '1.125rem' }}>
+              <Typography variant="subtitle2" sx={{ fontSize: '1rem' }}>
                 {day}
               </Typography>
             </Paper>
@@ -2586,7 +2082,7 @@ const Schedule: React.FC = () => {
             return d >= s && d <= e;
           });
           // 해당 날짜에만 있는 단일 이벤트 (기간 설정이 없거나 시작일과 종료일이 같은 경우)
-          const singleDayEvents = getEventsForDateLocal(date).filter(
+          const singleDayEvents = getEventsForDate(date).filter(
             event =>
               !event.startDate ||
               !event.endDate ||
@@ -2599,12 +2095,12 @@ const Schedule: React.FC = () => {
                 sx={{
                   p: { xs: 0.5, sm: 1, md: 1 },
                   minHeight: { xs: '80px', sm: '100px', md: '120px' },
-                  backgroundColor: isToday ? 'var(--primary-color)' : 'var(--background-color)',
-                  color: isCurrentMonth ? 'var(--text-color)' : 'var(--text-secondary-color)',
-                  border: isToday ? '2px solid var(--primary-color)' : '1px solid var(--border-color)',
+                  backgroundColor: isToday ? '#40c4ff20' : '#2e3a4a',
+                  color: isCurrentMonth ? '#e0e6ed' : '#666',
+                  border: isToday ? '2px solid #40c4ff' : '1px solid #3d3d3d',
                   cursor: 'pointer',
                   '&:hover': {
-                    backgroundColor: isToday ? 'var(--hover-color)' : 'var(--surface-color)',
+                    backgroundColor: isToday ? '#40c4ff30' : '#3a4a5a',
                   },
                 }}
                 onClick={e => {
@@ -2621,18 +2117,17 @@ const Schedule: React.FC = () => {
                   variant="body2"
                   sx={{
                     fontWeight: isToday ? 'bold' : 'normal',
-                    fontSize: '1.125rem',
                     color: holidayName
                       ? '#ff5252'
                       : isToday
-                        ? '#fff'
+                        ? '#40c4ff'
                         : dayOfWeek === 0
                           ? '#ff6b6b'
                           : dayOfWeek === 6
                             ? '#4fc3f7'
                             : isCurrentMonth
-                              ? 'var(--text-color)'
-                              : 'var(--text-secondary-color)',
+                              ? '#e0e6ed'
+                              : '#666',
                     mb: holidayName ? 0 : 1,
                   }}
                 >
@@ -2651,7 +2146,7 @@ const Schedule: React.FC = () => {
                 </Typography>
                 <Box sx={{ mt: 1 }}>
                   {/* 여러 날에 걸친 일정 Bar */}
-                  {multiDayEvents.map((event, index) => {
+                  {multiDayEvents.map(event => {
                     const start = new Date(event.startDate!);
                     const end = new Date(event.endDate!);
                     const isStart =
@@ -2664,7 +2159,7 @@ const Schedule: React.FC = () => {
 
                     return (
                       <Box
-                        key={`${event.id}-${index}`}
+                        key={event.id}
                         sx={{
                           position: 'relative',
                           width: '100%',
@@ -2685,7 +2180,7 @@ const Schedule: React.FC = () => {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          fontSize: '1rem',
+                          fontSize: '0.8rem',
                           cursor: 'pointer',
                           opacity: 0.95,
                           overflow: 'hidden',
@@ -2770,20 +2265,6 @@ const Schedule: React.FC = () => {
                         >
                           {getCalendarTitle(event)}
                         </Box>
-                        <IconButton
-                          size="small"
-                          onClick={e => handleEventDelete(event, e)}
-                          sx={{
-                            color: 'white',
-                            p: 0.2,
-                            minWidth: 'auto',
-                            '&:hover': {
-                              backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                            },
-                          }}
-                        >
-                          <DeleteIcon sx={{ fontSize: '0.8rem' }} />
-                        </IconButton>
 
                       </Box>
                     );
@@ -2797,9 +2278,9 @@ const Schedule: React.FC = () => {
                         event.startDate === event.endDate
                     )
                     .slice(0, 3)
-                    .map((event, index) => (
+                    .map(event => (
                       <Box
-                        key={`${event.id}-${index}`}
+                        key={event.id}
                         sx={{
                           display: 'flex',
                           alignItems: 'center',
@@ -2833,7 +2314,7 @@ const Schedule: React.FC = () => {
                             handleEventClick(event, e);
                           }}
                           sx={{
-                            fontSize: '0.9rem',
+                            fontSize: '0.7rem',
                             height: 'auto',
                             backgroundColor: 'transparent',
                             color: 'white',
@@ -2849,21 +2330,6 @@ const Schedule: React.FC = () => {
                             },
                           }}
                         />
-                        <IconButton
-                          size="small"
-                          onClick={e => handleEventDelete(event, e)}
-                          sx={{
-                            color: 'white',
-                            p: 0.2,
-                            minWidth: 'auto',
-                            ml: 0.5,
-                            '&:hover': {
-                              backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                            },
-                          }}
-                        >
-                          <DeleteIcon sx={{ fontSize: '0.8rem' }} />
-                        </IconButton>
 
                       </Box>
                     ))}
@@ -2901,7 +2367,7 @@ const Schedule: React.FC = () => {
         {['일', '월', '화', '수', '목', '금', '토'].map((day, index) => {
           const date = new Date(currentDate);
           date.setDate(date.getDate() - date.getDay() + index);
-          const dayEvents = getEventsForDateLocal(date);
+          const dayEvents = getEventsForDate(date);
           const isToday = date.toDateString() === new Date().toDateString();
 
           return (
@@ -2910,8 +2376,8 @@ const Schedule: React.FC = () => {
                 sx={{
                   p: { xs: 0.5, sm: 1, md: 1 },
                   minHeight: { xs: '150px', sm: '180px', md: '200px' },
-                  backgroundColor: isToday ? 'var(--primary-color)' : 'var(--background-color)',
-                  border: isToday ? '2px solid var(--primary-color)' : '1px solid var(--border-color)',
+                  backgroundColor: isToday ? '#40c4ff20' : '#2e3a4a',
+                  border: isToday ? '2px solid #40c4ff' : '1px solid #3d3d3d',
                   cursor: 'pointer',
                 }}
                 onClick={() => handleDateClick(date)}
@@ -2936,7 +2402,7 @@ const Schedule: React.FC = () => {
                               ? '#4fc3f7'
                               : '#e0e6ed',
                         fontWeight: isToday ? 'bold' : 'normal',
-                        fontSize: { xs: '0.9rem', sm: '1.075rem', md: '1.2rem' },
+                        fontSize: { xs: '0.7rem', sm: '0.875rem', md: '1rem' },
                       }}
                     >
                       {day}
@@ -2951,7 +2417,7 @@ const Schedule: React.FC = () => {
                             : index === 6
                               ? '#4fc3f7'
                               : '#b0b8c1',
-                        fontSize: { xs: '0.8rem', sm: '0.95rem', md: '1.075rem' },
+                        fontSize: { xs: '0.6rem', sm: '0.75rem', md: '0.875rem' },
                       }}
                     >
                       {date.getDate()}
@@ -3014,7 +2480,7 @@ const Schedule: React.FC = () => {
                     return (
                       <>
                         {/* 기간 일정 표시 */}
-                        {multiDayEvents.map((event, index) => {
+                        {multiDayEvents.map(event => {
                           const isStart =
                             toLocalDateString(date) ===
                             (event.startDate
@@ -3027,7 +2493,7 @@ const Schedule: React.FC = () => {
 
                           return (
                             <Box
-                              key={`${event.id}-${index}`}
+                              key={event.id}
                               onClick={e => {
                                 e.stopPropagation();
                                 handleEventClick(event, e);
@@ -3047,9 +2513,9 @@ const Schedule: React.FC = () => {
                                         ? '0 14px 14px 0'
                                         : 0,
                                 fontSize: {
-                                  xs: '0.8rem',
-                                  sm: '0.85rem',
-                                  md: '0.9rem',
+                                  xs: '0.6rem',
+                                  sm: '0.65rem',
+                                  md: '0.7rem',
                                 },
                                 color: 'white',
                                 cursor: 'pointer',
@@ -3137,9 +2603,9 @@ const Schedule: React.FC = () => {
                         })}
 
                         {/* 단일 일정 표시 */}
-                        {singleDayEvents.map((event, index) => (
+                        {singleDayEvents.map(event => (
                           <Box
-                            key={`${event.id}-${index}`}
+                            key={event.id}
                             onClick={e => {
                               e.stopPropagation();
                               handleEventClick(event, e);
@@ -3150,7 +2616,7 @@ const Schedule: React.FC = () => {
                               backgroundColor:
                                 event.color || getEventColor(event.type),
                               borderRadius: 1,
-                              fontSize: '0.9rem',
+                              fontSize: '0.7rem',
                               color: 'white',
                               cursor: 'pointer',
                               display: 'flex',
@@ -3186,7 +2652,7 @@ const Schedule: React.FC = () => {
 
   // 일간 뷰 렌더링
   const renderDayView = () => {
-            const dayEvents = getEventsForDateLocal(currentDate);
+    const dayEvents = getEventsForDate(currentDate);
     const isToday = currentDate.toDateString() === new Date().toDateString();
     const dayOfWeek = currentDate.getDay(); // 0: 일요일, 6: 토요일
 
@@ -3217,12 +2683,12 @@ const Schedule: React.FC = () => {
         </Typography>
         <List>
           {dayEvents.length > 0 ? (
-            dayEvents.map((event, index) => (
+            dayEvents.map(event => (
               <ListItem
-                key={`${event.id}-${index}`}
+                key={event.id}
                 sx={{
                   mb: 1,
-                  backgroundColor: 'var(--surface-color)',
+                  backgroundColor: '#2e3a4a',
                   borderRadius: 1,
                   border: `2px solid ${event.color || getEventColor(event.type)}`,
                 }}
@@ -3734,7 +3200,7 @@ const Schedule: React.FC = () => {
   // 새로운 기능들을 위한 핸들러들
 
   // 채팅/댓글
-  const handleCommentSubmit = async () => {
+  const handleCommentSubmit = () => {
     if (!newComment || !newComment.trim() || !selectedEventForChat) return;
     
     // 채팅 권한 체크
@@ -3747,54 +3213,43 @@ const Schedule: React.FC = () => {
       return;
     }
 
-    try {
-      console.log('Firebase에 댓글 저장 시작:', {
-        eventId: selectedEventForChat.id,
-        message: newComment.trim(),
-        userName: userName || '사용자'
-      });
+    const comment: ScheduleComment = {
+      id: Date.now().toString(),
+      eventId: selectedEventForChat.id,
+      userId: 'current_user',
+      userName: nickname || '사용자',
+      message: newComment,
+      timestamp: new Date().toISOString(),
+      attachments: commentAttachments.map(file => URL.createObjectURL(file)),
+      emoji: newComment.match(/[😊👍❤️🎉🔥💯👏🙏😍🤔😅😢]/)?.[0] || undefined,
+    };
 
-      // Firestore에 댓글 저장 (실시간 동기화)
-      const commentsRef = collection(db, 'schedules', selectedEventForChat.id, 'comments');
-      
-      // emoji 필드 처리 (undefined 제거)
-      const emojiMatch = newComment.match(/[😊👍❤️🎉🔥💯👏🙏😍🤔😅😢]/);
-      const commentData: any = {
-        eventId: selectedEventForChat.id,
-        userId: currentUser?.id?.toString() || 'current_user',
-        userName: userName || '사용자',
-        userAvatar: currentUser?.username || '',
-        message: newComment.trim(),
-        timestamp: serverTimestamp(),
-        attachments: commentAttachments.map(file => URL.createObjectURL(file)),
-      };
-      
-      // emoji가 있을 때만 필드 추가
-      if (emojiMatch && emojiMatch[0]) {
-        commentData.emoji = emojiMatch[0];
-      }
-      
-      const docRef = await addDoc(commentsRef, commentData);
+    setEvents(prev =>
+      prev.map(event =>
+        event.id === selectedEventForChat.id
+          ? {
+              ...event,
+              comments: [...(event.comments || []), comment],
+              updatedAt: new Date().toISOString(),
+            }
+          : event
+      )
+    );
 
-      console.log('Firebase에 댓글 저장 완료:', docRef.id);
+    // 댓글 작성 알림 (WebSocket으로 실시간 전송)
+    // createChatNotification(
+    //   nickname || userName || '사용자',
+    //   newComment,
+    //   selectedEventForChat.id
+    // );
 
-      // 입력 필드 초기화
-      setNewComment('');
-      setCommentAttachments([]);
-      
-      setSnackbar({
-        open: true,
-        message: '댓글이 실시간으로 전송되었습니다.',
-        severity: 'success',
-      });
-    } catch (error) {
-      console.error('댓글 저장 실패:', error);
-      setSnackbar({
-        open: true,
-        message: '댓글 전송에 실패했습니다.',
-        severity: 'error',
-      });
-    }
+    setNewComment('');
+    setCommentAttachments([]);
+    setSnackbar({
+      open: true,
+      message: '댓글이 추가되었습니다.',
+      severity: 'success',
+    });
   };
 
   const handleFileUpload = (files: FileList) => {
@@ -3803,37 +3258,34 @@ const Schedule: React.FC = () => {
 
   // 알림 관리
   const handleNotificationToggle = (eventId: string, type: string) => {
-    const updatedEvents = events.map(event => {
-      if (event.id === eventId) {
-        const notifications = event.notifications || [];
-        const existingIndex = notifications.findIndex(n => n.type === type);
+    setEvents(prev =>
+      prev.map(event => {
+        if (event.id === eventId) {
+          const notifications = event.notifications || [];
+          const existingIndex = notifications.findIndex(n => n.type === type);
 
-        if (existingIndex >= 0) {
-          notifications[existingIndex].isEnabled =
-            !notifications[existingIndex].isEnabled;
-        } else {
-          notifications.push({
-            id: Date.now().toString(),
-            eventId,
-            type: type as any,
-            isEnabled: true,
-            message: `일정 알림: ${event.title}`,
-          });
+          if (existingIndex >= 0) {
+            notifications[existingIndex].isEnabled =
+              !notifications[existingIndex].isEnabled;
+          } else {
+            notifications.push({
+              id: Date.now().toString(),
+              eventId,
+              type: type as any,
+              isEnabled: true,
+              message: `일정 알림: ${event.title}`,
+            });
+          }
+
+          return {
+            ...event,
+            notifications,
+            updatedAt: new Date().toISOString(),
+          };
         }
-
-        return {
-          ...event,
-          notifications,
-          updatedAt: new Date().toISOString(),
-        };
-      }
-      return event;
-    });
-    
-    setEvents(updatedEvents);
-    
-    // localStorage 업데이트
-    localStorage.setItem('schedules', JSON.stringify(updatedEvents));
+        return event;
+      })
+    );
   };
 
   // 공유 기능
@@ -3853,19 +3305,17 @@ const Schedule: React.FC = () => {
       sharedAt: new Date().toISOString(),
     };
 
-    const updatedEvents = events.map(event =>
-      event.id === selectedEventForShare.id
-        ? {
-            ...event,
-            shares: [...(event.shares || []), share],
-            updatedAt: new Date().toISOString(),
-          }
-        : event
+    setEvents(prev =>
+      prev.map(event =>
+        event.id === selectedEventForShare.id
+          ? {
+              ...event,
+              shares: [...(event.shares || []), share],
+              updatedAt: new Date().toISOString(),
+            }
+          : event
+      )
     );
-    setEvents(updatedEvents);
-    
-    // localStorage 업데이트
-    localStorage.setItem('schedules', JSON.stringify(updatedEvents));
 
     setShareDialogOpen(false);
     setSelectedEventForShare(null);
@@ -3952,7 +3402,7 @@ const Schedule: React.FC = () => {
           date: current.toISOString().split('T')[0],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          createdBy: userName || 'current_user',
+          createdBy: nickname || 'current_user',
         };
         eventsToAdd.push(newEvent);
       }
@@ -3991,17 +3441,18 @@ const Schedule: React.FC = () => {
     }
   }, []);
 
-  // 채팅 메시지 전송 시 userName 사용
+  // 채팅 메시지 전송 시 nickname 사용
   const handleSendMessage = () => {
-    if (!userName || !userName.trim()) {
-      if (!nicknameDialogShown) {
-        setUserDialogOpen(true);
-        setNicknameDialogShown(true);
-      }
+    if (!nickname || !nickname.trim()) {
+      setSnackbar({
+        open: true,
+        message: '프로필 설정에서 닉네임을 먼저 설정해주세요.',
+        severity: 'warning',
+      });
       return;
     }
-    // 실시간 댓글 전송 (handleCommentSubmit과 동일)
-    handleCommentSubmit();
+    // 기존 메시지 전송 로직에서 nickname을 메시지에 포함
+    // ...
   };
 
   // 메모 관련 핸들러
@@ -4228,15 +3679,6 @@ const Schedule: React.FC = () => {
     );
   }
 
-  // 일관된 ID 생성 함수 (Firestore 문서 ID 규칙 준수)
-  const generateEventId = (prefix: string = 'event') => {
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).substr(2, 9);
-    // Firestore 문서 ID 규칙: /, ., .., * 제외, 1-1500자
-    // 하이픈(-)은 허용되므로 기존 형식 유지
-    return `${prefix}-${timestamp}-${random}`;
-  };
-
   return (
     <DragDropContext onDragEnd={handleDragEnd}>
       <Box
@@ -4244,8 +3686,8 @@ const Schedule: React.FC = () => {
           height: '100vh',
           display: 'flex',
           flexDirection: 'column',
-          backgroundColor: 'var(--background-color)',
-          color: 'var(--text-color)',
+          backgroundColor: '#1a1f2e',
+          color: '#e0e6ed',
           overflow: 'hidden',
         }}
       >
@@ -4254,8 +3696,8 @@ const Schedule: React.FC = () => {
           sx={{
             p: { xs: 1, sm: 2 },
             borderBottom: 1,
-            borderColor: 'var(--border-color)',
-            backgroundColor: 'var(--surface-color)',
+            borderColor: '#2e3a4a',
+            backgroundColor: '#232a36',
             position: 'sticky',
             top: 0,
             zIndex: 1000,
@@ -4274,7 +3716,6 @@ const Schedule: React.FC = () => {
               sx={{
                 fontWeight: 'bold',
                 display: { xs: 'none', md: 'block' },
-                color: 'var(--text-secondary-color)',
               }}
             >
               📅 스케줄
@@ -4291,7 +3732,7 @@ const Schedule: React.FC = () => {
                   setEventDialogOpen(true);
                 }}
                 sx={{
-                  backgroundColor: 'var(--primary-color)',
+                  backgroundColor: '#40c4ff',
                   fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' },
                   px: { xs: 0.5, sm: 1, md: 2 },
                   py: { xs: 0.25, sm: 0.5, md: 1 },
@@ -4316,9 +3757,9 @@ const Schedule: React.FC = () => {
                 sx={{
                   minWidth: { xs: 80, sm: 120, md: 220 },
                   maxWidth: { xs: 100, sm: 150, md: 300 },
-                  background: 'var(--background-color)',
+                  background: '#232a36',
                   borderRadius: 1,
-                  input: { color: 'var(--text-color)' },
+                  input: { color: '#e0e6ed' },
                   display: { xs: 'block', sm: 'block', md: 'block' },
                   '& .MuiInputBase-root': {
                     fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.875rem' },
@@ -4329,7 +3770,7 @@ const Schedule: React.FC = () => {
                     <InputAdornment position="start">
                       <SearchIcon
                         sx={{
-                          color: 'var(--primary-color)',
+                          color: '#40c4ff',
                           fontSize: { xs: '0.9rem', sm: '1rem', md: '1.2rem' },
                         }}
                       />
@@ -4347,8 +3788,8 @@ const Schedule: React.FC = () => {
                 startIcon={<AnalyticsIcon />}
                 onClick={handleStatsOpen}
                 sx={{
-                  borderColor: 'var(--primary-color)',
-                  color: 'var(--primary-color)',
+                  borderColor: '#40c4ff',
+                  color: '#40c4ff',
                   fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' },
                   px: { xs: 0.5, sm: 1, md: 2 },
                   py: { xs: 0.25, sm: 0.5, md: 1 },
@@ -4367,8 +3808,8 @@ const Schedule: React.FC = () => {
                 startIcon={<CalendarMonthIcon />}
                 onClick={() => setYearlyEventDialogOpen(true)}
                 sx={{
-                  borderColor: 'var(--primary-color)',
-                  color: 'var(--primary-color)',
+                  borderColor: '#40c4ff',
+                  color: '#40c4ff',
                   fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' },
                   px: { xs: 0.5, sm: 1, md: 2 },
                   py: { xs: 0.25, sm: 0.5, md: 1 },
@@ -4387,8 +3828,8 @@ const Schedule: React.FC = () => {
                 startIcon={<CategoryIcon />}
                 onClick={() => setTypeManagementOpen(true)}
                 sx={{
-                  borderColor: 'var(--primary-color)',
-                  color: 'var(--primary-color)',
+                  borderColor: '#40c4ff',
+                  color: '#40c4ff',
                   fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' },
                   px: { xs: 0.5, sm: 1, md: 2 },
                   py: { xs: 0.25, sm: 0.5, md: 1 },
@@ -4401,26 +3842,6 @@ const Schedule: React.FC = () => {
               >
                 타입 관리
               </Button>
-              <Button
-                variant="outlined"
-                color="primary"
-                startIcon={<SyncIcon />}
-                onClick={() => setTimeTreeDialogOpen(true)}
-                sx={{
-                  borderColor: 'var(--primary-color)',
-                  color: 'var(--primary-color)',
-                  fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' },
-                  px: { xs: 0.5, sm: 1, md: 2 },
-                  py: { xs: 0.25, sm: 0.5, md: 1 },
-                  minWidth: { xs: 'auto', sm: 'auto' },
-                  '& .MuiButton-startIcon': {
-                    marginRight: { xs: 0.5, sm: 1 },
-                  },
-                  display: { xs: 'none', sm: 'inline-flex' },
-                }}
-              >
-                타임트리 연동
-              </Button>
             </Box>
           </Box>
         </Box>
@@ -4429,9 +3850,9 @@ const Schedule: React.FC = () => {
         <Box
           sx={{
             p: { xs: 1, sm: 2 },
-            backgroundColor: 'var(--surface-color)',
+            backgroundColor: '#232a36',
             borderBottom: 1,
-            borderColor: 'var(--border-color)',
+            borderColor: '#2e3a4a',
             height: { xs: '48px', sm: '56px', md: '64px' },
             display: { xs: 'none', md: 'block' },
             overflow: 'hidden',
@@ -4443,9 +3864,9 @@ const Schedule: React.FC = () => {
               onClick={() => setActiveType('all')}
               sx={{
                 backgroundColor:
-                  activeType === 'all' ? 'var(--primary-color)' : 'transparent',
-                color: activeType === 'all' ? '#fff' : 'var(--text-secondary-color)',
-                border: '1.5px solid var(--primary-color)',
+                  activeType === 'all' ? '#9e9e9e' : 'transparent',
+                color: activeType === 'all' ? '#fff' : '#9e9e9e',
+                border: '1.5px solid #9e9e9e',
                 fontWeight: 'bold',
                 px: 2,
               }}
@@ -4488,7 +3909,7 @@ const Schedule: React.FC = () => {
               size="small"
               startIcon={<ChevronLeftIcon />}
               onClick={handleBack}
-              sx={{ borderColor: 'var(--primary-color)', color: 'var(--primary-color)' }}
+              sx={{ borderColor: '#40c4ff', color: '#40c4ff' }}
             >
               {viewMode === 0 ? '전달' : viewMode === 1 ? '전주' : '전날'}
             </Button>
@@ -4496,7 +3917,7 @@ const Schedule: React.FC = () => {
               variant="outlined"
               size="small"
               onClick={() => setCurrentDate(new Date())}
-              sx={{ borderColor: 'var(--primary-color)', color: 'var(--primary-color)' }}
+              sx={{ borderColor: '#40c4ff', color: '#40c4ff' }}
             >
               오늘
             </Button>
@@ -4505,7 +3926,7 @@ const Schedule: React.FC = () => {
               size="small"
               endIcon={<ChevronRightIcon />}
               onClick={handleNext}
-              sx={{ borderColor: 'var(--primary-color)', color: 'var(--primary-color)' }}
+              sx={{ borderColor: '#40c4ff', color: '#40c4ff' }}
             >
               {viewMode === 0 ? '다음달' : viewMode === 1 ? '다음주' : '다음날'}
             </Button>
@@ -4514,9 +3935,9 @@ const Schedule: React.FC = () => {
               sx={{
                 ml: 2,
                 flex: 1,
-                color: 'var(--text-color)',
+                color: '#e0e6ed',
                 fontWeight: 'bold',
-                fontSize: { xs: 18, sm: 22 },
+                fontSize: { xs: 16, sm: 20 },
               }}
             >
               {viewMode === 0 &&
@@ -4535,12 +3956,10 @@ const Schedule: React.FC = () => {
               onChange={(e, newValue) => setViewMode(newValue)}
               sx={{
                 '& .MuiTab-root': {
-                  color: 'var(--text-color)',
-                  fontSize: { xs: '1rem', sm: '1.1rem' },
-                  fontWeight: 'bold',
-                  '&.Mui-selected': { color: 'var(--primary-color)' },
+                  color: '#e0e6ed',
+                  '&.Mui-selected': { color: '#40c4ff' },
                 },
-                '& .MuiTabs-indicator': { backgroundColor: 'var(--primary-color)' },
+                '& .MuiTabs-indicator': { backgroundColor: '#40c4ff' },
               }}
             >
               <Tab label="월간" />
@@ -4561,20 +3980,17 @@ const Schedule: React.FC = () => {
           onClose={() => setEventDialogOpen(false)}
           maxWidth="md"
           fullWidth
-          fullScreen={isMobile}
           PaperProps={{
             sx: {
               background: '#1e2634',
               color: '#e0e6ed',
-              borderRadius: { xs: 0, md: 3 },
+              borderRadius: 3,
               boxShadow: '0 20px 60px rgba(64, 196, 255, 0.2)',
               border: '1px solid #2e3a4a',
-              maxHeight: { xs: '100vh', md: '95vh' },
+              maxHeight: '95vh',
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
-              width: { xs: '100vw', md: '70vw' },
-              m: 0,
             },
           }}
         >
@@ -4587,27 +4003,13 @@ const Schedule: React.FC = () => {
               textAlign: 'center',
               borderBottom: '2px solid #2e3a4a',
               py: { xs: 2, sm: 2.5 },
-              px: { xs: 2, sm: 3 },
+              px: 3,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: 1,
-              position: 'relative',
             }}
           >
-            {isMobile && (
-              <IconButton
-                onClick={() => setEventDialogOpen(false)}
-                sx={{
-                  position: 'absolute',
-                  left: 8,
-                  color: '#40c4ff',
-                  '&:hover': { backgroundColor: 'rgba(64, 196, 255, 0.1)' },
-                }}
-              >
-                <ArrowBackIcon />
-              </IconButton>
-            )}
             <EventIcon sx={{ fontSize: { xs: 20, sm: 24 } }} />새 일정 등록
           </DialogTitle>
           <DialogContent
@@ -5148,64 +4550,18 @@ const Schedule: React.FC = () => {
           onClose={() => setYearlyEventDialogOpen(false)}
           maxWidth="md"
           fullWidth
-          fullScreen={isMobile}
           PaperProps={{
             sx: {
               backgroundColor: '#232a36',
               color: '#e0e6ed',
-              borderRadius: { xs: 0, md: 3 },
-              boxShadow: '0 20px 60px rgba(64, 196, 255, 0.2)',
-              border: '1px solid #2e3a4a',
-              maxHeight: { xs: '100vh', md: '95vh' },
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-              width: { xs: '100vw', md: '70vw' },
-              m: 0,
             },
           }}
         >
-          <DialogTitle 
-            sx={{ 
-              borderBottom: 1, 
-              borderColor: '#2e3a4a',
-              background: 'linear-gradient(135deg, #1e2634 0%, #2e3a4a 100%)',
-              color: '#40c4ff',
-              fontWeight: 'bold',
-              fontSize: { xs: '1.1rem', sm: '1.3rem' },
-              textAlign: 'center',
-              py: { xs: 2, sm: 2.5 },
-              px: { xs: 2, sm: 3 },
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 1,
-              position: 'relative',
-            }}
-          >
-            {isMobile && (
-              <IconButton
-                onClick={() => setYearlyEventDialogOpen(false)}
-                sx={{
-                  position: 'absolute',
-                  left: 8,
-                  color: '#40c4ff',
-                  '&:hover': { backgroundColor: 'rgba(64, 196, 255, 0.1)' },
-                }}
-              >
-                <ArrowBackIcon />
-              </IconButton>
-            )}
-            📅 1년 일정 관리
+          <DialogTitle sx={{ borderBottom: 1, borderColor: '#2e3a4a' }}>
+            1년 일정 관리
           </DialogTitle>
-          <DialogContent sx={{ 
-            pt: { xs: 3, sm: 2 }, 
-            pb: 0,
-            px: { xs: 2, sm: 3 },
-            flex: 1,
-            overflowY: 'auto',
-          }}>
-            <Grid container spacing={{ xs: 2, sm: 2 }}>
+          <DialogContent sx={{ pt: 2 }}>
+            <Grid container spacing={2}>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -5214,17 +4570,8 @@ const Schedule: React.FC = () => {
                   onChange={e =>
                     setYearlyEvent(prev => ({ ...prev, title: e.target.value }))
                   }
-                  sx={{ 
-                    mb: 2,
-                    '& .MuiInputBase-root': {
-                      height: { xs: 56, sm: 48 },
-                      fontSize: { xs: '1rem', sm: '0.875rem' },
-                    },
-                  }}
-                  InputLabelProps={{ 
-                    shrink: true,
-                    sx: { fontSize: { xs: '1rem', sm: '0.875rem' } }
-                  }}
+                  sx={{ mb: 2 }}
+                  InputLabelProps={{ shrink: true }}
                 />
               </Grid>
               <Grid item xs={12} sm={3}>
@@ -5240,17 +4587,8 @@ const Schedule: React.FC = () => {
                     }))
                   }
                   inputProps={{ min: 1, max: 12 }}
-                  sx={{ 
-                    mb: 2,
-                    '& .MuiInputBase-root': {
-                      height: { xs: 56, sm: 48 },
-                      fontSize: { xs: '1rem', sm: '0.875rem' },
-                    },
-                  }}
-                  InputLabelProps={{ 
-                    shrink: true,
-                    sx: { fontSize: { xs: '1rem', sm: '0.875rem' } }
-                  }}
+                  sx={{ mb: 2 }}
+                  InputLabelProps={{ shrink: true }}
                 />
               </Grid>
               <Grid item xs={12} sm={3}>
@@ -5266,17 +4604,8 @@ const Schedule: React.FC = () => {
                     }))
                   }
                   inputProps={{ min: 1, max: 31 }}
-                  sx={{ 
-                    mb: 2,
-                    '& .MuiInputBase-root': {
-                      height: { xs: 56, sm: 48 },
-                      fontSize: { xs: '1rem', sm: '0.875rem' },
-                    },
-                  }}
-                  InputLabelProps={{ 
-                    shrink: true,
-                    sx: { fontSize: { xs: '1rem', sm: '0.875rem' } }
-                  }}
+                  sx={{ mb: 2 }}
+                  InputLabelProps={{ shrink: true }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -5288,28 +4617,13 @@ const Schedule: React.FC = () => {
                   onChange={e =>
                     setYearlyEvent(prev => ({ ...prev, time: e.target.value }))
                   }
-                  InputLabelProps={{ 
-                    shrink: true,
-                    sx: { fontSize: { xs: '1rem', sm: '0.875rem' } }
-                  }}
-                  sx={{ 
-                    mb: 2,
-                    '& .MuiInputBase-root': {
-                      height: { xs: 56, sm: 48 },
-                      fontSize: { xs: '1rem', sm: '0.875rem' },
-                    },
-                  }}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ mb: 2 }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth sx={{ 
-                  mb: 2,
-                  '& .MuiInputBase-root': {
-                    height: { xs: 56, sm: 48 },
-                    fontSize: { xs: '1rem', sm: '0.875rem' },
-                  },
-                }}>
-                  <InputLabel sx={{ fontSize: { xs: '1rem', sm: '0.875rem' } }}>우선순위</InputLabel>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>우선순위</InputLabel>
                   <Select
                     value={yearlyEvent.priority}
                     onChange={e =>
@@ -5337,21 +4651,9 @@ const Schedule: React.FC = () => {
                           isLunar: e.target.checked,
                         }))
                       }
-                      sx={{
-                        '& .MuiSvgIcon-root': {
-                          fontSize: { xs: 24, sm: 20 },
-                        },
-                      }}
                     />
                   }
-                  label={
-                    <Typography sx={{ 
-                      fontSize: { xs: '1rem', sm: '0.875rem' },
-                      color: '#e0e6ed',
-                    }}>
-                      음력
-                    </Typography>
-                  }
+                  label="음력"
                 />
               </Grid>
               <Grid item xs={12}>
@@ -5359,7 +4661,7 @@ const Schedule: React.FC = () => {
                   fullWidth
                   label="설명"
                   multiline
-                  rows={isMobile ? 4 : 3}
+                  rows={3}
                   value={yearlyEvent.description || ''}
                   onChange={e =>
                     setYearlyEvent(prev => ({
@@ -5367,57 +4669,23 @@ const Schedule: React.FC = () => {
                       description: e.target.value,
                     }))
                   }
-                  sx={{ 
-                    mb: 2,
-                    '& .MuiInputBase-root': {
-                      fontSize: { xs: '1rem', sm: '0.875rem' },
-                    },
-                  }}
-                  InputLabelProps={{ 
-                    shrink: true,
-                    sx: { fontSize: { xs: '1rem', sm: '0.875rem' } }
-                  }}
+                  sx={{ mb: 2 }}
+                  InputLabelProps={{ shrink: true }}
                 />
               </Grid>
             </Grid>
           </DialogContent>
-          <DialogActions sx={{ 
-            borderTop: 1, 
-            borderColor: '#2e3a4a', 
-            p: { xs: 2, sm: 2 },
-            gap: { xs: 1, sm: 1 },
-            flexDirection: { xs: 'column', sm: 'row' },
-            '& .MuiButton-root': {
-              minWidth: { xs: '100%', sm: 'auto' },
-              height: { xs: 48, sm: 36 },
-              fontSize: { xs: '1rem', sm: '0.875rem' },
-              fontWeight: 500,
-            },
-          }}>
+          <DialogActions sx={{ borderTop: 1, borderColor: '#2e3a4a', p: 2 }}>
             <Button
               onClick={() => setYearlyEventDialogOpen(false)}
-              sx={{ 
-                color: '#e0e6ed',
-                border: '1px solid #2e3a4a',
-                '&:hover': {
-                  backgroundColor: 'rgba(224, 230, 237, 0.1)',
-                },
-              }}
+              sx={{ color: '#e0e6ed' }}
             >
               취소
             </Button>
             <Button
               onClick={handleYearlyEventSave}
               variant="contained"
-              sx={{ 
-                backgroundColor: '#40c4ff',
-                '&:hover': {
-                  backgroundColor: '#2196f3',
-                  boxShadow: '0 6px 16px rgba(64, 196, 255, 0.4)',
-                  transform: 'translateY(-1px)',
-                  transition: 'all 0.3s ease',
-                },
-              }}
+              sx={{ backgroundColor: '#40c4ff' }}
             >
               저장
             </Button>
@@ -5603,20 +4871,10 @@ const Schedule: React.FC = () => {
           onClose={() => setDetailDialogOpen(false)}
           maxWidth="md"
           fullWidth
-          fullScreen={isMobile}
           PaperProps={{
             sx: {
               backgroundColor: '#232a36',
               color: '#e0e6ed',
-              borderRadius: { xs: 0, md: 3 },
-              boxShadow: '0 20px 60px rgba(64, 196, 255, 0.2)',
-              border: '1px solid #2e3a4a',
-              maxHeight: { xs: '100vh', md: '95vh' },
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-              width: { xs: '100vw', md: '70vw' },
-              m: 0,
             },
           }}
         >
@@ -5627,49 +4885,25 @@ const Schedule: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               gap: 2,
-              background: 'linear-gradient(135deg, #1e2634 0%, #2e3a4a 100%)',
-              color: '#40c4ff',
-              fontWeight: 'bold',
-              fontSize: { xs: '1.1rem', sm: '1.3rem' },
-              textAlign: 'center',
-              py: { xs: 2, sm: 2.5 },
-              px: { xs: 2, sm: 3 },
-              position: 'relative',
-              justifyContent: 'center',
             }}
           >
-            {isMobile && (
-              <IconButton
-                onClick={() => setDetailDialogOpen(false)}
-                sx={{
-                  position: 'absolute',
-                  left: 8,
-                  color: '#40c4ff',
-                  '&:hover': { backgroundColor: 'rgba(64, 196, 255, 0.1)' },
-                }}
-              >
-                <ArrowBackIcon />
-              </IconButton>
-            )}
             {selectedEvents.length === 1 ? (
               <>
-                {!isMobile && (
-                  <IconButton
-                    onClick={() => {
-                      // 일정 목록으로 돌아가기
-                      const eventsForDate = selectedDate
-                        ? getEventsForDateLocal(selectedDate)
-                        : [];
-                      setSelectedEvents(eventsForDate);
-                    }}
-                    sx={{
-                      color: '#40c4ff',
-                      '&:hover': { backgroundColor: 'rgba(64, 196, 255, 0.1)' },
-                    }}
-                  >
-                    <ChevronLeftIcon />
-                  </IconButton>
-                )}
+                <IconButton
+                  onClick={() => {
+                    // 일정 목록으로 돌아가기
+                    const eventsForDate = selectedDate
+                      ? getEventsForDate(selectedDate)
+                      : [];
+                    setSelectedEvents(eventsForDate);
+                  }}
+                  sx={{
+                    color: '#40c4ff',
+                    '&:hover': { backgroundColor: 'rgba(64, 196, 255, 0.1)' },
+                  }}
+                >
+                  <ChevronLeftIcon />
+                </IconButton>
                 <Typography variant="h6" sx={{ flex: 1 }}>
                   {selectedEvents[0].title}
                 </Typography>
@@ -5682,15 +4916,7 @@ const Schedule: React.FC = () => {
               </Typography>
             )}
           </DialogTitle>
-          <DialogContent
-            sx={{
-              pt: { xs: 3, sm: 2 },
-              pb: 0,
-              px: { xs: 2, sm: 3 },
-              flex: 1,
-              overflowY: 'auto',
-            }}
-          >
+          <DialogContent sx={{ pt: 2 }}>
             {selectedEvents.length > 1 ? (
               <Box>
                 <Typography
@@ -5829,7 +5055,7 @@ const Schedule: React.FC = () => {
             ) : selectedEvents.length === 1 ? (
               <Box>
                 {selectedEvents.map((scheduleEvent, idx) => (
-                  <Box key={`${scheduleEvent.id}-${idx}`} sx={{ mb: 3, p: 2, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 1 }}>
+                  <Box key={scheduleEvent.id} sx={{ mb: 3, p: 2, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 1 }}>
                     <Typography
                       variant="subtitle2"
                       sx={{ color: '#40c4ff', mb: 1 }}
@@ -6308,7 +5534,7 @@ const Schedule: React.FC = () => {
                                 {scheduleEvent.comments &&
                                 scheduleEvent.comments.length > 0 ? (
                                   scheduleEvent.comments.map((comment: any, idx: number) => {
-                                    const isMine = comment.userName === userName;
+                                    const isMine = comment.userName === nickname;
                                     return (
                                       <Box key={comment.id} sx={{
                                         display: 'flex',
@@ -6536,7 +5762,7 @@ const Schedule: React.FC = () => {
                                             id: Date.now().toString(),
                                             eventId: scheduleEvent.id,
                                             userId: 'current_user',
-                                            userName: userName || '사용자',
+                                            userName: nickname || '사용자',
                                             message: newComment,
                                             timestamp: new Date().toISOString(),
                                             attachments: commentAttachments.map(
@@ -6638,7 +5864,7 @@ const Schedule: React.FC = () => {
                                           id: Date.now().toString(),
                                           eventId: scheduleEvent.id,
                                           userId: 'current_user',
-                                          userName: userName || '사용자',
+                                          userName: nickname || '사용자',
                                           message: newComment,
                                           timestamp: new Date().toISOString(),
                                           attachments: commentAttachments.map(
@@ -6737,76 +5963,24 @@ const Schedule: React.FC = () => {
           onClose={() => setMeasurementDialogOpen(false)}
           maxWidth="md"
           fullWidth
-          fullScreen={isMobile}
           PaperProps={{
             sx: {
               backgroundColor: '#232a36',
               color: '#e0e6ed',
-              borderRadius: { xs: 0, md: 3 },
-              boxShadow: '0 20px 60px rgba(64, 196, 255, 0.2)',
-              border: '1px solid #2e3a4a',
-              maxHeight: { xs: '100vh', md: '95vh' },
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-              width: { xs: '100vw', md: '70vw' },
-              m: 0,
             },
           }}
           inert={measurementDialogOpen ? undefined : true}
         >
-          <DialogTitle 
-            sx={{ 
-              borderBottom: 1, 
-              borderColor: '#2e3a4a',
-              background: 'linear-gradient(135deg, #1e2634 0%, #2e3a4a 100%)',
-              color: '#40c4ff',
-              fontWeight: 'bold',
-              fontSize: { xs: '1.1rem', sm: '1.3rem' },
-              textAlign: 'center',
-              py: { xs: 2, sm: 2.5 },
-              px: { xs: 2, sm: 3 },
-              position: 'relative',
-              justifyContent: 'center',
-            }}
-          >
-            {isMobile && (
-              <IconButton
-                onClick={() => setMeasurementDialogOpen(false)}
-                sx={{
-                  position: 'absolute',
-                  left: 8,
-                  color: '#40c4ff',
-                  '&:hover': { backgroundColor: 'rgba(64, 196, 255, 0.1)' },
-                }}
-              >
-                <ArrowBackIcon />
-              </IconButton>
-            )}
-            📏 실측 데이터 입력
+          <DialogTitle sx={{ borderBottom: 1, borderColor: '#2e3a4a' }}>
+            실측 데이터 입력
             {currentMeasurementEvent && (
-              <Typography 
-                variant="body2" 
-                sx={{ 
-                  mt: 1, 
-                  color: '#b0b8c1',
-                  fontSize: { xs: '0.9rem', sm: '0.875rem' },
-                }}
-              >
+              <Typography variant="body2" sx={{ mt: 1, color: '#b0b8c1' }}>
                 {currentMeasurementEvent.title} -{' '}
                 {currentMeasurementEvent.customerName}
               </Typography>
             )}
           </DialogTitle>
-          <DialogContent
-            sx={{
-              pt: { xs: 3, sm: 2 },
-              pb: 0,
-              px: { xs: 2, sm: 3 },
-              flex: 1,
-              overflowY: 'auto',
-            }}
-          >
+          <DialogContent sx={{ pt: 2 }}>
             {/* 견적 rows 자동 추출: 계약완료, 고객명/전화번호/프로젝트명/주소 중 하나라도 일치, 가장 최근 것 우선 */}
             {(() => {
               let estimateRows: Array<{
@@ -6940,25 +6114,8 @@ const Schedule: React.FC = () => {
                   matchedEstimate?.rows
                 );
                 console.log('실측 다이얼로그 - estimateRows:', estimateRows);
-                
-                // 기존 실측 데이터 로드 (우선순위: currentMeasurementEvent > localStorage)
-                if (Array.isArray(currentMeasurementEvent.measurementData) && currentMeasurementEvent.measurementData.length > 0) {
+                if (Array.isArray(currentMeasurementEvent.measurementData)) {
                   initialData = currentMeasurementEvent.measurementData;
-                  console.log('기존 실측 데이터 로드됨:', initialData);
-                } else {
-                  // localStorage에서 백업 데이터 확인
-                  try {
-                    const existingSchedules = JSON.parse(localStorage.getItem('schedules') || '[]');
-                    const backupEvent = existingSchedules.find((schedule: any) => 
-                      schedule.id === currentMeasurementEvent.id
-                    );
-                    if (backupEvent && Array.isArray(backupEvent.measurementData) && backupEvent.measurementData.length > 0) {
-                      initialData = backupEvent.measurementData;
-                      console.log('localStorage에서 실측 데이터 복구됨:', initialData);
-                    }
-                  } catch (error) {
-                    console.warn('localStorage 백업 데이터 확인 실패:', error);
-                  }
                 }
               }
               return (
@@ -6967,14 +6124,7 @@ const Schedule: React.FC = () => {
                     estimateRows={estimateRows}
                     initialData={initialData}
                     onSave={handleMeasurementSave}
-                    onCancel={() => {
-                      // 실시간으로 저장되고 있으므로 별도 저장 불필요
-                      console.log('실측 데이터 모달 닫기');
-                      setMeasurementDialogOpen(false);
-                    }}
-                    onCreateFinalEstimate={handleCreateFinalEstimate}
-                    onAutoSave={handleAutoSave}
-                    onDataChange={handleMeasurementDataChange}
+                    onCancel={() => setMeasurementDialogOpen(false)}
                     estimateInfo={estimateInfo}
                   />
                   {/* 실측 채팅창 추가 */}
@@ -7011,10 +6161,10 @@ const Schedule: React.FC = () => {
                       }}
                     >
                       {currentMeasurementEvent &&
-                      realTimeComments[currentMeasurementEvent.id] &&
-                      realTimeComments[currentMeasurementEvent.id].length > 0 ? (
-                        realTimeComments[currentMeasurementEvent.id].map((comment: ScheduleComment, idx: number) => {
-                          const isMine = comment.userName === userName;
+                      currentMeasurementEvent.comments &&
+                      currentMeasurementEvent.comments.length > 0 ? (
+                        currentMeasurementEvent.comments.map((comment: any, idx: number) => {
+                          const isMine = comment.userName === nickname;
                           return (
                             <Box key={comment.id} sx={{
                               display: 'flex',
@@ -7022,37 +6172,6 @@ const Schedule: React.FC = () => {
                               alignItems: isMine ? 'flex-end' : 'flex-start',
                               mb: 1.2,
                             }}>
-                                                        {/* 사용자 이름 표시 */}
-                          <Box sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 0.5,
-                            mb: 0.5,
-                            justifyContent: isMine ? 'flex-end' : 'flex-start',
-                            px: 0.5,
-                          }}>
-                            <Box sx={{
-                              width: 16,
-                              height: 16,
-                              borderRadius: '50%',
-                              backgroundColor: isMine ? '#40c4ff' : '#ff9800',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '0.6rem',
-                              color: '#fff',
-                              fontWeight: 'bold',
-                            }}>
-                              {(comment.userName || '알').charAt(0).toUpperCase()}
-                            </Box>
-                            <Typography variant="caption" sx={{
-                              color: isMine ? '#40c4ff' : '#ff9800',
-                              fontSize: '0.75rem',
-                              fontWeight: 'bold',
-                            }}>
-                              {comment.userName || '알 수 없음'}
-                            </Typography>
-                          </Box>
                               <Box sx={{
                                 maxWidth: '80%',
                                 backgroundColor: isMine ? '#002915' : '#1e2633',
@@ -7075,7 +6194,6 @@ const Schedule: React.FC = () => {
                                 mt: 0.3,
                                 textAlign: isMine ? 'right' : 'left',
                                 px: 0.5,
-                                fontSize: '0.7rem',
                               }}>
                                 {new Date(comment.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </Typography>
@@ -7214,7 +6332,7 @@ const Schedule: React.FC = () => {
                               </Box>
                             ),
                           }}
-                          onKeyPress={async e => {
+                          onKeyPress={e => {
                             if (e.key === 'Enter' && !e.shiftKey) {
                               e.preventDefault();
                               if (
@@ -7229,45 +6347,57 @@ const Schedule: React.FC = () => {
                                   });
                                   return;
                                 }
-                                                              // Firebase Firestore에 실측 채팅 메시지 저장
-                              try {
-                                console.log('Firebase에 실측 채팅 메시지 저장 시작:', {
-                                  eventId: currentMeasurementEvent.id,
-                                  message: newComment.trim(),
-                                  userName: userName || '사용자'
-                                });
-
-                                const commentsRef = collection(db, 'schedules', currentMeasurementEvent.id, 'comments');
-                                
-                                // emoji 필드 처리 (undefined 제거)
-                                const emojiMatch = newComment.match(/[😊👍❤️🎉🔥💯👏🙏😍🤔😅😢]/);
-                                const commentData: any = {
+                                const comment: ScheduleComment = {
+                                  id: Date.now().toString(),
                                   eventId: currentMeasurementEvent.id,
                                   userId: 'current_user',
-                                  userName: userName || '사용자',
-                                  userAvatar: '',
-                                  message: newComment.trim(),
-                                  timestamp: serverTimestamp(),
-                                  attachments: commentAttachments.map(file => URL.createObjectURL(file)),
+                                  userName: nickname || '사용자',
+                                  message: newComment,
+                                  timestamp: new Date().toISOString(),
+                                  attachments: commentAttachments.map(file =>
+                                    URL.createObjectURL(file)
+                                  ),
+                                  emoji:
+                                    newComment.match(
+                                      /[😊👍❤️🎉🔥👏🙏😍🤔😅😢]/
+                                    )?.[0] || undefined,
                                 };
-                                
-                                // emoji가 있을 때만 필드 추가
-                                if (emojiMatch && emojiMatch[0]) {
-                                  commentData.emoji = emojiMatch[0];
-                                }
-                                
-                                const docRef = await addDoc(commentsRef, commentData);
-
-                                console.log('Firebase에 실측 채팅 메시지 저장 완료:', docRef.id);
-                              } catch (error) {
-                                console.error('실측 채팅 메시지 저장 실패:', error);
-                                setSnackbar({
-                                  open: true,
-                                  message: '메시지 전송에 실패했습니다.',
-                                  severity: 'error',
+                                console.log('실측 채팅 메시지 전송 (Enter):', {
+                                  eventId: currentMeasurementEvent.id,
+                                  eventTitle: currentMeasurementEvent.title,
+                                  message: newComment,
+                                  comment,
+                                  allEvents: events.map(e => ({
+                                    id: e.id,
+                                    title: e.title,
+                                    commentsCount: e.comments?.length || 0,
+                                  })),
                                 });
-                                return;
-                              }
+                                setEvents(prev => {
+                                  const updatedEvents = prev.map(e =>
+                                    e.id === currentMeasurementEvent.id
+                                      ? {
+                                          ...e,
+                                          comments: [
+                                            ...(e.comments || []),
+                                            comment,
+                                          ],
+                                          updatedAt: new Date().toISOString(),
+                                        }
+                                      : e
+                                  );
+                                  // 실측 다이얼로그의 currentMeasurementEvent도 동기화
+                                  const updatedCurrent = updatedEvents.find(
+                                    e => e.id === currentMeasurementEvent?.id
+                                  );
+                                  if (updatedCurrent)
+                                    setCurrentMeasurementEvent(updatedCurrent);
+                                  localStorage.setItem(
+                                    'schedules',
+                                    JSON.stringify(updatedEvents)
+                                  );
+                                  return updatedEvents;
+                                });
                                 setNewComment('');
                                 setCommentAttachments([]);
                                 setSnackbar({
@@ -7297,7 +6427,7 @@ const Schedule: React.FC = () => {
                         />
                         {/* 전송 버튼 */}
                         <IconButton
-                          onClick={async () => {
+                          onClick={() => {
                             if (
                               newComment.trim() ||
                               commentAttachments.length > 0
@@ -7328,45 +6458,57 @@ const Schedule: React.FC = () => {
                                 return;
                               }
 
-                              // Firebase Firestore에 실측 채팅 메시지 저장
-                              try {
-                                console.log('Firebase에 실측 채팅 메시지 저장 시작 (버튼):', {
-                                  eventId: currentMeasurementEvent.id,
-                                  message: newComment.trim(),
-                                  userName: userName || '사용자'
-                                });
-
-                                const commentsRef = collection(db, 'schedules', currentMeasurementEvent.id, 'comments');
-                                
-                                // emoji 필드 처리 (undefined 제거)
-                                const emojiMatch = newComment.match(/[😊👍❤️🎉🔥💯👏🙏😍🤔😅😢]/);
-                                const commentData: any = {
-                                  eventId: currentMeasurementEvent.id,
-                                  userId: 'current_user',
-                                  userName: userName || '사용자',
-                                  userAvatar: '',
-                                  message: newComment.trim(),
-                                  timestamp: serverTimestamp(),
-                                  attachments: commentAttachments.map(file => URL.createObjectURL(file)),
-                                };
-                                
-                                // emoji가 있을 때만 필드 추가
-                                if (emojiMatch && emojiMatch[0]) {
-                                  commentData.emoji = emojiMatch[0];
-                                }
-                                
-                                const docRef = await addDoc(commentsRef, commentData);
-
-                                console.log('Firebase에 실측 채팅 메시지 저장 완료 (버튼):', docRef.id);
-                              } catch (error) {
-                                console.error('실측 채팅 메시지 저장 실패 (버튼):', error);
-                                setSnackbar({
-                                  open: true,
-                                  message: '메시지 전송에 실패했습니다.',
-                                  severity: 'error',
-                                });
-                                return;
-                              }
+                              const comment: ScheduleComment = {
+                                id: Date.now().toString(),
+                                eventId: currentMeasurementEvent.id,
+                                userId: 'current_user',
+                                userName: nickname || '사용자',
+                                message: newComment,
+                                timestamp: new Date().toISOString(),
+                                attachments: commentAttachments.map(file =>
+                                  URL.createObjectURL(file)
+                                ),
+                                emoji:
+                                  newComment.match(
+                                    /[😊👍❤️🎉🔥💯👏🙏😍🤔😅😢]/
+                                  )?.[0] || undefined,
+                              };
+                              console.log('실측 채팅 메시지 전송 (버튼):', {
+                                eventId: currentMeasurementEvent.id,
+                                eventTitle: currentMeasurementEvent.title,
+                                message: newComment,
+                                comment,
+                                allEvents: events.map(e => ({
+                                  id: e.id,
+                                  title: e.title,
+                                  commentsCount: e.comments?.length || 0,
+                                })),
+                              });
+                              setEvents(prev => {
+                                const updatedEvents = prev.map(e =>
+                                  e.id === currentMeasurementEvent.id
+                                    ? {
+                                        ...e,
+                                        comments: [
+                                          ...(e.comments || []),
+                                          comment,
+                                        ],
+                                        updatedAt: new Date().toISOString(),
+                                      }
+                                    : e
+                                );
+                                // 실측 다이얼로그의 currentMeasurementEvent도 동기화
+                                const updatedCurrent = updatedEvents.find(
+                                  e => e.id === currentMeasurementEvent?.id
+                                );
+                                if (updatedCurrent)
+                                  setCurrentMeasurementEvent(updatedCurrent);
+                                localStorage.setItem(
+                                  'schedules',
+                                  JSON.stringify(updatedEvents)
+                                );
+                                return updatedEvents;
+                              });
                               setNewComment('');
                               setCommentAttachments([]);
                               setSnackbar({
@@ -7408,122 +6550,7 @@ const Schedule: React.FC = () => {
           </DialogContent>
         </Dialog>
 
-        <Dialog
-  open={userDialogOpen}
-  disableEscapeKeyDown
-  fullScreen={isMobile}
-  PaperProps={{
-    sx: {
-      backgroundColor: '#232a36',
-      color: '#e0e6ed',
-      borderRadius: { xs: 0, md: 3 },
-      boxShadow: '0 20px 60px rgba(64, 196, 255, 0.2)',
-      border: '1px solid #2e3a4a',
-      maxHeight: { xs: '100vh', md: '95vh' },
-      overflow: 'hidden',
-      display: 'flex',
-      flexDirection: 'column',
-      width: { xs: '100vw', md: '400px' },
-      m: 0,
-    },
-  }}
->
-  <DialogTitle
-    sx={{
-      borderBottom: 1,
-      borderColor: '#2e3a4a',
-      background: 'linear-gradient(135deg, #1e2634 0%, #2e3a4a 100%)',
-      color: '#40c4ff',
-      fontWeight: 'bold',
-      fontSize: { xs: '1.1rem', sm: '1.3rem' },
-      textAlign: 'center',
-      py: { xs: 2, sm: 2.5 },
-      px: { xs: 2, sm: 3 },
-      position: 'relative',
-      justifyContent: 'center',
-    }}
-  >
-    {isMobile && (
-      <IconButton
-        onClick={() => setUserDialogOpen(false)}
-        sx={{
-          position: 'absolute',
-          left: 8,
-          color: '#40c4ff',
-          '&:hover': { backgroundColor: 'rgba(64, 196, 255, 0.1)' },
-        }}
-      >
-        <ArrowBackIcon />
-      </IconButton>
-    )}
-    사용자 이름 입력
-  </DialogTitle>
-  <DialogContent
-    sx={{
-      pt: { xs: 3, sm: 2 },
-      pb: 0,
-      px: { xs: 2, sm: 3 },
-      flex: 1,
-      overflowY: 'auto',
-    }}
-  >
-    <TextField
-      autoFocus
-      margin="dense"
-      label="이름"
-      type="text"
-      fullWidth
-      value={userName}
-      onChange={handleUserNameChange}
-      onKeyDown={e => {
-        if (e.key === 'Enter') handleUserNameSave();
-      }}
-      sx={{
-        mb: 2,
-        '& .MuiInputBase-root': {
-          height: { xs: 56, sm: 48 },
-          fontSize: { xs: '1rem', sm: '0.875rem' },
-        },
-      }}
-      InputLabelProps={{
-        shrink: true,
-        sx: { fontSize: { xs: '1rem', sm: '0.875rem' } }
-      }}
-    />
-  </DialogContent>
-  <DialogActions
-    sx={{
-      borderTop: 1,
-      borderColor: '#2e3a4a',
-      p: { xs: 2, sm: 2 },
-      gap: { xs: 1, sm: 1 },
-      flexDirection: { xs: 'column', sm: 'row' },
-      '& .MuiButton-root': {
-        minWidth: { xs: '100%', sm: 'auto' },
-        height: { xs: 48, sm: 36 },
-        fontSize: { xs: '1rem', sm: '0.875rem' },
-        fontWeight: 500,
-      },
-    }}
-  >
-    <Button
-      onClick={handleUserNameSave}
-      disabled={!userName.trim()}
-      variant="contained"
-      sx={{
-        backgroundColor: '#40c4ff',
-        '&:hover': {
-          backgroundColor: '#2196f3',
-          boxShadow: '0 6px 16px rgba(64, 196, 255, 0.4)',
-          transform: 'translateY(-1px)',
-          transition: 'all 0.3s ease',
-        },
-      }}
-    >
-      확인
-    </Button>
-  </DialogActions>
-</Dialog>
+        {/* 사용자 이름 입력 다이얼로그 삭제 - 프로필 설정에서만 변경 */}
 
         {/* 타입 관리 다이얼로그 */}
         <Dialog
@@ -7885,7 +6912,6 @@ const Schedule: React.FC = () => {
           onClose={() => setIntegratedEventDialogOpen(false)}
           maxWidth="md"
           fullWidth
-          fullScreen={isMobile}
           PaperProps={{
             sx: {
               backgroundColor: '#232a36',
@@ -7898,54 +6924,23 @@ const Schedule: React.FC = () => {
             },
           }}
         >
-          <DialogTitle sx={{ 
-            borderBottom: 1, 
-            borderColor: '#2e3a4a',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-            fontSize: isMobile ? '1.2rem' : '1.25rem',
-            pb: isMobile ? 1 : 2
-          }}>
-            {isMobile && (
-              <IconButton
-                edge="start"
-                color="inherit"
-                onClick={() => setIntegratedEventDialogOpen(false)}
-                aria-label="close"
-                sx={{ mr: 1, color: '#b0b8c1' }}
-              >
-                <ArrowBackIcon />
-              </IconButton>
-            )}
-            <Box sx={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              width: '100%'
-            }}>
-              <Typography variant="h6" sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
-                일정 상세보기 및 수정
-              </Typography>
+          <DialogTitle sx={{ borderBottom: 1, borderColor: '#2e3a4a' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="h6">일정 상세보기 및 수정</Typography>
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <IconButton
                   onClick={handleIntegratedEventDelete}
-                  sx={{ 
-                    color: '#ff6b6b',
-                    minWidth: isMobile ? '48px' : 'auto'
-                  }}
+                  sx={{ color: '#ff6b6b' }}
                   title="일정 삭제"
                 >
                   <DeleteIcon />
                 </IconButton>
-                {!isMobile && (
-                  <IconButton
-                    onClick={() => setIntegratedEventDialogOpen(false)}
-                    sx={{ color: '#b0b8c1' }}
-                  >
-                    <CloseIcon />
-                  </IconButton>
-                )}
+                <IconButton
+                  onClick={() => setIntegratedEventDialogOpen(false)}
+                  sx={{ color: '#b0b8c1' }}
+                >
+                  <CloseIcon />
+                </IconButton>
               </Box>
             </Box>
           </DialogTitle>
@@ -8274,18 +7269,18 @@ const Schedule: React.FC = () => {
                   display: 'flex', flexDirection: 'column',
                   gap: 2,
                 }}>
-                  {(realTimeComments[selectedEventForEdit?.id || ''] || []).length === 0 ? (
+                  {integratedEventComments.length === 0 ? (
                     <Typography variant="body2" sx={{ color: '#b0b8c1', textAlign: 'center', mt: 4 }}>
                       아직 댓글이 없습니다.
                     </Typography>
                   ) : (
-                    (realTimeComments[selectedEventForEdit?.id || ''] || []).map((comment: ScheduleComment) => {
+                    integratedEventComments.map((comment: ScheduleComment) => {
                       // 안전한 체크 추가
                       if (!comment || !comment.userName || !comment.message || !comment.timestamp) {
                         return null;
                       }
                       
-                      const isMine = comment.userName === userName;
+                      const isMine = comment.userName === nickname;
                       return (
                         <Box key={comment.id} sx={{
                           display: 'flex',
@@ -8293,40 +7288,9 @@ const Schedule: React.FC = () => {
                           alignItems: isMine ? 'flex-end' : 'flex-start',
                           mb: 2,
                         }}>
-                          {/* 사용자 이름 표시 */}
-                          <Box sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 0.5,
-                            mb: 0.5,
-                            justifyContent: isMine ? 'flex-end' : 'flex-start',
-                            px: 0.5,
-                          }}>
-                            <Box sx={{
-                              width: 16,
-                              height: 16,
-                              borderRadius: '50%',
-                              backgroundColor: isMine ? '#40c4ff' : '#ff9800',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '0.6rem',
-                              color: '#fff',
-                              fontWeight: 'bold',
-                            }}>
-                              {(comment.userName || '알').charAt(0).toUpperCase()}
-                            </Box>
-                            <Typography variant="caption" sx={{
-                              color: isMine ? '#40c4ff' : '#ff9800',
-                              fontSize: '0.75rem',
-                              fontWeight: 'bold',
-                            }}>
-                              {comment.userName || '알 수 없음'}
-                            </Typography>
-                          </Box>
                           <Box sx={{
                             maxWidth: '80%',
-                            backgroundColor: isMine ? '#0d4a5c' : '#1e2633',
+                            backgroundColor: isMine ? '#40c4ff' : '#1e2633',
                             color: isMine ? '#fff' : '#e0e6ed',
                             borderRadius: 3,
                             boxShadow: '0 2px 8px 0 rgba(0,0,0,0.10)',
@@ -8342,7 +7306,6 @@ const Schedule: React.FC = () => {
                             mt: 0.5,
                             textAlign: isMine ? 'right' : 'left',
                             px: 0.5,
-                            fontSize: '0.7rem',
                           }}>
                             {new Date(comment.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </Typography>
@@ -8407,176 +7370,37 @@ const Schedule: React.FC = () => {
               </Box>
             </Box>
           </DialogContent>
-          {!isMobile && (
-            <DialogActions sx={{ 
-              borderTop: 1, 
-              borderColor: '#2e3a4a', 
-              p: 2,
-              backgroundColor: '#1e2633'
-            }}>
-              <Button
-                onClick={() => setIntegratedEventDialogOpen(false)}
-                sx={{ 
-                  color: '#b0b8c1',
-                  '&:hover': {
-                    backgroundColor: '#2e3a4a'
-                  }
-                }}
-              >
-                취소
-              </Button>
-              <Button
-                onClick={handleIntegratedEventSave}
-                variant="contained"
-                sx={{ 
-                  backgroundColor: '#40c4ff',
-                  '&:hover': {
-                    backgroundColor: '#33a3cc'
-                  }
-                }}
-              >
-                저장
-              </Button>
-            </DialogActions>
-          )}
-          {isMobile && (
-            <Box sx={{ 
-              p: 2, 
-              display: 'flex', 
-              gap: 1, 
-              justifyContent: 'center',
-              borderTop: 1, 
-              borderColor: '#2e3a4a', 
-              backgroundColor: '#1e2633'
-            }}>
-              <Button
-                onClick={() => setIntegratedEventDialogOpen(false)}
-                variant="outlined"
-                sx={{ 
-                  color: '#b0b8c1',
-                  borderColor: '#2e3a4a',
-                  minHeight: '48px',
-                  fontSize: '1rem',
-                  px: 3,
-                  '&:hover': {
-                    backgroundColor: '#2e3a4a',
-                    borderColor: '#40c4ff'
-                  }
-                }}
-              >
-                취소
-              </Button>
-              <Button
-                onClick={handleIntegratedEventSave}
-                variant="contained"
-                sx={{ 
-                  backgroundColor: '#40c4ff',
-                  minHeight: '48px',
-                  fontSize: '1rem',
-                  px: 3,
-                  '&:hover': {
-                    backgroundColor: '#33a3cc'
-                  }
-                }}
-              >
-                저장
-              </Button>
-            </Box>
-          )}
-        </Dialog>
-
-        {/* 실측 데이터 입력 다이얼로그 */}
-        <Dialog
-          open={measurementDialogOpen}
-          onClose={() => setMeasurementDialogOpen(false)}
-          maxWidth="xl"
-          fullWidth
-          PaperProps={{
-            sx: {
-              backgroundColor: '#1e2633',
-              color: '#e0e6ed',
-              maxHeight: '90vh',
-            },
-          }}
-        >
-          <DialogTitle sx={{ 
-            backgroundColor: '#2e3a4a', 
-            borderBottom: '1px solid #3e4a5a',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
+          <DialogActions sx={{ 
+            borderTop: 1, 
+            borderColor: '#2e3a4a', 
+            p: 2,
+            backgroundColor: '#1e2633'
           }}>
-            <Typography variant="h6" sx={{ color: '#40c4ff', fontWeight: 'bold' }}>
-              실측 데이터 입력
-            </Typography>
-            <IconButton
-              onClick={() => setMeasurementDialogOpen(false)}
-              sx={{ color: '#b0b8c1' }}
+            <Button
+              onClick={() => setIntegratedEventDialogOpen(false)}
+              sx={{ 
+                color: '#b0b8c1',
+                '&:hover': {
+                  backgroundColor: '#2e3a4a'
+                }
+              }}
             >
-              <CloseIcon />
-            </IconButton>
-          </DialogTitle>
-          <DialogContent sx={{ p: 0 }}>
-            {currentMeasurementEvent && (
-              <MeasurementForm
-                estimateRows={
-                  // 견적번호가 있으면 localStorage에서 견적서 정보 가져오기
-                  currentMeasurementEvent.estimateNo
-                    ? (() => {
-                        try {
-                          const savedEstimates = JSON.parse(
-                            localStorage.getItem('saved_estimates') || '[]'
-                          );
-                          const estimate = savedEstimates.find(
-                            (est: any) => est.estimateNo === currentMeasurementEvent.estimateNo
-                          );
-                          return estimate?.rows?.map((row: any) => ({
-                            space: row.space || '',
-                            productName: row.productName || '',
-                            widthMM: row.widthMM || 0,
-                            heightMM: row.heightMM || 0,
-                          })) || [];
-                        } catch (error) {
-                          console.warn('견적서 정보 로드 실패:', error);
-                          return [];
-                        }
-                      })()
-                    : []
+              취소
+            </Button>
+            <Button
+              onClick={handleIntegratedEventSave}
+              variant="contained"
+              sx={{ 
+                backgroundColor: '#40c4ff',
+                '&:hover': {
+                  backgroundColor: '#33a3cc'
                 }
-                initialData={currentMeasurementEvent.measurementData}
-                onSave={handleMeasurementSave}
-                onCancel={() => setMeasurementDialogOpen(false)}
-                onCreateFinalEstimate={handleCreateFinalEstimate}
-                onAutoSave={handleAutoSave}
-                onDataChange={handleMeasurementDataChange}
-                estimateInfo={
-                  currentMeasurementEvent.estimateNo
-                    ? {
-                        estimateNo: currentMeasurementEvent.estimateNo,
-                        customerName: currentMeasurementEvent.customerName || '',
-                        customerContact: currentMeasurementEvent.contact || '',
-                        customerAddress: currentMeasurementEvent.address || '',
-                        appointmentDate: currentMeasurementEvent.date || '',
-                        appointmentTime: currentMeasurementEvent.time || '',
-                        totalAmount: 0,
-                        discountAmount: 0,
-                        finalAmount: 0,
-                        contractAmount: 0,
-                      }
-                    : undefined
-                }
-              />
-            )}
-          </DialogContent>
+              }}
+            >
+              저장
+            </Button>
+          </DialogActions>
         </Dialog>
-
-        {/* 타임트리 연동 다이얼로그 */}
-        <TimeTreeIntegration
-          open={timeTreeDialogOpen}
-          onClose={() => setTimeTreeDialogOpen(false)}
-          onSync={handleTimeTreeSync}
-          currentEvents={events}
-        />
       </Box>
     </DragDropContext>
   );

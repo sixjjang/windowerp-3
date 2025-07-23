@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import useMediaQuery from '@mui/material/useMediaQuery';
+import { API_BASE } from '../../utils/auth';
 import {
   Box,
   Paper,
@@ -447,6 +448,177 @@ const ContractManagement: React.FC = () => {
     handleContractComplete(data);
   };
 
+  const handleSaveSchedule = async (scheduleData: any) => {
+    try {
+      console.log('=== 스케줄 저장 시작 ===');
+      console.log('스케줄 데이터:', scheduleData);
+
+      // datetime-local 형식을 date와 time으로 분리
+      const measurementDateTime = scheduleData.measurementDate;
+      let measurementDate = '';
+      let measurementTime = '09:00';
+
+      if (measurementDateTime && measurementDateTime.includes('T')) {
+        const [datePart, timePart] = measurementDateTime.split('T');
+        measurementDate = datePart;
+        measurementTime = timePart || '09:00';
+      } else if (measurementDateTime) {
+        measurementDate = measurementDateTime;
+        measurementTime = '09:00';
+      }
+
+      console.log('분리된 실측일자:', measurementDate);
+      console.log('분리된 실측시간:', measurementTime);
+
+      const navAddress = extractNavigationAddress(scheduleData.address || '');
+      const scheduleTitle = `실측 - ${navAddress}`;
+
+      // 견적서 정보 가져오기 (Firebase에서 먼저 시도, 실패 시 localStorage 사용)
+      let matchedEstimate = null;
+      
+      try {
+        const response = await fetch(`${API_BASE}/estimates?estimateNo=${scheduleData.estimateNo}`);
+        if (response.ok) {
+          const estimates = await response.json();
+          matchedEstimate = estimates.find((est: any) => est.estimateNo === scheduleData.estimateNo);
+          console.log('Firebase에서 견적서 정보 가져옴:', matchedEstimate);
+        } else {
+          console.log('Firebase에서 견적서를 찾을 수 없음, localStorage에서 시도');
+        }
+      } catch (error) {
+        console.error('Firebase 견적서 조회 실패:', error);
+      }
+      
+      if (!matchedEstimate) {
+        const savedEstimates = JSON.parse(
+          localStorage.getItem('saved_estimates') || '[]'
+        );
+        matchedEstimate = savedEstimates.find(
+          (est: any) => est.estimateNo === scheduleData.estimateNo
+        );
+        console.log('localStorage에서 견적서 정보 가져옴:', matchedEstimate);
+      }
+
+      if (matchedEstimate && matchedEstimate.rows) {
+        // 견적서 내용을 기반으로 실측 데이터 초기화
+        const estimateRows = matchedEstimate.rows
+          .filter((row: any) => row.space && row.productName)
+          .map((row: any) => ({
+            space: row.space,
+            productName: row.productName,
+            widthMM: row.widthMM,
+            heightMM: row.heightMM,
+          }));
+
+        // 견적서 정보 구성
+        const totalAmount =
+          matchedEstimate.rows?.reduce(
+            (sum: number, row: any) => sum + (row.totalPrice || 0),
+            0
+          ) || 0;
+        const discountAmount = matchedEstimate.discountAmount || 0;
+        const finalAmount = totalAmount - discountAmount;
+
+        const estimateInfo = {
+          estimateNo: matchedEstimate.estimateNo,
+          customerName: matchedEstimate.customerName,
+          customerContact:
+            matchedEstimate.contact || matchedEstimate.customerContact || '-',
+          customerAddress:
+            matchedEstimate.address || matchedEstimate.customerAddress || '-',
+          appointmentDate: measurementDate,
+          appointmentTime: measurementTime,
+          constructionDate: scheduleData.constructionDate || '-',
+          totalAmount,
+          discountAmount,
+          finalAmount,
+          contractAmount: 0,
+          projectName:
+            matchedEstimate.projectName || matchedEstimate.name || '-',
+          projectType: matchedEstimate.type || '-',
+          memo: scheduleData.memo || '-',
+        };
+
+        // 실측 데이터 초기화
+        const initialData = estimateRows.map((row: any) => ({
+          space: row.space,
+          productName: row.productName,
+          estimateWidth: String(row.widthMM || ''),
+          estimateHeight: String(row.heightMM || ''),
+          measuredWidth: '',
+          measuredHeight: '',
+          lineDirection: '',
+          lineLength: '',
+          customLineLength: '',
+          memo: '',
+          showMemo: false,
+        }));
+
+        console.log('견적서 내용으로 실측 데이터 초기화:', initialData);
+
+        // 실측 모달 열기
+        const measurementEvent = {
+          id: `schedule-${Date.now()}-measurement`,
+          title: scheduleTitle,
+          date: measurementDate,
+          time: measurementTime,
+          type: '실측',
+          description: scheduleData.projectName,
+          customerName: scheduleData.customerName,
+          address: scheduleData.address,
+          contact: scheduleData.contact,
+          priority: '보통',
+          status: '예정',
+          estimateNo: scheduleData.estimateNo,
+          measurementData: initialData,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          createdBy: 'current_user',
+        };
+
+        // 실측일정을 스케줄에 저장
+        console.log('실측일정 스케줄 저장 시작:', measurementEvent);
+
+        const response = await fetch('https://us-central1-windowerp-3.cloudfunctions.net/schedules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(measurementEvent),
+        });
+
+        console.log(
+          '실측일정 저장 응답 상태:',
+          response.status,
+          response.statusText
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(
+            '실측일정 저장 실패:',
+            response.status,
+            response.statusText,
+            errorText
+          );
+          alert(
+            `실측일정 저장에 실패했습니다: ${response.status} ${response.statusText}`
+          );
+        } else {
+          const result = await response.json();
+          console.log('실측일정 저장 성공:', result);
+          alert(
+            `실측일정이 성공적으로 스케줄에 저장되었습니다!\n\n견적번호: ${scheduleData.estimateNo}\n실측일자: ${measurementDate} ${measurementTime}\n제목: ${scheduleTitle}\n\n스케줄 페이지에서 확인하실 수 있습니다.`
+          );
+        }
+      } else {
+        console.log('견적서를 찾을 수 없습니다:', scheduleData.estimateNo);
+        alert('견적서를 찾을 수 없어 실측 스케줄을 생성할 수 없습니다.');
+      }
+    } catch (error) {
+      console.error('스케줄 저장 중 오류:', error);
+      alert(`스케줄 저장 중 오류가 발생했습니다: ${error}`);
+    }
+  };
+
   const [isContractCreating, setIsContractCreating] = useState(false);
 
   const handleContractComplete = async (agreementInfo: any) => {
@@ -591,36 +763,10 @@ const ContractManagement: React.FC = () => {
     // 주문관리로 이동하는 알림
     const alertMessage =
       isFinalEstimate && existingContract
-        ? `✅ 계약이 성공적으로 업데이트되었습니다!\n\n📋 Final 견적서 기반으로 계약서가 업데이트되었습니다.\n\n📋 다음 단계:\n1. 주문관리에서 발주를 진행하세요\n2. 발주 완료 후 자동으로 배송관리로 이동됩니다\n\n💡 실측일정이 입력된 경우 스케줄에 자동 등록되었습니다.`
-        : `✅ 계약이 성공적으로 생성되었습니다!\n\n📋 다음 단계:\n1. 주문관리에서 발주를 진행하세요\n2. 발주 완료 후 자동으로 배송관리로 이동됩니다\n\n💡 실측일정이 입력된 경우 스케줄에 자동 등록되었습니다.`;
+        ? `✅ 계약이 성공적으로 업데이트되었습니다!\n\n📋 Final 견적서 기반으로 계약서가 업데이트되었습니다.\n\n📋 다음 단계:\n1. 주문관리에서 발주를 진행하세요\n2. 발주 완료 후 자동으로 배송관리로 이동됩니다\n\n💡 실측일정이 입력된 경우 "스케줄 저장" 버튼을 눌러 스케줄에 등록하세요.`
+        : `✅ 계약이 성공적으로 생성되었습니다!\n\n📋 다음 단계:\n1. 주문관리에서 발주를 진행하세요\n2. 발주 완료 후 자동으로 배송관리로 이동됩니다\n\n💡 실측일정이 입력된 경우 "스케줄 저장" 버튼을 눌러 스케줄에 등록하세요.`;
 
     alert(alertMessage);
-
-    // 실측일정만 스케줄에 자동 등록 (시공일정은 배송관리에서 관리)
-    console.log('=== 실측일정 등록 검사 시작 ===');
-    console.log('계약 완료 - paymentData 확인:', paymentData);
-    console.log('실측일자 확인:', paymentData.measurementDate);
-    console.log('실측일자 값:', paymentData.measurementDate);
-    console.log(
-      '실측일자 길이:',
-      paymentData.measurementDate ? paymentData.measurementDate.length : 0
-    );
-
-    if (
-      paymentData.measurementDate &&
-      paymentData.measurementDate.trim() !== ''
-    ) {
-      console.log('실측 스케줄 자동 등록 시작');
-      await createScheduleFromContract(newContract, paymentData);
-    } else {
-      console.log('실측일자가 입력되지 않아 스케줄 등록을 건너뜁니다.');
-      console.log('실측일자 조건 검사 결과:', {
-        exists: !!paymentData.measurementDate,
-        notEmpty: paymentData.measurementDate
-          ? paymentData.measurementDate.trim() !== ''
-          : false,
-      });
-    }
 
     // 계약 완료 후 계약 목록 탭으로 이동
     setActiveTab(0);
@@ -696,13 +842,33 @@ const ContractManagement: React.FC = () => {
         );
         const scheduleTitle = `실측 - ${navAddress}`;
 
-        // 견적서 정보 가져오기
-        const savedEstimates = JSON.parse(
-          localStorage.getItem('saved_estimates') || '[]'
-        );
-        const matchedEstimate = savedEstimates.find(
-          (est: any) => est.estimateNo === contract.estimateNo
-        );
+        // 견적서 정보 가져오기 (Firebase에서 먼저 시도, 실패 시 localStorage 사용)
+        let matchedEstimate = null;
+        
+        try {
+          // Firebase에서 견적서 정보 가져오기
+          const response = await fetch(`${API_BASE}/estimates?estimateNo=${contract.estimateNo}`);
+          if (response.ok) {
+            const estimates = await response.json();
+            matchedEstimate = estimates.find((est: any) => est.estimateNo === contract.estimateNo);
+            console.log('Firebase에서 견적서 정보 가져옴:', matchedEstimate);
+          } else {
+            console.log('Firebase에서 견적서를 찾을 수 없음, localStorage에서 시도');
+          }
+        } catch (error) {
+          console.error('Firebase 견적서 조회 실패:', error);
+        }
+        
+        // Firebase에서 찾지 못한 경우 localStorage에서 시도
+        if (!matchedEstimate) {
+          const savedEstimates = JSON.parse(
+            localStorage.getItem('saved_estimates') || '[]'
+          );
+          matchedEstimate = savedEstimates.find(
+            (est: any) => est.estimateNo === contract.estimateNo
+          );
+          console.log('localStorage에서 견적서 정보 가져옴:', matchedEstimate);
+        }
 
         if (matchedEstimate && matchedEstimate.rows) {
           // 견적서 내용을 기반으로 실측 데이터 초기화
@@ -866,6 +1032,246 @@ const ContractManagement: React.FC = () => {
     }
   };
 
+  const handleSaveContractAndSchedule = async () => {
+    if (!selectedContract) return;
+
+    // 계약 정보 저장
+    const depositAmount = selectedContract.depositAmount || 0;
+    const discountedAmount =
+      selectedContract.discountedAmount || selectedContract.totalAmount || 0;
+    const remainingAmount = discountedAmount - depositAmount;
+    
+    const updatedContract = {
+      ...selectedContract,
+      remainingAmount,
+    };
+
+    setContracts(
+      contracts.map(c =>
+        c.id === selectedContract.id ? updatedContract : c
+      )
+    );
+
+                        // 실측일자가 있는 경우 스케줄 저장
+          if (selectedContract.measurementDate && selectedContract.measurementDate.trim() !== '') {
+        try {
+        console.log('=== 계약 수정 시 스케줄 저장 시작 ===');
+        console.log('계약 정보:', updatedContract);
+
+        // datetime-local 형식을 date와 time으로 분리
+        const measurementDateTime = selectedContract.measurementDate;
+        let measurementDate = '';
+        let measurementTime = '09:00';
+
+        if (measurementDateTime && measurementDateTime.includes('T')) {
+          const [datePart, timePart] = measurementDateTime.split('T');
+          measurementDate = datePart;
+          measurementTime = timePart || '09:00';
+        } else if (measurementDateTime) {
+          measurementDate = measurementDateTime;
+          measurementTime = '09:00';
+        }
+
+        console.log('분리된 실측일자:', measurementDate);
+        console.log('분리된 실측시간:', measurementTime);
+
+        const navAddress = extractNavigationAddress(selectedContract.address || '');
+        const scheduleTitle = `실측 - ${navAddress}`;
+
+        // 견적서 정보 가져오기 (Firebase에서 먼저 시도, 실패 시 localStorage 사용)
+        let matchedEstimate = null;
+        
+        try {
+          const response = await fetch(`${API_BASE}/estimates?estimateNo=${selectedContract.estimateNo}`);
+          if (response.ok) {
+            const estimates = await response.json();
+            matchedEstimate = estimates.find((est: any) => est.estimateNo === selectedContract.estimateNo);
+            console.log('Firebase에서 견적서 정보 가져옴:', matchedEstimate);
+          } else {
+            console.log('Firebase에서 견적서를 찾을 수 없음, localStorage에서 시도');
+          }
+        } catch (error) {
+          console.error('Firebase 견적서 조회 실패:', error);
+        }
+        
+        if (!matchedEstimate) {
+          const savedEstimates = JSON.parse(
+            localStorage.getItem('saved_estimates') || '[]'
+          );
+          matchedEstimate = savedEstimates.find(
+            (est: any) => est.estimateNo === selectedContract.estimateNo
+          );
+          console.log('localStorage에서 견적서 정보 가져옴:', matchedEstimate);
+        }
+
+        if (matchedEstimate && matchedEstimate.rows) {
+          // 견적서 내용을 기반으로 실측 데이터 초기화
+          const estimateRows = matchedEstimate.rows
+            .filter((row: any) => row.space && row.productName)
+            .map((row: any) => ({
+              space: row.space,
+              productName: row.productName,
+              widthMM: row.widthMM,
+              heightMM: row.heightMM,
+            }));
+
+          // 실측 데이터 초기화
+          const initialData = estimateRows.map((row: any) => ({
+            space: row.space,
+            productName: row.productName,
+            estimateWidth: String(row.widthMM || ''),
+            estimateHeight: String(row.heightMM || ''),
+            measuredWidth: '',
+            measuredHeight: '',
+            lineDirection: '',
+            lineLength: '',
+            customLineLength: '',
+            memo: '',
+            showMemo: false,
+          }));
+
+          console.log('견적서 내용으로 실측 데이터 초기화:', initialData);
+
+          // 기존 스케줄에서 해당 견적번호의 실측일정 찾기
+          let existingScheduleId = null;
+          let existingSchedule = null;
+          let isDateChanged = false;
+          let oldDate = '';
+          let oldTime = '';
+          
+          try {
+            const scheduleResponse = await fetch('https://us-central1-windowerp-3.cloudfunctions.net/schedules');
+            if (scheduleResponse.ok) {
+              const schedules = await scheduleResponse.json();
+              existingSchedule = schedules.find((schedule: any) => 
+                schedule.estimateNo === selectedContract.estimateNo && schedule.type === '실측'
+              );
+              if (existingSchedule) {
+                existingScheduleId = existingSchedule.id;
+                oldDate = existingSchedule.date;
+                oldTime = existingSchedule.time;
+                
+                // 날짜가 변경되었는지 확인
+                if (oldDate !== measurementDate || oldTime !== measurementTime) {
+                  isDateChanged = true;
+                }
+                
+                console.log('기존 실측 스케줄 발견:', existingScheduleId);
+                console.log('기존 날짜:', oldDate, oldTime);
+                console.log('새 날짜:', measurementDate, measurementTime);
+                console.log('날짜 변경 여부:', isDateChanged);
+                
+                // 실측일자 변경 확인
+                if (isDateChanged) {
+                  const confirmMessage = `실측일자가 변경되었습니다.\n\n기존: ${oldDate} ${oldTime}\n변경: ${measurementDate} ${measurementTime}\n\n기존 실측 데이터는 보존됩니다.\n계속하시겠습니까?`;
+                  if (!window.confirm(confirmMessage)) {
+                    setEditViewDialogOpen(false);
+                    setSelectedContract(null);
+                    return;
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.error('기존 스케줄 조회 실패:', error);
+          }
+
+          // 실측일정 생성/업데이트
+          const measurementEvent = {
+            id: existingScheduleId || `schedule-${Date.now()}-measurement`,
+            title: scheduleTitle,
+            date: measurementDate,
+            time: measurementTime,
+            type: '실측',
+            description: selectedContract.projectName,
+            customerName: selectedContract.customerName,
+            address: selectedContract.address,
+            contact: selectedContract.contact,
+            priority: '보통',
+            status: '예정',
+            estimateNo: selectedContract.estimateNo,
+            // 기존 실측 데이터가 있으면 보존, 없으면 초기화
+            measurementData: existingSchedule && existingSchedule.measurementData 
+              ? existingSchedule.measurementData 
+              : initialData,
+            createdAt: existingScheduleId ? existingSchedule.createdAt : new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            createdBy: existingScheduleId ? existingSchedule.createdBy : 'current_user',
+          };
+
+          // 실측일정을 스케줄에 저장/업데이트
+          console.log('실측일정 스케줄 저장/업데이트 시작:', measurementEvent);
+
+          let method = existingScheduleId ? 'PUT' : 'POST';
+          let url = existingScheduleId 
+            ? `https://us-central1-windowerp-3.cloudfunctions.net/schedules/${existingScheduleId}`
+            : 'https://us-central1-windowerp-3.cloudfunctions.net/schedules';
+
+          // id가 올바르지 않으면 POST로 대체
+          if (method === 'PUT' && (!existingScheduleId || typeof existingScheduleId !== 'string' || existingScheduleId.trim() === '')) {
+            alert('기존 실측일정의 ID가 올바르지 않습니다. 새로 생성합니다.');
+            method = 'POST';
+            url = 'https://us-central1-windowerp-3.cloudfunctions.net/schedules';
+            if (measurementEvent.id) delete measurementEvent.id;
+          }
+
+          const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(measurementEvent),
+          });
+
+          console.log(
+            '실측일정 저장/업데이트 응답 상태:',
+            response.status,
+            response.statusText
+          );
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(
+              '실측일정 저장/업데이트 실패:',
+              response.status,
+              response.statusText,
+              errorText
+            );
+            alert(
+              `실측일정 저장에 실패했습니다: ${response.status} ${response.statusText}`
+            );
+          } else {
+            const result = await response.json();
+            console.log('실측일정 저장/업데이트 성공:', result);
+            
+            let message = '';
+            if (existingScheduleId) {
+              if (isDateChanged) {
+                message = `계약 정보와 실측일정이 성공적으로 업데이트되었습니다!\n\n견적번호: ${selectedContract.estimateNo}\n실측일자 변경: ${oldDate} ${oldTime} → ${measurementDate} ${measurementTime}\n제목: ${scheduleTitle}\n\n기존 실측 데이터는 보존되었습니다.\n스케줄 페이지에서 확인하실 수 있습니다.`;
+              } else {
+                message = `계약 정보와 실측일정이 성공적으로 업데이트되었습니다!\n\n견적번호: ${selectedContract.estimateNo}\n실측일자: ${measurementDate} ${measurementTime}\n제목: ${scheduleTitle}\n\n스케줄 페이지에서 확인하실 수 있습니다.`;
+              }
+            } else {
+              message = `계약 정보와 실측일정이 성공적으로 저장되었습니다!\n\n견적번호: ${selectedContract.estimateNo}\n실측일자: ${measurementDate} ${measurementTime}\n제목: ${scheduleTitle}\n\n스케줄 페이지에서 확인하실 수 있습니다.`;
+            }
+            
+            alert(message);
+          }
+        } else {
+          console.log('견적서를 찾을 수 없습니다:', selectedContract.estimateNo);
+          alert('견적서를 찾을 수 없어 실측 스케줄을 생성할 수 없습니다.');
+        }
+      } catch (error) {
+        console.error('스케줄 저장 중 오류:', error);
+        alert(`스케줄 저장 중 오류가 발생했습니다: ${error}`);
+      }
+    } else {
+      // 실측일자가 없는 경우 계약 정보만 저장
+      alert('계약 정보가 성공적으로 저장되었습니다.');
+    }
+
+    setEditViewDialogOpen(false);
+    setSelectedContract(null);
+  };
+
   // 출력 기능 핸들러 함수들
   const handlePrintClick = (contract: Contract) => {
     setSelectedContractForPrint(contract);
@@ -1026,17 +1432,17 @@ const ContractManagement: React.FC = () => {
       <Box sx={{ mb: 3 }}>
         <Typography
           variant="h4"
-          sx={{ color: '#e0e6ed', fontWeight: 'bold', mb: 1 }}
+          sx={{ color: 'var(--text-color)', fontWeight: 'bold', mb: 1 }}
         >
           계약 관리
         </Typography>
-        <Typography variant="body1" sx={{ color: '#b0b8c1' }}>
+        <Typography variant="body1" sx={{ color: 'var(--text-secondary-color)' }}>
           견적서를 기반으로 계약을 생성하고 관리합니다.
         </Typography>
       </Box>
 
       {/* 검색 및 필터 */}
-      <Paper sx={{ p: isMobile ? 3 : 2, mb: 2, backgroundColor: '#232a36', borderRadius: 1 }}>
+              <Paper sx={{ p: isMobile ? 3 : 2, mb: 2, backgroundColor: 'var(--surface-color)', borderRadius: 1 }}>
         <Grid container spacing={isMobile ? 3 : 2} alignItems="center">
           <Grid item xs={12} md={4}>
             <TextField
@@ -1048,17 +1454,17 @@ const ContractManagement: React.FC = () => {
               size={isMobile ? "medium" : "small"}
               sx={{
                 input: { 
-                  color: '#e0e6ed',
+                  color: 'var(--text-color)',
                   fontSize: isMobile ? 16 : 14
                 },
                 label: { 
-                  color: '#b0b8c1',
+                  color: 'var(--text-secondary-color)',
                   fontSize: isMobile ? 16 : 14
                 },
                 '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: '#2e3a4a' },
-                  '&:hover fieldset': { borderColor: '#3a4a5a' },
-                  '&.Mui-focused fieldset': { borderColor: '#0091ea' },
+                  '& fieldset': { borderColor: 'var(--border-color)' },
+                  '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
                 },
               }}
             />
@@ -1066,7 +1472,7 @@ const ContractManagement: React.FC = () => {
           <Grid item xs={12} md={3}>
             <FormControl fullWidth size={isMobile ? "medium" : "small"}>
               <InputLabel sx={{ 
-                color: '#b0b8c1',
+                color: 'var(--text-secondary-color)',
                 fontSize: isMobile ? 16 : 14
               }}>상태 필터</InputLabel>
               <Select
@@ -1075,13 +1481,13 @@ const ContractManagement: React.FC = () => {
                   setStatusFilter(e.target.value)
                 }
                 sx={{
-                  color: '#e0e6ed',
+                  color: 'var(--text-color)',
                   fontSize: isMobile ? 16 : 14,
                   '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#2e3a4a',
+                    borderColor: 'var(--border-color)',
                   },
                   '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3a4a5a',
+                    borderColor: 'var(--hover-color)',
                   },
                 }}
               >
@@ -1102,9 +1508,9 @@ const ContractManagement: React.FC = () => {
                 startIcon={<AddIcon />}
                 onClick={() => setDialogOpen(true)}
                 sx={{
-                  backgroundColor: '#0091ea',
+                  backgroundColor: 'var(--primary-color)',
                   color: '#fff',
-                  '&:hover': { backgroundColor: '#0064b7' },
+                  '&:hover': { backgroundColor: 'var(--hover-color)' },
                   minWidth: isMobile ? 120 : 100,
                   fontSize: isMobile ? 16 : 13,
                   py: isMobile ? 1.5 : 0.5,
@@ -1124,14 +1530,20 @@ const ContractManagement: React.FC = () => {
           value={activeTab}
           onChange={(e, v) => setActiveTab(v)}
           sx={{
-            backgroundColor: '#23272b',
-            color: '#fff',
+            backgroundColor: '#f5f5f5',
+            color: 'var(--text-color)',
             borderRadius: 1,
             '& .MuiTab-root': {
-              color: '#b0b8c1',
+              color: 'var(--text-secondary-color)',
               fontSize: isMobile ? 16 : 14,
               minHeight: isMobile ? 56 : 48,
-              '&.Mui-selected': { color: '#e0e6ed' },
+              '&.Mui-selected': { 
+                color: 'var(--primary-color)',
+                fontWeight: 'bold'
+              },
+            },
+            '& .MuiTabs-indicator': {
+              backgroundColor: 'var(--primary-color)',
             },
           }}
         >
@@ -1142,110 +1554,110 @@ const ContractManagement: React.FC = () => {
 
       {/* 계약 목록 탭 */}
       {activeTab === 0 && (
-        <Paper sx={{ backgroundColor: '#23272b' }}>
+        <Paper sx={{ backgroundColor: 'var(--surface-color)' }}>
           <TableContainer>
             <Table>
               <TableHead>
-                <TableRow sx={{ backgroundColor: '#263040' }}>
+                <TableRow sx={{ backgroundColor: 'var(--background-color)' }}>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     계약일자
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     계약번호
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     견적번호
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     고객명
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     전화번호
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     프로젝트명
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     주소
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     소비자금액
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     할인후금액
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     계약금
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     잔금
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     상태
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
@@ -1260,15 +1672,15 @@ const ContractManagement: React.FC = () => {
                     id={`contract-${contract.contractNo}`}
                     hover
                     sx={{
-                      backgroundColor: '#23272b',
-                      '&:hover': { backgroundColor: '#263040' },
-                      color: '#e0e6ed',
+                      backgroundColor: 'var(--surface-color)',
+                      '&:hover': { backgroundColor: 'var(--hover-color)' },
+                      color: 'var(--text-color)',
                     }}
                   >
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1277,8 +1689,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1287,8 +1699,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1297,8 +1709,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1307,8 +1719,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1317,8 +1729,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1327,8 +1739,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1337,8 +1749,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1347,8 +1759,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1357,8 +1769,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1367,15 +1779,15 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
                     >
                       {(contract.remainingAmount || 0).toLocaleString()}원
                     </TableCell>
-                    <TableCell sx={{ borderColor: '#2e3a4a' }}>
+                    <TableCell sx={{ borderColor: 'var(--border-color)' }}>
                       <Chip
                         label={getStatusText(contract.status)}
                         color={getStatusColor(contract.status) as any}
@@ -1386,7 +1798,7 @@ const ContractManagement: React.FC = () => {
                         }}
                       />
                     </TableCell>
-                    <TableCell sx={{ borderColor: '#2e3a4a' }}>
+                    <TableCell sx={{ borderColor: 'var(--border-color)' }}>
                       <Box sx={{ display: 'flex', gap: isMobile ? 1 : 0.5 }}>
                         <IconButton
                           size={isMobile ? "medium" : "small"}
@@ -1458,17 +1870,17 @@ const ContractManagement: React.FC = () => {
 
       {/* 견적서 목록 탭 */}
       {activeTab === 1 && (
-        <Paper sx={{ backgroundColor: '#23272b' }}>
+        <Paper sx={{ backgroundColor: 'var(--surface-color)' }}>
           <Box
             sx={{
               p: 2,
-              borderBottom: '1px solid #2e3a4a',
+              borderBottom: '1px solid var(--border-color)',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
             }}
           >
-            <Typography variant="h6" sx={{ color: '#e0e6ed' }}>
+            <Typography variant="h6" sx={{ color: 'var(--text-color)' }}>
               승인한 견적서
             </Typography>
             <Button
@@ -1477,11 +1889,11 @@ const ContractManagement: React.FC = () => {
               startIcon={<SearchIcon />}
               onClick={refreshEstimates}
               sx={{
-                color: '#b0b8c1',
-                borderColor: '#2e3a4a',
+                color: 'var(--text-secondary-color)',
+                borderColor: 'var(--border-color)',
                 '&:hover': {
-                  backgroundColor: '#263040',
-                  borderColor: '#3a4a5a',
+                  backgroundColor: 'var(--hover-color)',
+                  borderColor: 'var(--primary-color)',
                 },
                 minWidth: isMobile ? 120 : 80,
                 fontSize: isMobile ? 16 : 13,
@@ -1495,82 +1907,82 @@ const ContractManagement: React.FC = () => {
           <TableContainer>
             <Table>
               <TableHead>
-                <TableRow sx={{ backgroundColor: '#263040' }}>
+                <TableRow sx={{ backgroundColor: 'var(--background-color)' }}>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     견적번호
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     견적일자
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     고객명
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     연락처
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     주소
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     포함제품
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     총금액
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     할인후금액
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
                     작업상태
                   </TableCell>
                   <TableCell sx={{ 
-                    color: '#b0b8c1', 
-                    borderColor: '#2e3a4a',
+                    color: 'var(--text-color)', 
+                    borderColor: 'var(--border-color)',
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
@@ -1584,15 +1996,15 @@ const ContractManagement: React.FC = () => {
                     key={estimate.id}
                     hover
                     sx={{
-                      backgroundColor: '#23272b',
-                      '&:hover': { backgroundColor: '#263040' },
-                      color: '#e0e6ed',
+                      backgroundColor: 'var(--surface-color)',
+                      '&:hover': { backgroundColor: 'var(--hover-color)' },
+                      color: 'var(--text-color)',
                     }}
                   >
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1601,8 +2013,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1611,8 +2023,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1621,8 +2033,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1631,8 +2043,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1641,8 +2053,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1651,8 +2063,8 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
@@ -1661,15 +2073,15 @@ const ContractManagement: React.FC = () => {
                     </TableCell>
                     <TableCell
                       sx={{ 
-                        color: '#e0e6ed', 
-                        borderColor: '#2e3a4a',
+                        color: 'var(--text-color)', 
+                        borderColor: 'var(--border-color)',
                         fontSize: isMobile ? 16 : 14,
                         py: isMobile ? 2 : 1
                       }}
                     >
                       {(estimate.discountedAmount || 0).toLocaleString()}원
                     </TableCell>
-                    <TableCell sx={{ borderColor: '#2e3a4a' }}>
+                    <TableCell sx={{ borderColor: 'var(--border-color)' }}>
                       {isEstimateContracted(estimate.estimateNo) ? (
                         <Chip
                           label="계약완료"
@@ -1692,7 +2104,7 @@ const ContractManagement: React.FC = () => {
                         />
                       )}
                     </TableCell>
-                    <TableCell sx={{ borderColor: '#2e3a4a' }}>
+                    <TableCell sx={{ borderColor: 'var(--border-color)' }}>
                       {isEstimateContracted(estimate.estimateNo) ? (
                         <Button
                           variant="contained"
@@ -1862,6 +2274,12 @@ const ContractManagement: React.FC = () => {
                   selectedEstimate.totalAmount
                 }
                 onSave={handlePaymentSave}
+                onSaveSchedule={handleSaveSchedule}
+                estimateNo={selectedEstimate.estimateNo}
+                customerName={selectedEstimate.customerName}
+                projectName={selectedEstimate.projectName}
+                address={selectedEstimate.address}
+                contact={selectedEstimate.contact}
               />
             </Box>
           )}
@@ -2191,33 +2609,82 @@ const ContractManagement: React.FC = () => {
               <Grid item xs={12} sm={6}>
                 <TextField
                   label="실측일자"
-                  value={
-                    selectedContract?.measurementDate
-                      ? new Date(
-                          selectedContract.measurementDate
-                        ).toLocaleString()
-                      : ''
-                  }
+                  type="datetime-local"
+                  value={selectedContract?.measurementDate || ''}
                   fullWidth
                   size="small"
-                  InputProps={{ readOnly: true }}
-                  placeholder="날짜/시간 선택"
+                  helperText={!viewOnly ? "실측일자 변경 시 스케줄의 실측일정도 함께 업데이트됩니다" : ""}
+                  InputProps={{ 
+                    readOnly: viewOnly,
+                    ...(viewOnly ? {} : {
+                      onClick: (e: any) => {
+                        const input = e.target;
+                        if (input.showPicker) {
+                          input.showPicker();
+                        } else {
+                          input.click();
+                        }
+                      }
+                    })
+                  }}
+                  onChange={e =>
+                    setSelectedContract({
+                      ...selectedContract,
+                      measurementDate: e.target.value,
+                    })
+                  }
+                  InputLabelProps={{
+                    shrink: true,
+                  }}
+                  sx={{
+                    cursor: viewOnly ? 'default' : 'pointer',
+                    '& .MuiOutlinedInput-root': {
+                      cursor: viewOnly ? 'default' : 'pointer',
+                      '&:hover': {
+                        backgroundColor: viewOnly ? 'transparent' : 'rgba(255, 255, 255, 0.04)',
+                      },
+                    },
+                  }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
                   label="시공일자"
-                  value={
-                    selectedContract?.constructionDate
-                      ? new Date(
-                          selectedContract.constructionDate
-                        ).toLocaleString()
-                      : ''
-                  }
+                  type="datetime-local"
+                  value={selectedContract?.constructionDate || ''}
                   fullWidth
                   size="small"
-                  InputProps={{ readOnly: true }}
-                  placeholder="날짜/시간 선택"
+                  InputProps={{ 
+                    readOnly: viewOnly,
+                    ...(viewOnly ? {} : {
+                      onClick: (e: any) => {
+                        const input = e.target;
+                        if (input.showPicker) {
+                          input.showPicker();
+                        } else {
+                          input.click();
+                        }
+                      }
+                    })
+                  }}
+                  onChange={e =>
+                    setSelectedContract({
+                      ...selectedContract,
+                      constructionDate: e.target.value,
+                    })
+                  }
+                  InputLabelProps={{
+                    shrink: true,
+                  }}
+                  sx={{
+                    cursor: viewOnly ? 'default' : 'pointer',
+                    '& .MuiOutlinedInput-root': {
+                      cursor: viewOnly ? 'default' : 'pointer',
+                      '&:hover': {
+                        backgroundColor: viewOnly ? 'transparent' : 'rgba(255, 255, 255, 0.04)',
+                      },
+                    },
+                  }}
                 />
               </Grid>
             </Grid>
@@ -2238,17 +2705,30 @@ const ContractManagement: React.FC = () => {
             닫기
           </Button>
           {!viewOnly && (
-            <Button 
-              onClick={handleSaveContract} 
-              variant="contained"
-              size={isMobile ? "large" : "medium"}
-              sx={{
-                minWidth: isMobile ? 80 : 60,
-                fontSize: isMobile ? 16 : 14
-              }}
-            >
-              저장
-            </Button>
+            <>
+              <Button 
+                onClick={handleSaveContract} 
+                variant="outlined"
+                size={isMobile ? "large" : "medium"}
+                sx={{
+                  minWidth: isMobile ? 80 : 60,
+                  fontSize: isMobile ? 16 : 14
+                }}
+              >
+                계약만 저장
+              </Button>
+              <Button 
+                onClick={handleSaveContractAndSchedule} 
+                variant="contained"
+                size={isMobile ? "large" : "medium"}
+                sx={{
+                  minWidth: isMobile ? 80 : 60,
+                  fontSize: isMobile ? 16 : 14
+                }}
+              >
+                📅 계약+실측일정 저장
+              </Button>
+            </>
           )}
         </DialogActions>
       </Dialog>

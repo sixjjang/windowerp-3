@@ -33,18 +33,18 @@ import jsPDF from 'jspdf';
 import { ASRecord } from '../utils/deliveryStore';
 
 const themeColors = {
-  bg: '#18171c',
-  card: '#23202a',
-  pink: '#ffb6c1',
-  red: '#ff4b6e',
-  black: '#18171c',
-  white: '#fff',
-  border: '#ffb6c1',
-  shadow: '0 4px 24px rgba(255, 75, 110, 0.08)',
-  sectionBg: '#fff0f5',
-  sectionBorder: '#ffb6c1',
-  iconBg: '#ffb6c1',
-  iconColor: '#ff4b6e',
+  bg: 'var(--background-color)',
+  card: 'var(--surface-color)',
+  pink: 'var(--primary-color)',
+  red: 'var(--secondary-color)',
+  black: 'var(--background-color)',
+  white: 'var(--text-color)',
+  border: 'var(--border-color)',
+  shadow: '0 4px 24px var(--border-color)',
+  sectionBg: 'var(--surface-color)',
+  sectionBorder: 'var(--border-color)',
+  iconBg: 'var(--primary-color)',
+  iconColor: 'var(--secondary-color)',
 };
 
 interface CompanyInfo {

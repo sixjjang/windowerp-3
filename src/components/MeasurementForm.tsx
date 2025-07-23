@@ -47,6 +47,9 @@ interface MeasurementFormProps {
   initialData?: MeasurementRowData[];
   onSave: (data: MeasurementRowData[]) => void;
   onCancel?: () => void;
+  onCreateFinalEstimate?: (data: MeasurementRowData[]) => void;
+  onAutoSave?: (data: MeasurementRowData[]) => void;
+  onDataChange?: (data: MeasurementRowData[]) => void;
   estimateInfo?: {
     estimateNo: string;
     customerName: string;
@@ -73,37 +76,74 @@ const MeasurementForm: React.FC<MeasurementFormProps> = ({
   initialData,
   onSave,
   onCancel,
+  onCreateFinalEstimate,
+  onAutoSave,
+  onDataChange,
   estimateInfo,
 }) => {
   // 표의 각 행을 상태로 관리
-  const [rows, setRows] = useState<MeasurementRowData[]>(
-    estimateRows.length > 0
-      ? estimateRows.map((row, idx) => ({
-          space: row.space || '',
-          productName: row.productName || '',
-          estimateWidth: String(row.widthMM || ''),
-          estimateHeight: String(row.heightMM || ''),
-          measuredWidth: initialData?.[idx]?.measuredWidth || '',
-          measuredHeight: initialData?.[idx]?.measuredHeight || '',
-          lineDirection: initialData?.[idx]?.lineDirection || '',
-          lineLength: initialData?.[idx]?.lineLength || '',
-          customLineLength: initialData?.[idx]?.customLineLength || '',
-          memo: initialData?.[idx]?.memo || '',
-          showMemo: initialData?.[idx]?.showMemo || false,
-        }))
-      : initialData || []
-  );
+  const [rows, setRows] = useState<MeasurementRowData[]>(() => {
+    // 초기 데이터가 있으면 우선 사용
+    if (initialData && initialData.length > 0) {
+      console.log('MeasurementForm 초기 데이터 사용:', initialData);
+      return initialData;
+    }
+    
+    // 견적서 행이 있으면 견적서 기반으로 초기화
+    if (estimateRows.length > 0) {
+      console.log('MeasurementForm 견적서 기반 초기화:', estimateRows);
+      return estimateRows.map((row, idx) => ({
+        space: row.space || '',
+        productName: row.productName || '',
+        estimateWidth: String(row.widthMM || ''),
+        estimateHeight: String(row.heightMM || ''),
+        measuredWidth: '',
+        measuredHeight: '',
+        lineDirection: '',
+        lineLength: '',
+        customLineLength: '',
+        memo: '',
+        showMemo: false,
+      }));
+    }
+    
+    // 기본 빈 행
+    console.log('MeasurementForm 기본 빈 행 생성');
+    return [];
+  });
 
   const isMobile = useMediaQuery('(max-width:600px)');
+
+  // 자동 저장 타이머 관리
+  const [autoSaveTimer, setAutoSaveTimer] = useState<NodeJS.Timeout | null>(null);
 
   const handleChange = (
     idx: number,
     field: keyof MeasurementRowData,
     value: string | boolean
   ) => {
-    setRows(prev =>
-      prev.map((row, i) => (i === idx ? { ...row, [field]: value } : row))
-    );
+    setRows(prev => {
+      const newRows = prev.map((row, i) => (i === idx ? { ...row, [field]: value } : row));
+      
+      // 실시간 데이터 변경 알림
+      if (onDataChange) {
+        onDataChange(newRows);
+      }
+      
+      // 자동 저장 활성화
+      if (onAutoSave) {
+        if (autoSaveTimer) {
+          clearTimeout(autoSaveTimer);
+        }
+        const timer = setTimeout(() => {
+          console.log('자동 저장 실행:', newRows);
+          onAutoSave(newRows);
+        }, 3000); // 3초로 단축
+        setAutoSaveTimer(timer);
+      }
+      
+      return newRows;
+    });
   };
 
   const handleAddRow = () => {
@@ -131,8 +171,22 @@ const MeasurementForm: React.FC<MeasurementFormProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    // 자동 저장 타이머 정리
+    if (autoSaveTimer) {
+      clearTimeout(autoSaveTimer);
+      setAutoSaveTimer(null);
+    }
     onSave(rows);
   };
+
+  // 컴포넌트 언마운트 시 타이머 정리
+  React.useEffect(() => {
+    return () => {
+      if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+      }
+    };
+  }, [autoSaveTimer]);
 
   // 견적서에서 온 행인지 확인
   const isFromEstimate = (idx: number) => idx < estimateRows.length;
@@ -675,6 +729,19 @@ const MeasurementForm: React.FC<MeasurementFormProps> = ({
           <Button type="submit" variant="contained" color="primary">
             저장
           </Button>
+          {onCreateFinalEstimate && estimateInfo && (
+            <Button 
+              onClick={() => onCreateFinalEstimate(rows)}
+              variant="contained" 
+              color="secondary"
+              sx={{ 
+                backgroundColor: '#ff9800',
+                '&:hover': { backgroundColor: '#f57c00' }
+              }}
+            >
+              Final견적서 만들기
+            </Button>
+          )}
         </Box>
       </form>
     </Paper>

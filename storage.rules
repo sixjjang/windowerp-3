@@ -42,7 +42,7 @@ service firebase.storage {
     }
     
     // 과거자료 파일
-    match /historical/{type}/{year}/{fileName} {
+    match /historical-data/{type}/{year}/{fileName} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && 
                    isValidFileSize() && 

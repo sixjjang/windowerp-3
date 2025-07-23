@@ -41,9 +41,8 @@ import {
   Edit as EditIcon,
 } from '@mui/icons-material';
 import * as XLSX from 'xlsx';
-import { db, storage } from '../../firebase/config';
+import { db } from '../../firebase/config';
 import { collection, addDoc, serverTimestamp, query, collection as fsCollection, where, getDocs, orderBy } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, ref as storageRef } from 'firebase/storage';
 
 interface HistoricalRecord {
   id: string;
@@ -111,13 +110,22 @@ const HistoricalDataManagement: React.FC = () => {
 
   const loadRecords = async () => {
     try {
-      // Firestore에서 직접 historical-data 쿼리
+      // Firestore에서 직접 historical-data 쿼리 (임시로 정렬 제거)
       const q = query(
         fsCollection(db, 'historical-data'),
         where('type', '==', selectedType),
-        where('year', '==', selectedYear),
-        orderBy('uploadDate', 'desc')
+        where('year', '==', selectedYear)
+        // orderBy('uploadDate', 'desc') // 인덱스 생성 완료 후 다시 활성화
       );
+      
+      // 🔄 인덱스 생성 완료 후 사용할 원래 쿼리:
+      // const q = query(
+      //   fsCollection(db, 'historical-data'),
+      //   where('type', '==', selectedType),
+      //   where('year', '==', selectedYear),
+      //   orderBy('uploadDate', 'desc')
+      // );
+      
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map(doc => {
         const d = doc.data();
@@ -133,6 +141,16 @@ const HistoricalDataManagement: React.FC = () => {
           merges: d.merges,
         };
       });
+      
+      // 클라이언트에서 정렬 (임시 해결책)
+      data.sort((a, b) => {
+        const dateA = new Date(a.uploadDate);
+        const dateB = new Date(b.uploadDate);
+        return dateB.getTime() - dateA.getTime(); // 최신순 정렬
+      });
+      
+      // 🔄 인덱스 생성 완료 후 제거할 클라이언트 정렬 코드
+      
       setRecords(data);
     } catch (error) {
       console.error('파일 목록 로드 실패:', error);
@@ -225,24 +243,26 @@ const HistoricalDataManagement: React.FC = () => {
           // File 객체 생성
           const sheetFile = new File([blob], newFileName, { type: blob.type });
           
-          // Storage에 직접 업로드
-          const storagePath = `historical-data/${selectedType}/${selectedYear}/${newFileName}`;
-          const storageRef = ref(storage, storagePath);
-          await uploadBytes(storageRef, sheetFile);
+          // Firebase Functions를 통해 업로드
+          const formData = new FormData();
+          formData.append('file', sheetFile);
+          formData.append('type', selectedType);
+          formData.append('year', selectedYear.toString());
+          formData.append('sheetName', sheetName);
 
-          // Firestore에 메타데이터 저장
-          await addDoc(collection(db, 'historical-data'), {
-            type: selectedType,
-            year: selectedYear,
-            filename: storagePath,
-            originalName: newFileName,
-            sheetName,
-            uploadDate: serverTimestamp(),
-            fileSize: sheetFile.size,
-            mimeType: sheetFile.type,
+          const response = await fetch(`${API_BASE}/historicalDataUpload`, {
+            method: 'POST',
+            body: formData,
           });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const result = await response.json();
+          console.log(`시트 ${sheetName} 업로드 결과:`, result);
           
-          console.log(`시트 ${sheetName} 업로드 성공:`, storagePath);
+          console.log(`시트 ${sheetName} 업로드 성공:`, result.fileName);
           successCount++;
           
         } catch (error) {
@@ -595,9 +615,13 @@ const HistoricalDataManagement: React.FC = () => {
   // Storage 파일 미리보기/다운로드
   const handlePreviewFile = async (filename: string) => {
     try {
-      const fileRef = storageRef(storage, filename);
-      const url = await getDownloadURL(fileRef);
-      window.open(url, '_blank');
+      // Firebase Functions를 통해 파일 URL 가져오기
+      const response = await fetch(`${API_BASE}/historicalDataDownload?filename=${encodeURIComponent(filename)}`);
+      if (!response.ok) {
+        throw new Error('파일을 불러올 수 없습니다.');
+      }
+      const data = await response.json();
+      window.open(data.downloadUrl, '_blank');
     } catch (e) {
       alert('파일을 불러올 수 없습니다.');
     }
@@ -609,20 +633,20 @@ const HistoricalDataManagement: React.FC = () => {
         height: '100vh',
         display: 'flex',
         flexDirection: 'column',
-        backgroundColor: '#1a1a1a',
+        backgroundColor: 'var(--background-color)',
       }}
     >
       {/* 헤더 */}
       <Box
         sx={{
           p: 2,
-          backgroundColor: '#263040',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          backgroundColor: 'var(--surface-color)',
+          borderBottom: '1px solid var(--border-color)',
         }}
       >
         <Typography
           variant="h5"
-          sx={{ color: '#e0e6ed', fontWeight: 'bold', mb: 2 }}
+          sx={{ color: 'var(--text-color)', fontWeight: 'bold', mb: 2 }}
         >
           📊 과거자료 관리
         </Typography>
@@ -630,7 +654,7 @@ const HistoricalDataManagement: React.FC = () => {
         <Grid container spacing={2} alignItems="center">
           <Grid item xs={12} md={3}>
             <FormControl fullWidth size="small">
-              <InputLabel id="type-label" sx={{ color: '#b0b8c1' }}>
+              <InputLabel id="type-label" sx={{ color: 'var(--text-secondary-color)' }}>
                 자료 유형
               </InputLabel>
               <Select
@@ -642,10 +666,10 @@ const HistoricalDataManagement: React.FC = () => {
                   setSelectedType(e.target.value as 'delivery' | 'estimate')
                 }
                 sx={{
-                  color: '#e0e6ed',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
+                  color: 'var(--text-color)',
+                  backgroundColor: 'var(--background-color)',
                   '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'rgba(255,255,255,0.2)',
+                    borderColor: 'var(--border-color)',
                   },
                 }}
               >
@@ -657,7 +681,7 @@ const HistoricalDataManagement: React.FC = () => {
 
           <Grid item xs={12} md={2}>
             <FormControl fullWidth size="small">
-              <InputLabel id="year-label" sx={{ color: '#b0b8c1' }}>
+              <InputLabel id="year-label" sx={{ color: 'var(--text-secondary-color)' }}>
                 년도
               </InputLabel>
               <Select
@@ -667,10 +691,10 @@ const HistoricalDataManagement: React.FC = () => {
                 value={selectedYear}
                 onChange={e => setSelectedYear(Number(e.target.value))}
                 sx={{
-                  color: '#e0e6ed',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
+                  color: 'var(--text-color)',
+                  backgroundColor: 'var(--background-color)',
                   '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'rgba(255,255,255,0.2)',
+                    borderColor: 'var(--border-color)',
                   },
                 }}
               >
@@ -696,12 +720,12 @@ const HistoricalDataManagement: React.FC = () => {
               }
               disabled={uploading}
               sx={{
-                color: '#40c4ff',
-                borderColor: '#40c4ff',
-                backgroundColor: 'rgba(64, 196, 255, 0.1)',
+                color: 'var(--primary-color)',
+                borderColor: 'var(--primary-color)',
+                backgroundColor: 'var(--background-color)',
                 '&:hover': {
-                  borderColor: '#2196f3',
-                  backgroundColor: 'rgba(64, 196, 255, 0.2)',
+                  borderColor: 'var(--hover-color)',
+                  backgroundColor: 'var(--hover-color)',
                 },
               }}
             >
@@ -720,7 +744,7 @@ const HistoricalDataManagement: React.FC = () => {
               label={`${records.length}개 파일`}
               color="primary"
               variant="outlined"
-              sx={{ borderColor: '#40c4ff', color: '#40c4ff' }}
+              sx={{ borderColor: 'var(--primary-color)', color: 'var(--primary-color)' }}
             />
           </Grid>
         </Grid>
@@ -730,8 +754,8 @@ const HistoricalDataManagement: React.FC = () => {
       <Box
         sx={{
           p: 2,
-          backgroundColor: '#2d2d2d',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          backgroundColor: 'var(--surface-color)',
+          borderBottom: '1px solid var(--border-color)',
         }}
       >
         <Grid container spacing={2} alignItems="center">
@@ -743,10 +767,10 @@ const HistoricalDataManagement: React.FC = () => {
                   onChange={e => setSearchYear(Number(e.target.value))}
                   displayEmpty
                   sx={{
-                    color: '#e0e6ed',
-                    backgroundColor: 'rgba(255,255,255,0.05)',
+                    color: 'var(--text-color)',
+                    backgroundColor: 'var(--background-color)',
                     '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'rgba(255,255,255,0.2)',
+                      borderColor: 'var(--border-color)',
                     },
                   }}
                 >
@@ -769,9 +793,9 @@ const HistoricalDataManagement: React.FC = () => {
                 sx={{
                   flex: 1,
                   '& .MuiOutlinedInput-root': {
-                    color: '#e0e6ed',
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                    color: 'var(--text-color)',
+                    backgroundColor: 'var(--background-color)',
+                    '& fieldset': { borderColor: 'var(--border-color)' },
                   },
                 }}
               />
@@ -779,7 +803,7 @@ const HistoricalDataManagement: React.FC = () => {
                 variant="contained"
                 size="small"
                 onClick={handleYearSearch}
-                sx={{ backgroundColor: '#40c4ff' }}
+                sx={{ backgroundColor: 'var(--primary-color)' }}
               >
                 검색
               </Button>
@@ -809,7 +833,7 @@ const HistoricalDataManagement: React.FC = () => {
                 variant="contained"
                 size="small"
                 onClick={handleGlobalSearch}
-                sx={{ backgroundColor: '#ff9800' }}
+                sx={{ backgroundColor: 'var(--primary-color)' }}
               >
                 전체검색
               </Button>
@@ -821,7 +845,7 @@ const HistoricalDataManagement: React.FC = () => {
               variant="outlined"
               size="small"
               onClick={loadRecords}
-              sx={{ color: '#b0b8c1', borderColor: 'rgba(255,255,255,0.2)' }}
+              sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
             >
               초기화
             </Button>
@@ -833,27 +857,27 @@ const HistoricalDataManagement: React.FC = () => {
       <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
         <TableContainer
           component={Paper}
-          sx={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 2 }}
+          sx={{ backgroundColor: 'var(--background-color)', borderRadius: 2 }}
         >
           <Table>
             <TableHead>
-              <TableRow sx={{ backgroundColor: 'rgba(0,0,0,0.3)' }}>
-                <TableCell sx={{ color: '#e0e6ed', fontWeight: 'bold' }}>
+              <TableRow sx={{ backgroundColor: 'var(--surface-color)' }}>
+                <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>
                   파일명
                 </TableCell>
-                <TableCell sx={{ color: '#e0e6ed', fontWeight: 'bold' }}>
+                <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>
                   유형
                 </TableCell>
-                <TableCell sx={{ color: '#e0e6ed', fontWeight: 'bold' }}>
+                <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>
                   년도
                 </TableCell>
-                <TableCell sx={{ color: '#e0e6ed', fontWeight: 'bold' }}>
+                <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>
                   크기
                 </TableCell>
-                <TableCell sx={{ color: '#e0e6ed', fontWeight: 'bold' }}>
+                <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>
                   업로드일
                 </TableCell>
-                <TableCell sx={{ color: '#e0e6ed', fontWeight: 'bold' }}>
+                <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>
                   작업
                 </TableCell>
               </TableRow>
@@ -863,10 +887,10 @@ const HistoricalDataManagement: React.FC = () => {
                 <TableRow
                   key={record.id}
                   sx={{
-                    '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' },
+                    '&:hover': { backgroundColor: 'var(--hover-color)' },
                   }}
                 >
-                  <TableCell sx={{ color: '#e0e6ed' }}>
+                  <TableCell sx={{ color: 'var(--text-color)' }}>
                     <Button onClick={() => handlePreviewFile(record.filename)} size="small" color="info" variant="outlined">
                       {record.originalName}
                     </Button>
@@ -883,13 +907,13 @@ const HistoricalDataManagement: React.FC = () => {
                       sx={{ fontSize: '0.75rem' }}
                     />
                   </TableCell>
-                  <TableCell sx={{ color: '#e0e6ed' }}>
+                  <TableCell sx={{ color: 'var(--text-color)' }}>
                     {record.year}년
                   </TableCell>
-                  <TableCell sx={{ color: '#e0e6ed' }}>
+                  <TableCell sx={{ color: 'var(--text-color)' }}>
                     {(record.fileSize / 1024).toFixed(1)} KB
                   </TableCell>
-                  <TableCell sx={{ color: '#e0e6ed' }}>
+                  <TableCell sx={{ color: 'var(--text-color)' }}>
                     {new Date(record.uploadDate).toLocaleDateString()}
                   </TableCell>
                   <TableCell>
@@ -897,7 +921,7 @@ const HistoricalDataManagement: React.FC = () => {
                       <IconButton
                         size="small"
                         onClick={() => handlePreview(record)}
-                        sx={{ color: '#40c4ff' }}
+                        sx={{ color: 'var(--primary-color)' }}
                         title="미리보기"
                       >
                         <ViewIcon />
@@ -905,7 +929,7 @@ const HistoricalDataManagement: React.FC = () => {
                       <IconButton
                         size="small"
                         onClick={() => handleEdit(record)}
-                        sx={{ color: '#ffc107' }}
+                        sx={{ color: 'var(--primary-color)' }}
                         title="수정"
                       >
                         <EditIcon />
@@ -913,7 +937,7 @@ const HistoricalDataManagement: React.FC = () => {
                       <IconButton
                         size="small"
                         onClick={() => handleDelete(record)}
-                        sx={{ color: '#ff6b6b' }}
+                        sx={{ color: 'var(--primary-color)' }}
                         title="삭제"
                       >
                         <DeleteIcon />
@@ -927,9 +951,9 @@ const HistoricalDataManagement: React.FC = () => {
         </TableContainer>
 
         {records.length === 0 && (
-          <Box sx={{ textAlign: 'center', py: 8, color: '#b0b8c1' }}>
-            <Typography variant="h6">파일이 없습니다</Typography>
-            <Typography variant="body2">엑셀 파일을 업로드해주세요</Typography>
+          <Box sx={{ textAlign: 'center', py: 8, color: 'var(--text-secondary-color)' }}>
+            <Typography variant="h6" sx={{ color: 'var(--text-color)' }}>파일이 없습니다</Typography>
+            <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)' }}>엑셀 파일을 업로드해주세요</Typography>
           </Box>
         )}
       </Box>

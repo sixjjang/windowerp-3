@@ -351,8 +351,13 @@ export default function FormulaManagement() {
   ];
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h5" gutterBottom>
+    <Box sx={{ 
+      p: 3, 
+      backgroundColor: 'var(--background-color)',
+      color: 'var(--text-color)',
+      minHeight: '100vh'
+    }}>
+      <Typography variant="h5" gutterBottom sx={{ color: 'var(--text-color)' }}>
         계산방식 관리
       </Typography>
       <Button variant="contained" onClick={() => handleOpen()} sx={{ mb: 2 }}>
@@ -365,6 +370,32 @@ export default function FormulaManagement() {
         pageSize={5}
         rowsPerPageOptions={[5, 10]}
         disableSelectionOnClick
+        sx={{
+          backgroundColor: 'var(--background-color)',
+          color: 'var(--text-color)',
+          '& .MuiDataGrid-root': {
+            backgroundColor: 'var(--background-color)',
+            color: 'var(--text-color)',
+          },
+          '& .MuiDataGrid-cell': {
+            backgroundColor: 'var(--background-color)',
+            color: 'var(--text-color)',
+            borderColor: 'var(--border-color)',
+          },
+          '& .MuiDataGrid-columnHeaders': {
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
+            borderColor: 'var(--border-color)',
+          },
+          '& .MuiDataGrid-footerContainer': {
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
+            borderColor: 'var(--border-color)',
+          },
+          '& .MuiDataGrid-row:hover': {
+            backgroundColor: 'var(--hover-color)',
+          },
+        }}
       />
       <Dialog 
         open={open} 

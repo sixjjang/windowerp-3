@@ -20,12 +20,24 @@ interface ContractPaymentProps {
   totalAmount: number;
   discountedAmount: number;
   onSave: (data: any) => void;
+  onSaveSchedule?: (data: any) => void;
+  estimateNo?: string;
+  customerName?: string;
+  projectName?: string;
+  address?: string;
+  contact?: string;
 }
 
 const ContractPayment: React.FC<ContractPaymentProps> = ({
   totalAmount,
   discountedAmount,
   onSave,
+  onSaveSchedule,
+  estimateNo,
+  customerName,
+  projectName,
+  address,
+  contact,
 }) => {
   const [depositAmount, setDepositAmount] = useState<number>(0);
   const [depositDisplay, setDepositDisplay] = useState<string>('0');
@@ -53,6 +65,27 @@ const ContractPayment: React.FC<ContractPaymentProps> = ({
       measurementDate,
       constructionDate,
       memo,
+    });
+  };
+
+  const handleSaveSchedule = () => {
+    if (!measurementDate || measurementDate.trim() === '') {
+      alert('실측일자를 입력해주세요.');
+      return;
+    }
+
+    if (!onSaveSchedule) {
+      alert('스케줄 저장 기능이 활성화되지 않았습니다.');
+      return;
+    }
+
+    onSaveSchedule({
+      measurementDate,
+      estimateNo,
+      customerName,
+      projectName,
+      address,
+      contact,
     });
   };
 
@@ -285,7 +318,19 @@ const ContractPayment: React.FC<ContractPaymentProps> = ({
           />
         </Grid>
       </Grid>
-      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box>
+          {measurementDate && measurementDate.trim() !== '' && onSaveSchedule && (
+            <Button 
+              variant="outlined" 
+              color="secondary" 
+              onClick={handleSaveSchedule}
+              sx={{ mr: 1 }}
+            >
+              📅 스케줄 저장
+            </Button>
+          )}
+        </Box>
         <Button variant="contained" color="primary" onClick={handleSave}>
           저장하고 다음으로
         </Button>

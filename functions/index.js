@@ -57,8 +57,19 @@ const authenticateToken = async (req, res, next) => {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB
+    fileSize: 50 * 1024 * 1024, // 50MB
+    fieldSize: 10 * 1024 * 1024, // 10MB
   },
+  fileFilter: (req, file, cb) => {
+    // 엑셀 파일만 허용
+    if (file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        file.mimetype === 'application/vnd.ms-excel' ||
+        file.mimetype === 'application/octet-stream') {
+      cb(null, true);
+    } else {
+      cb(new Error('엑셀 파일만 업로드 가능합니다.'), false);
+    }
+  }
 });
 
 // ===== 인증 관련 함수들 =====
@@ -144,6 +155,87 @@ exports.me = functions.https.onRequest(async (req, res) => {
       });
     } catch (error) {
       console.error('사용자 정보 조회 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// Firebase Auth Custom Token 생성 (HTTP Request) - /getCustomToken
+exports.getCustomToken = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      await authenticateToken(req, res, async () => {
+        // Firebase Auth에 사용자가 있는지 확인하고 없으면 생성
+        try {
+          await admin.auth().getUser(req.user.id);
+          console.log('Firebase Auth 사용자가 이미 존재합니다:', req.user.id);
+        } catch (error) {
+          // 사용자가 없으면 생성
+          console.log('Firebase Auth 사용자 생성 중:', req.user.id);
+          const userRecord = await admin.auth().createUser({
+            uid: req.user.id,
+            email: `${req.user.username}@windowerp.local`,
+            password: 'tempPassword123!',
+            displayName: req.user.username,
+            disabled: false
+          });
+          console.log('Firebase Auth 사용자 생성 완료:', userRecord.uid);
+        }
+        
+        // Firebase Auth Custom Token 생성
+        const customToken = await admin.auth().createCustomToken(req.user.id, {
+          role: req.user.role,
+          username: req.user.username
+        });
+        
+        res.json({ customToken });
+      });
+    } catch (error) {
+      console.error('Custom Token 생성 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// Firebase Auth 사용자 확인 및 생성 (HTTP Request) - /ensureFirebaseUser
+exports.ensureFirebaseUser = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      await authenticateToken(req, res, async () => {
+        // Firebase Auth에 사용자가 있는지 확인
+        try {
+          const userRecord = await admin.auth().getUser(req.user.id);
+          console.log('Firebase Auth 사용자가 이미 존재합니다:', userRecord.uid);
+          res.json({ 
+            message: '사용자가 이미 존재합니다.',
+            uid: userRecord.uid,
+            exists: true
+          });
+        } catch (error) {
+          // 사용자가 없으면 생성
+          console.log('Firebase Auth 사용자 생성 중:', req.user.id);
+          const userRecord = await admin.auth().createUser({
+            uid: req.user.id,
+            email: `${req.user.username}@windowerp.local`,
+            password: 'tempPassword123!',
+            displayName: req.user.username,
+            disabled: false
+          });
+          
+          console.log('Firebase Auth 사용자 생성 완료:', userRecord.uid);
+          res.json({ 
+            message: 'Firebase Authentication 사용자가 생성되었습니다.',
+            uid: userRecord.uid,
+            exists: false
+          });
+        }
+      });
+    } catch (error) {
+      console.error('Firebase 사용자 확인/생성 오류:', error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -294,6 +386,48 @@ exports.saveEstimate = functions.https.onRequest(async (req, res) => {
   });
 });
 
+// 견적서 삭제 (HTTP Request) - /estimates/{estimateNo}
+exports.deleteEstimate = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const estimateNo = req.path.split('/').pop();
+      
+      if (!estimateNo) {
+        return res.status(400).json({ error: '견적번호가 필요합니다.' });
+      }
+
+      console.log('견적서 삭제 요청:', estimateNo);
+
+      // 견적번호로 견적서 찾기
+      const estimateSnapshot = await db.collection('estimates')
+        .where('estimateNo', '==', estimateNo)
+        .limit(1)
+        .get();
+
+      if (estimateSnapshot.empty) {
+        return res.status(404).json({ error: '견적서를 찾을 수 없습니다.' });
+      }
+
+      const estimateDoc = estimateSnapshot.docs[0];
+      
+      // 견적서 삭제
+      await estimateDoc.ref.delete();
+      
+      console.log('견적서 삭제 완료:', estimateNo);
+      
+      res.json({ 
+        message: '견적서가 삭제되었습니다.',
+        estimateNo: estimateNo
+      });
+    } catch (error) {
+      console.error('견적서 삭제 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
 // ===== 계약서 관리 =====
 
 // 계약서 목록 조회 (HTTP Request) - /contracts
@@ -429,7 +563,7 @@ exports.products = functions.https.onRequest(async (req, res) => {
   });
 });
 
-// 제품 저장 (HTTP Request) - /products
+// 제품 저장 (HTTP Request) - /saveProduct
 exports.saveProduct = functions.https.onRequest(async (req, res) => {
   return corsHandler(req, res, async () => {
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
@@ -447,6 +581,98 @@ exports.saveProduct = functions.https.onRequest(async (req, res) => {
       });
     } catch (error) {
       console.error('제품 저장 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+}, { timeoutSeconds: 300 }); // 5분으로 타임아웃 증가
+
+// 제품 배치 저장 (HTTP Request) - /saveProductsBatch
+exports.saveProductsBatch = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const { products } = req.body;
+      
+      if (!products || !Array.isArray(products)) {
+        return res.status(400).json({ error: '제품 배열이 필요합니다.' });
+      }
+      
+      console.log(`${products.length}개의 제품 배치 저장 시작`);
+      
+      // 배치 처리로 여러 제품을 한 번에 저장
+      const batch = db.batch();
+      const savedIds = [];
+      
+      products.forEach(product => {
+        const docRef = db.collection('products').doc();
+        product.createdAt = admin.firestore.FieldValue.serverTimestamp();
+        product.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        batch.set(docRef, product);
+        savedIds.push(docRef.id);
+      });
+      
+      await batch.commit();
+      
+      console.log(`${products.length}개의 제품 배치 저장 완료`);
+      
+      res.json({
+        message: `${products.length}개의 제품이 저장되었습니다.`,
+        savedCount: products.length,
+        savedIds: savedIds
+      });
+    } catch (error) {
+      console.error('제품 배치 저장 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+}, { timeoutSeconds: 540 }); // 9분으로 타임아웃 설정
+
+// 제품 업데이트 (HTTP Request) - /updateProduct
+exports.updateProduct = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'PUT') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const { productId, ...productData } = req.body;
+      if (!productId) {
+        return res.status(400).json({ error: '제품 ID가 필요합니다.' });
+      }
+      
+      productData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      
+      await db.collection('products').doc(productId).update(productData);
+      
+      res.json({ 
+        message: '제품이 업데이트되었습니다.',
+        id: productId 
+      });
+    } catch (error) {
+      console.error('제품 업데이트 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 제품 삭제 (HTTP Request) - /deleteProduct
+exports.deleteProduct = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const { productId } = req.body;
+      if (!productId) {
+        return res.status(400).json({ error: '제품 ID가 필요합니다.' });
+      }
+      
+      await db.collection('products').doc(productId).delete();
+      
+      res.json({ 
+        message: '제품이 삭제되었습니다.',
+        id: productId 
+      });
+    } catch (error) {
+      console.error('제품 삭제 오류:', error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -499,8 +725,99 @@ exports.saveOption = functions.https.onRequest(async (req, res) => {
         message: '옵션이 저장되었습니다.',
         id: docRef.id 
       });
-  } catch (error) {
+    } catch (error) {
       console.error('옵션 저장 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 옵션 업데이트 (HTTP Request) - /updateOption
+exports.updateOption = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'PUT') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const { optionId, ...optionData } = req.body;
+      if (!optionId) {
+        return res.status(400).json({ error: '옵션 ID가 필요합니다.' });
+      }
+      
+      optionData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      
+      await db.collection('options').doc(optionId).update(optionData);
+      
+      res.json({ 
+        message: '옵션이 업데이트되었습니다.',
+        id: optionId 
+      });
+    } catch (error) {
+      console.error('옵션 업데이트 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 옵션 삭제 (HTTP Request) - /deleteOption
+exports.deleteOption = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const { optionId } = req.query;
+      if (!optionId) {
+        return res.status(400).json({ error: '옵션 ID가 필요합니다.' });
+      }
+      
+      await db.collection('options').doc(optionId).delete();
+      
+      res.json({ 
+        message: '옵션이 삭제되었습니다.',
+        id: optionId 
+      });
+    } catch (error) {
+      console.error('옵션 삭제 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 모든 옵션 삭제 (HTTP Request) - /deleteAllOptions
+exports.deleteAllOptions = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      // 모든 옵션 조회
+      const optionsSnapshot = await db.collection('options').get();
+      
+      if (optionsSnapshot.empty) {
+        return res.json({ 
+          message: '삭제할 옵션이 없습니다.',
+          deletedCount: 0 
+        });
+      }
+      
+      // 배치 삭제 실행
+      const batch = db.batch();
+      const deletedIds = [];
+      
+      optionsSnapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+        deletedIds.push(doc.id);
+      });
+      
+      await batch.commit();
+      
+      console.log(`${deletedIds.length}개의 옵션이 삭제되었습니다.`);
+      
+      res.json({ 
+        message: `${deletedIds.length}개의 옵션이 삭제되었습니다.`,
+        deletedCount: deletedIds.length,
+        deletedIds: deletedIds
+      });
+    } catch (error) {
+      console.error('모든 옵션 삭제 오류:', error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -537,10 +854,14 @@ exports.schedules = functions.https.onRequest(async (req, res) => {
       }
       
       const snapshot = await query.get();
-      const schedules = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const schedules = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id, // 실제 Firestore 문서 ID 사용
+          firestoreId: doc.id // 원본 ID도 보존
+        };
+      });
       
       // 클라이언트 사이드에서 정렬
       schedules.sort((a, b) => {
@@ -584,38 +905,121 @@ exports.schedules = functions.https.onRequest(async (req, res) => {
       scheduleData.createdAt = admin.firestore.FieldValue.serverTimestamp();
       scheduleData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
       
-      const docRef = await db.collection('schedules').add(scheduleData);
-      
-      console.log(`새 스케줄 생성: ${scheduleData.id} (문서 ID: ${docRef.id})`);
-      
-      res.json({ 
-        message: '새로운 스케줄이 생성되었습니다.',
-        id: docRef.id,
-        created: true
-      });
+      // 클라이언트에서 제공한 ID가 있으면 해당 ID로 문서 생성
+      if (scheduleData.id) {
+        await db.collection('schedules').doc(scheduleData.id).set(scheduleData);
+        console.log(`새 스케줄 생성 (클라이언트 ID 사용): ${scheduleData.id}`);
+        
+        res.json({ 
+          message: '새로운 스케줄이 생성되었습니다.',
+          id: scheduleData.id,
+          created: true
+        });
+      } else {
+        // ID가 없으면 Firestore가 자동 생성
+        const docRef = await db.collection('schedules').add(scheduleData);
+        console.log(`새 스케줄 생성 (Firestore 자동 ID): ${docRef.id}`);
+        
+        res.json({ 
+          message: '새로운 스케줄이 생성되었습니다.',
+          id: docRef.id,
+          created: true
+        });
+      }
     }
     // PUT: 스케줄 수정
     else if (req.method === 'PUT') {
-      const scheduleId = req.params.id;
+      // URL에서 scheduleId 추출 (DELETE와 동일한 방식)
+      const urlParts = req.url.split('/');
+      const scheduleId = urlParts[urlParts.length - 1];
+      
+      // URL 디코딩
+      const decodedScheduleId = decodeURIComponent(scheduleId);
+      
       const scheduleData = req.body;
       scheduleData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
       
-      await db.collection('schedules').doc(scheduleId).update(scheduleData);
+      console.log('PUT 요청 URL:', req.url);
+      console.log('URL 파트:', urlParts);
+      console.log('추출된 ID:', scheduleId);
+      console.log('디코딩된 ID:', decodedScheduleId);
       
-      res.json({ 
-        message: '스케줄이 수정되었습니다.',
-        id: scheduleId 
-      });
+      // ID 유효성 검사 (Firestore 문서 ID 규칙)
+      if (!decodedScheduleId || decodedScheduleId.trim() === '') {
+        return res.status(400).json({ 
+          error: '스케줄 ID가 필요합니다.',
+          scheduleId: decodedScheduleId,
+          url: req.url
+        });
+      }
+      
+      // Firestore 문서 ID 규칙: /, ., .., * 제외, 1-1500자
+      // 하이픈(-)은 허용됨
+      const invalidChars = /[\/\.\*]/;
+      if (invalidChars.test(decodedScheduleId) || decodedScheduleId.length > 1500 || decodedScheduleId.length < 1) {
+        console.warn(`잠재적 ID 규칙 위반: ${decodedScheduleId}`);
+        // 경고만 하고 계속 진행 (실제 Firestore에서 처리)
+      }
+      
+      console.log(`ID 검증 완료: ${decodedScheduleId} (길이: ${decodedScheduleId.length})`);
+      
+      console.log(`스케줄 수정 요청: ID=${decodedScheduleId}`);
+      console.log('수정 요청 데이터:', JSON.stringify(scheduleData, null, 2));
+      console.log('ID 길이:', decodedScheduleId.length);
+      console.log('ID에 특수문자 포함 여부:', /[\/\.\*]/.test(decodedScheduleId));
+      
+      try {
+        // 먼저 해당 ID로 문서가 존재하는지 확인
+        const docRef = db.collection('schedules').doc(decodedScheduleId);
+        const doc = await docRef.get();
+        
+        if (doc.exists) {
+          // 문서가 존재하면 업데이트
+          await docRef.update(scheduleData);
+          console.log(`스케줄 업데이트 성공: ${decodedScheduleId}`);
+          
+          res.json({ 
+            message: '스케줄이 수정되었습니다.',
+            id: decodedScheduleId 
+          });
+        } else {
+          // 문서가 존재하지 않으면 새로 생성
+          await docRef.set(scheduleData);
+          console.log(`스케줄 생성 성공: ${decodedScheduleId}`);
+          
+          res.json({ 
+            message: '스케줄이 생성되었습니다.',
+            id: decodedScheduleId 
+          });
+        }
+      } catch (error) {
+        console.error('스케줄 처리 오류:', error);
+        res.status(500).json({ 
+          error: '스케줄 처리에 실패했습니다.',
+          details: error.message 
+        });
+      }
     }
     // DELETE: 스케줄 삭제
     else if (req.method === 'DELETE') {
-      const scheduleId = req.params.id;
+      // URL에서 scheduleId 추출
+      const urlParts = req.url.split('/');
+      const scheduleId = urlParts[urlParts.length - 1];
       
-      await db.collection('schedules').doc(scheduleId).delete();
+      if (!scheduleId) {
+        return res.status(400).json({ error: '스케줄 ID가 필요합니다.' });
+      }
       
-    res.json({
+      // URL 디코딩
+      const decodedScheduleId = decodeURIComponent(scheduleId);
+      
+      console.log('삭제 요청된 스케줄 ID:', decodedScheduleId);
+      
+      await db.collection('schedules').doc(decodedScheduleId).delete();
+      
+      res.json({
         message: '스케줄이 삭제되었습니다.',
-        id: scheduleId 
+        id: decodedScheduleId 
       });
     }
     else {
@@ -643,8 +1047,79 @@ exports.saveSchedule = functions.https.onRequest(async (req, res) => {
         message: '스케줄이 저장되었습니다.',
         id: docRef.id 
       });
-  } catch (error) {
+    } catch (error) {
       console.error('스케줄 저장 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 닉네임 관리 (HTTP Request) - /nickname
+exports.nickname = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    try {
+      // GET: 닉네임 조회
+      if (req.method === 'GET') {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+          return res.status(401).json({ error: '토큰이 필요합니다.' });
+        }
+
+        try {
+          const decoded = jwt.verify(token, JWT_SECRET);
+          const userId = decoded.id;
+          
+          const userDoc = await db.collection('users').doc(userId.toString()).get();
+          if (userDoc.exists) {
+            const userData = userDoc.data();
+            res.json({ 
+              nickname: userData.nickname || '',
+              message: '닉네임을 조회했습니다.'
+            });
+          } else {
+            res.json({ 
+              nickname: '',
+              message: '사용자를 찾을 수 없습니다.'
+            });
+          }
+        } catch (jwtError) {
+          res.status(401).json({ error: '유효하지 않은 토큰입니다.' });
+        }
+      }
+      // POST: 닉네임 저장
+      else if (req.method === 'POST') {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+          return res.status(401).json({ error: '토큰이 필요합니다.' });
+        }
+
+        try {
+          const decoded = jwt.verify(token, JWT_SECRET);
+          const userId = decoded.id;
+          const { nickname } = req.body;
+          
+          if (!nickname || !nickname.trim()) {
+            return res.status(400).json({ error: '닉네임이 필요합니다.' });
+          }
+
+          await db.collection('users').doc(userId.toString()).update({
+            nickname: nickname.trim(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          
+          res.json({ 
+            message: '닉네임이 저장되었습니다.',
+            nickname: nickname.trim()
+          });
+        } catch (jwtError) {
+          res.status(401).json({ error: '유효하지 않은 토큰입니다.' });
+        }
+      }
+      else {
+        res.status(405).send('Method Not Allowed');
+      }
+    } catch (error) {
+      console.error('닉네임 처리 오류:', error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -909,88 +1384,87 @@ exports.historicalDataList = functions.https.onRequest(async (req, res) => {
 
 // 과거자료 업로드 (HTTP Request) - /historical-data/upload
 exports.historicalDataUpload = functions.https.onRequest(async (req, res) => {
-  // CORS 헤더를 명시적으로 설정
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
-  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
-  
-  // OPTIONS 요청 처리
-  if (req.method === 'OPTIONS') {
-    res.status(200).send();
-    return;
-  }
-  
-  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
-  
-  try {
-    console.log('과거자료 업로드 요청 시작');
-    console.log('요청 바디:', req.body);
-    console.log('요청 파일:', req.file);
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
     
-    // multer를 사용한 파일 업로드 처리
-    upload.single('file')(req, res, async (err) => {
-      if (err) {
-        console.error('파일 업로드 오류:', err);
-        return res.status(400).json({ error: err.message });
-      }
-
-      const { type, year, sheetName } = req.body;
-      console.log('파싱된 데이터:', { type, year, sheetName });
+    try {
+      console.log('과거자료 업로드 요청 시작');
+      console.log('요청 헤더:', req.headers);
+      console.log('요청 바디 타입:', req.headers['content-type']);
       
-      if (!type || !year) {
-        console.error('필수 파라미터 누락:', { type, year });
-        return res.status(400).json({ error: 'type과 year가 필요합니다.' });
-      }
+      // multer를 사용한 파일 업로드 처리
+      upload.single('file')(req, res, async (err) => {
+        if (err) {
+          console.error('파일 업로드 오류:', err);
+          return res.status(400).json({ error: err.message });
+        }
 
-      if (!req.file) {
-        console.error('파일이 없습니다.');
-        return res.status(400).json({ error: '파일이 필요합니다.' });
-      }
+        try {
+          console.log('파일 업로드 성공');
+          console.log('업로드된 파일:', req.file);
+          console.log('요청 바디:', req.body);
+          
+          const { type, year, sheetName } = req.body;
+          console.log('파싱된 데이터:', { type, year, sheetName });
+          
+          if (!type || !year) {
+            console.error('필수 파라미터 누락:', { type, year });
+            return res.status(400).json({ error: 'type과 year가 필요합니다.' });
+          }
 
-              // Firebase Storage에 파일 업로드
-        const bucket = admin.storage().bucket();
-        const fileName = `historical-data/${type}/${year}/${uuidv4()}_${req.file.originalname}`;
-        const file = bucket.file(fileName);
+          if (!req.file) {
+            console.error('파일이 없습니다.');
+            return res.status(400).json({ error: '파일이 필요합니다.' });
+          }
 
-        console.log('Firebase Storage 업로드 시작:', fileName);
-        
-        await file.save(req.file.buffer, {
-          metadata: {
-            contentType: req.file.mimetype,
-          },
-        });
+          // Firebase Storage에 파일 업로드
+          const bucket = admin.storage().bucket();
+          const fileName = `historical-data/${type}/${year}/${uuidv4()}_${req.file.originalname}`;
+          const file = bucket.file(fileName);
 
-        console.log('Firebase Storage 업로드 완료');
+          console.log('Firebase Storage 업로드 시작:', fileName);
+          
+          await file.save(req.file.buffer, {
+            metadata: {
+              contentType: req.file.mimetype,
+            },
+          });
 
-        // Firestore에 메타데이터 저장
-        const recordData = {
-          type,
-          year: parseInt(year),
-          filename: fileName,
-          originalName: req.file.originalname,
-          sheetName: sheetName || 'Sheet1',
-          uploadDate: admin.firestore.FieldValue.serverTimestamp(),
-          fileSize: req.file.size,
-          mimeType: req.file.mimetype
-        };
+          console.log('Firebase Storage 업로드 완료');
 
-        console.log('Firestore 저장 데이터:', recordData);
+          // Firestore에 메타데이터 저장
+          const recordData = {
+            type,
+            year: parseInt(year),
+            filename: fileName,
+            originalName: req.file.originalname,
+            sheetName: sheetName || 'Sheet1',
+            uploadDate: admin.firestore.FieldValue.serverTimestamp(),
+            fileSize: req.file.size,
+            mimeType: req.file.mimetype
+          };
 
-        const docRef = await db.collection('historical-data').add(recordData);
-        
-        console.log('Firestore 저장 완료:', docRef.id);
-        
-        res.json({ 
-          message: '과거자료가 업로드되었습니다.',
-          id: docRef.id,
-          fileName: fileName
-        });
-    });
-  } catch (error) {
-    console.error('과거자료 업로드 오류:', error);
-    res.status(500).json({ error: error.message });
-  }
+          console.log('Firestore 저장 데이터:', recordData);
+
+          const docRef = await db.collection('historical-data').add(recordData);
+          
+          console.log('Firestore 저장 완료:', docRef.id);
+          
+          res.json({ 
+            message: '과거자료가 업로드되었습니다.',
+            id: docRef.id,
+            fileName: fileName
+          });
+        } catch (innerError) {
+          console.error('내부 처리 오류:', innerError);
+          res.status(500).json({ error: innerError.message });
+        }
+      });
+    } catch (error) {
+      console.error('과거자료 업로드 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
 });
 
 // 과거자료 검색 (HTTP Request) - /historical-data/search
@@ -1117,6 +1591,44 @@ exports.historicalDataPreview = functions.https.onRequest(async (req, res) => {
     }
 });
 
+// 과거자료 다운로드 (HTTP Request) - /historical-data/download
+exports.historicalDataDownload = functions.https.onRequest(async (req, res) => {
+  // CORS 헤더를 명시적으로 설정
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
+  try {
+    const { filename } = req.query;
+    
+    if (!filename) {
+      return res.status(400).json({ error: 'filename 파라미터가 필요합니다.' });
+    }
+
+    // Firebase Storage에서 파일 URL 생성
+    const bucket = admin.storage().bucket();
+    const file = bucket.file(filename);
+    
+    // 서명된 URL 생성 (1시간 유효)
+    const [signedUrl] = await file.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 60 * 60 * 1000, // 1시간
+    });
+
+    res.json({ downloadUrl: signedUrl });
+  } catch (error) {
+    console.error('과거자료 다운로드 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 과거자료 삭제 (HTTP Request) - /historical-data/:id
 exports.historicalDataDelete = functions.https.onRequest(async (req, res) => {
   // CORS 헤더를 명시적으로 설정
@@ -1236,8 +1748,8 @@ exports.registerUser = functions.https.onRequest(async (req, res) => {
       phone: phone || '',
       address: address || '',
       accountNumber: accountNumber || '',
-      role: role || 'user',
-      isApproved: true,
+      role: 'user',           // 항상 'user'로 고정
+      isApproved: false,      // 승인 대기 상태로 변경
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
@@ -1449,11 +1961,235 @@ exports.deleteFixedExpense = functions.https.onRequest(async (req, res) => {
   if (req.method === 'OPTIONS') { res.status(200).send(); return; }
   if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
 
-  // id를 쿼리스트링 또는 경로에서 추출
-  const id = req.query.id || (req.url.split('/').pop() || '').split('?')[0];
-  if (!id) return res.status(400).json({ error: 'id 파라미터 필요' });
+  try {
+    const expenseId = req.params.id;
+    await db.collection('fixed-expenses').doc(expenseId).delete();
+    
+    res.json({ message: '고정비가 삭제되었습니다.' });
+  } catch (error) {
+    console.error('고정비 삭제 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== 거래내역 관리 =====
+
+// 거래내역 목록 조회 (HTTP Request) - /transactions
+exports.transactions = functions.https.onRequest(async (req, res) => {
+  // CORS 헤더를 명시적으로 설정
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
+  try {
+    const { month } = req.query;
+    
+    let query = db.collection('transactions');
+    if (month) {
+      query = query.where('month', '==', month);
+    }
+    
+    const snapshot = await query.get();
+    const transactions = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    // 클라이언트 사이드에서 정렬
+    transactions.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt.seconds * 1000) : new Date(0);
+      const dateB = b.createdAt ? new Date(b.createdAt.seconds * 1000) : new Date(0);
+      return dateB.getTime() - dateA.getTime();
+    });
+    
+    res.json(transactions);
+  } catch (error) {
+    console.error('거래내역 조회 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 거래내역 저장 (HTTP Request) - /saveTransaction
+exports.saveTransaction = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const transactionData = req.body;
+      transactionData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+      transactionData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      
+      const docRef = await db.collection('transactions').add(transactionData);
+      
+      res.json({ 
+        message: '거래내역이 저장되었습니다.',
+        id: docRef.id 
+      });
+    } catch (error) {
+      console.error('거래내역 저장 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 거래내역 수정 (HTTP Request) - /updateTransaction/:id
+exports.updateTransaction = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'PUT') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const transactionId = req.params.id;
+      const updateData = {
+        ...req.body,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+      
+      await db.collection('transactions').doc(transactionId).update(updateData);
+      
+      res.json({ message: '거래내역이 수정되었습니다.' });
+    } catch (error) {
+      console.error('거래내역 수정 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 거래내역 삭제 (HTTP Request) - /deleteTransaction/:id
+exports.deleteTransaction = functions.https.onRequest(async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400');
+  if (req.method === 'OPTIONS') { res.status(200).send(); return; }
+  if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
 
   try {
+    const transactionId = req.params.id;
+    await db.collection('transactions').doc(transactionId).delete();
+    
+    res.json({ message: '거래내역이 삭제되었습니다.' });
+  } catch (error) {
+    console.error('거래내역 삭제 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== 계좌 관리 =====
+
+// 계좌 목록 조회 (HTTP Request) - /accounts
+exports.accounts = functions.https.onRequest(async (req, res) => {
+  // CORS 헤더를 명시적으로 설정
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
+  try {
+    const snapshot = await db.collection('accounts').orderBy('createdAt', 'desc').get();
+    const accounts = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    res.json(accounts);
+  } catch (error) {
+    console.error('계좌 조회 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 계좌 저장 (HTTP Request) - /saveAccount
+exports.saveAccount = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const accountData = req.body;
+      accountData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+      accountData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      
+      const docRef = await db.collection('accounts').add(accountData);
+      
+      res.json({ 
+        message: '계좌가 저장되었습니다.',
+        id: docRef.id 
+      });
+    } catch (error) {
+      console.error('계좌 저장 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 계좌 수정 (HTTP Request) - /updateAccount/:id
+exports.updateAccount = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'PUT') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const accountId = req.params.id;
+      const updateData = {
+        ...req.body,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+      
+      await db.collection('accounts').doc(accountId).update(updateData);
+      
+      res.json({ message: '계좌가 수정되었습니다.' });
+    } catch (error) {
+      console.error('계좌 수정 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 계좌 삭제 (HTTP Request) - /deleteAccount/:id
+exports.deleteAccount = functions.https.onRequest(async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400');
+  if (req.method === 'OPTIONS') { res.status(200).send(); return; }
+  if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+
+  try {
+    const accountId = req.params.id;
+    await db.collection('accounts').doc(accountId).delete();
+    
+    res.json({ message: '계좌가 삭제되었습니다.' });
+  } catch (error) {
+    console.error('계좌 삭제 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 고정비 삭제 (HTTP Request) - /deleteFixedExpense/:id
+exports.deleteFixedExpense = functions.https.onRequest(async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400');
+  if (req.method === 'OPTIONS') { res.status(200).send(); return; }
+  if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+
+  try {
+    // id를 쿼리스트링 또는 경로에서 추출
+    const id = req.query.id || (req.url.split('/').pop() || '').split('?')[0];
+    if (!id) return res.status(400).json({ error: 'id 파라미터 필요' });
+
     await db.collection('fixed-expenses').doc(id).delete();
     res.json({ message: '고정비가 삭제되었습니다.' });
   } catch (error) {
@@ -1884,6 +2620,131 @@ exports.historicalDataUpdate = functions.https.onRequest(async (req, res) => {
 
 
 
+// ===== 실측 데이터 관리 =====
+
+// 실측 데이터 목록 조회 (HTTP Request) - /measurements
+exports.getMeasurements = functions.https.onRequest(async (req, res) => {
+  // CORS 헤더를 명시적으로 설정
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
+  try {
+    const snapshot = await db.collection('measurements').orderBy('createdAt', 'desc').get();
+    const measurements = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    res.json(measurements);
+  } catch (error) {
+    console.error('실측 데이터 조회 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 실측 데이터 저장 (HTTP Request) - /saveMeasurement
+exports.saveMeasurement = functions.https.onRequest(async (req, res) => {
+  // CORS 헤더를 명시적으로 설정
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
+  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+  
+  try {
+    const measurementData = req.body;
+    
+    const docRef = await db.collection('measurements').add({
+      ...measurementData,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    
+    res.json({ 
+      message: '실측 데이터가 저장되었습니다.',
+      id: docRef.id 
+    });
+  } catch (error) {
+    console.error('실측 데이터 저장 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 실측 데이터 업데이트 (HTTP Request) - /updateMeasurement/:id
+exports.updateMeasurement = functions.https.onRequest(async (req, res) => {
+  // CORS 헤더를 명시적으로 설정
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
+  if (req.method !== 'PUT') return res.status(405).send('Method Not Allowed');
+  
+  try {
+    const measurementId = req.params.id;
+    const updateData = req.body;
+    
+    await db.collection('measurements').doc(measurementId).update({
+      ...updateData,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    
+    res.json({ message: '실측 데이터가 업데이트되었습니다.' });
+  } catch (error) {
+    console.error('실측 데이터 업데이트 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 실측 데이터 삭제 (HTTP Request) - /deleteMeasurement/:id
+exports.deleteMeasurement = functions.https.onRequest(async (req, res) => {
+  // CORS 헤더를 명시적으로 설정
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
+  if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+  
+  try {
+    const measurementId = req.params.id;
+    
+    await db.collection('measurements').doc(measurementId).delete();
+    
+    res.json({ message: '실측 데이터가 삭제되었습니다.' });
+  } catch (error) {
+    console.error('실측 데이터 삭제 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ===== 수익성 분석 =====
 
 // 수익성 분석 목록 조회 (HTTP Request) - /profit-analysis
@@ -2084,4 +2945,7 @@ exports.issueTaxInvoice = functions.https.onRequest(async (req, res) => {
 
 // register-staff 엔드포인트 alias 추가 (하이픈 제거)
 exports.registerStaff = exports.registerUser;
+
+// register 엔드포인트 추가 (LoginPage 호환성)
+exports.register = exports.registerUser;
 

@@ -151,7 +151,7 @@ export default function LoginPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%)',
+        background: 'var(--background-color)',
       }}
     >
       <Card
@@ -161,7 +161,7 @@ export default function LoginPage() {
           p: 3,
           boxShadow: 6,
           borderRadius: 3,
-          background: 'rgba(30,30,40,0.98)',
+          background: 'var(--surface-color)',
         }}
       >
         <Tabs

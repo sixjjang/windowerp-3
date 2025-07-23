@@ -310,8 +310,22 @@ const ProductManagement: React.FC = () => {
     setVendorTabValue(newValue);
     const vendorName = vendorList[newValue];
     setSelectedVendor(vendorName);
-    setCategoryTabValue(0);
-    setSelectedCategory('');
+    
+    // 해당 업체의 제품종류 목록 가져오기 (categoryList는 이미 계산됨)
+    const categories = Object.keys(vendorGroups[vendorName] || {}).sort();
+    
+    // 제품종류가 하나만 있으면 바로 선택, 여러 개 있으면 첫 번째 선택
+    if (categories.length === 1) {
+      setSelectedCategory(categories[0]);
+      setCategoryTabValue(0);
+    } else if (categories.length > 1) {
+      // 커튼과 블라인드가 모두 있는 경우 첫 번째 선택
+      setSelectedCategory(categories[0]);
+      setCategoryTabValue(0);
+    } else {
+      setSelectedCategory('');
+      setCategoryTabValue(0);
+    }
     setSearch('');
   };
 
@@ -442,6 +456,7 @@ const ProductManagement: React.FC = () => {
       
       let allNewProducts: Product[] = [];
       let totalProcessed = 0;
+      let vendorCount = 0;
       
       // 모든 시트를 순회하며 처리
       workbook.SheetNames.forEach((sheetName, sheetIndex) => {
@@ -459,34 +474,48 @@ const ProductManagement: React.FC = () => {
           return obj;
         });
         
-        // Convert to Product type
-        const sheetProducts: Product[] = mapped.map((item, idx) => ({
-          id: products.length + allNewProducts.length + idx + 1,
-          vendorName: item['거래처명'] || sheetName, // 시트명을 거래처명으로 사용
-          brand: item['브랜드'] || '',
-          category: item['제품종류'] || '',
-          productCode: item['제품코드'] || '',
-          productName: item['제품명'] || '',
-          width: item['폭'] || '',
-          minOrderQty: Number(item['최소주문수량']) || 0,
-          details: item['세부내용'] || '',
-          salePrice: Number(item['판매단가']) || 0,
-          purchaseCost: Number(item['입고원가']) || 0,
-          largePlainPrice: Number(item['대폭민자단가']) || 0,
-          largePlainCost: Number(item['대폭민자원가']) || 0,
-          fabricPurchaseCostYD: Number(item['원단입고원가(yd)']) || 0,
-          processingFee: Number(item['가공비']) || 0,
-          estimatedCost: Number(item['예상원가']) || 0,
-          insideOutside: item['겉/속'] || '',
-          note: item['비고'] || '',
-          space: item['공간'] || '',
-          spaceCustom: item['공간 직접입력'] || '',
-        }));
+        // 거래처별로 제품 그룹화
+        const vendorGroups: { [key: string]: any[] } = {};
+        mapped.forEach(item => {
+          const vendorName = item['거래처명'] || sheetName;
+          if (!vendorGroups[vendorName]) {
+            vendorGroups[vendorName] = [];
+          }
+          vendorGroups[vendorName].push(item);
+        });
         
-        allNewProducts = [...allNewProducts, ...sheetProducts];
-        totalProcessed += sheetProducts.length;
-        
-        console.log(`시트 "${sheetName}"에서 ${sheetProducts.length}개 제품 처리됨`);
+        // 각 거래처별로 제품 생성
+        Object.keys(vendorGroups).forEach(vendorName => {
+          const vendorProducts = vendorGroups[vendorName];
+          const sheetProducts: Product[] = vendorProducts.map((item, idx) => ({
+            id: products.length + allNewProducts.length + idx + 1,
+            vendorName: vendorName, // 실제 거래처명 사용
+            brand: item['브랜드'] || '',
+            category: item['제품종류'] || '',
+            productCode: item['제품코드'] || '',
+            productName: item['제품명'] || '',
+            width: item['폭'] || '',
+            minOrderQty: Number(item['최소주문수량']) || 0,
+            details: item['세부내용'] || '',
+            salePrice: Number(item['판매단가']) || 0,
+            purchaseCost: Number(item['입고원가']) || 0,
+            largePlainPrice: Number(item['대폭민자단가']) || 0,
+            largePlainCost: Number(item['대폭민자원가']) || 0,
+            fabricPurchaseCostYD: Number(item['원단입고원가(yd)']) || 0,
+            processingFee: Number(item['가공비']) || 0,
+            estimatedCost: Number(item['예상원가']) || 0,
+            insideOutside: item['겉/속'] || '',
+            note: item['비고'] || '',
+            space: item['공간'] || '',
+            spaceCustom: item['공간 직접입력'] || '',
+          }));
+          
+          allNewProducts = [...allNewProducts, ...sheetProducts];
+          totalProcessed += sheetProducts.length;
+          vendorCount++;
+          
+          console.log(`거래처 "${vendorName}"에서 ${sheetProducts.length}개 제품 처리됨`);
+        });
       });
       
       if (allNewProducts.length > 0) {
@@ -497,7 +526,7 @@ const ProductManagement: React.FC = () => {
         });
         
         // 성공 메시지 표시
-        alert(`엑셀 업로드 완료!\n총 ${workbook.SheetNames.length}개 시트에서 ${totalProcessed}개 제품이 등록되었습니다.`);
+        alert(`엑셀 업로드 완료!\n총 ${vendorCount}개 거래처에서 ${totalProcessed}개 제품이 등록되었습니다.`);
       } else {
         alert('업로드할 수 있는 제품 데이터가 없습니다.');
       }
@@ -618,7 +647,7 @@ const ProductManagement: React.FC = () => {
         <Card sx={{ mb: 2 }}>
           <CardContent>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+              <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}>
                 📦 제품 관리
               </Typography>
               <Box sx={{ display: 'flex', gap: 1 }}>
@@ -690,41 +719,128 @@ const ProductManagement: React.FC = () => {
       {/* 업체별 탭 */}
       <Grid item xs={12}>
         <Paper sx={{ width: '100%' }}>
-          <Tabs
-            value={vendorTabValue}
-            onChange={handleVendorTabChange}
-            variant="scrollable"
-            scrollButtons="auto"
-            sx={{
-              borderBottom: 1,
-              borderColor: 'divider',
-              '& .MuiTab-root': {
-                minWidth: 120,
-                fontSize: '0.9rem',
-              },
-            }}
-          >
-            {vendorList.map((vendor, index) => (
-              <Tab
-                key={vendor}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <BusinessIcon fontSize="small" />
+          <Box sx={{ 
+            display: 'flex', 
+            flexDirection: 'column',
+            borderBottom: 1,
+            borderColor: 'divider'
+          }}>
+            {/* 첫 번째 줄 */}
+            <Box sx={{ 
+              display: 'flex', 
+              flexWrap: 'wrap',
+              gap: 1,
+              p: 1,
+              minHeight: 64
+            }}>
+              {vendorList.slice(0, Math.ceil(vendorList.length / 2)).map((vendor, index) => (
+                <Box
+                  key={vendor}
+                  onClick={() => {
+                    const vendorIndex = vendorList.indexOf(vendor);
+                    handleVendorTabChange({} as React.SyntheticEvent, vendorIndex);
+                  }}
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    minWidth: 80,
+                    maxWidth: 120,
+                    p: 1,
+                    cursor: 'pointer',
+                    borderRadius: 1,
+                    border: vendorTabValue === vendorList.indexOf(vendor) ? 2 : 1,
+                    borderColor: vendorTabValue === vendorList.indexOf(vendor) ? 'primary.main' : 'divider',
+                    backgroundColor: vendorTabValue === vendorList.indexOf(vendor) ? 'primary.light' : 'transparent',
+                    '&:hover': {
+                      backgroundColor: 'action.hover',
+                    }
+                  }}
+                >
+                  <Typography 
+                    variant="body2" 
+                    sx={{ 
+                      fontSize: '0.8rem',
+                      textAlign: 'center',
+                      wordBreak: 'break-word',
+                      lineHeight: 1.2,
+                      color: 'var(--text-color)',
+                      fontWeight: 500
+                    }}
+                  >
                     {vendor}
-                    <Chip
-                      label={Object.keys(vendorGroups[vendor] || {}).reduce((acc, category) => 
-                        acc + (vendorGroups[vendor][category]?.length || 0), 0
-                      )}
-                      size="small"
-                      color="primary"
-                      sx={{ fontSize: '0.7rem', height: 20 }}
-                    />
-                  </Box>
-                }
-                iconPosition="start"
-              />
-            ))}
-          </Tabs>
+                  </Typography>
+                  <Chip
+                    label={Object.keys(vendorGroups[vendor] || {}).reduce((acc, category) => 
+                      acc + (vendorGroups[vendor][category]?.length || 0), 0
+                    )}
+                    size="small"
+                    color="primary"
+                    sx={{ fontSize: '0.7rem', height: 18 }}
+                  />
+                </Box>
+              ))}
+            </Box>
+            
+            {/* 두 번째 줄 */}
+            <Box sx={{ 
+              display: 'flex', 
+              flexWrap: 'wrap',
+              gap: 1,
+              p: 1,
+              minHeight: 64
+            }}>
+              {vendorList.slice(Math.ceil(vendorList.length / 2)).map((vendor, index) => (
+                <Box
+                  key={vendor}
+                  onClick={() => {
+                    const vendorIndex = vendorList.indexOf(vendor);
+                    handleVendorTabChange({} as React.SyntheticEvent, vendorIndex);
+                  }}
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    minWidth: 80,
+                    maxWidth: 120,
+                    p: 1,
+                    cursor: 'pointer',
+                    borderRadius: 1,
+                    border: vendorTabValue === vendorList.indexOf(vendor) ? 2 : 1,
+                    borderColor: vendorTabValue === vendorList.indexOf(vendor) ? 'primary.main' : 'divider',
+                    backgroundColor: vendorTabValue === vendorList.indexOf(vendor) ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+                    '&:hover': {
+                      backgroundColor: 'action.hover',
+                    }
+                  }}
+                >
+                  <Typography 
+                    variant="body2" 
+                    sx={{ 
+                      fontSize: '0.8rem',
+                      textAlign: 'center',
+                      wordBreak: 'break-word',
+                      lineHeight: 1.2,
+                      color: 'var(--text-color)',
+                      fontWeight: 500
+                    }}
+                  >
+                    {vendor}
+                  </Typography>
+                  <Chip
+                    label={Object.keys(vendorGroups[vendor] || {}).reduce((acc, category) => 
+                      acc + (vendorGroups[vendor][category]?.length || 0), 0
+                    )}
+                    size="small"
+                    color="primary"
+                    sx={{ fontSize: '0.7rem', height: 18 }}
+                  />
+                </Box>
+              ))}
+            </Box>
+          </Box>
         </Paper>
       </Grid>
 
@@ -737,27 +853,47 @@ const ProductManagement: React.FC = () => {
               onChange={handleCategoryTabChange}
               variant="scrollable"
               scrollButtons="auto"
-              sx={{
-                borderBottom: 1,
-                borderColor: 'divider',
-                '& .MuiTab-root': {
-                  minWidth: 100,
-                  fontSize: '0.8rem',
-                },
-              }}
+                          sx={{
+              borderBottom: 1,
+              borderColor: 'divider',
+              '& .MuiTab-root': {
+                minWidth: 70,
+                fontSize: '0.8rem',
+                minHeight: 56,
+                padding: '6px 10px',
+              },
+            }}
             >
               {categoryList.map((category, index) => (
                 <Tab
                   key={category}
                   label={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CategoryIcon fontSize="small" />
-                      {category}
+                    <Box sx={{ 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'center', 
+                      gap: 0.5,
+                      minWidth: 70,
+                      maxWidth: 100
+                    }}>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontSize: '0.75rem',
+                          textAlign: 'center',
+                          wordBreak: 'break-word',
+                          lineHeight: 1.2,
+                          color: 'var(--text-color)',
+                          fontWeight: 500
+                        }}
+                      >
+                        {category}
+                      </Typography>
                       <Chip
                         label={vendorGroups[selectedVendor][category]?.length || 0}
                         size="small"
                         color="secondary"
-                        sx={{ fontSize: '0.7rem', height: 18 }}
+                        sx={{ fontSize: '0.7rem', height: 16 }}
                       />
                     </Box>
                   }

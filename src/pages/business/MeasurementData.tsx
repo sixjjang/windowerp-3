@@ -1204,20 +1204,20 @@ const MeasurementData: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" sx={{ mb: 3, color: '#e0e6ed' }}>
+      <Typography variant="h4" sx={{ mb: 3, color: 'var(--text-color)' }}>
         실측데이터 관리
       </Typography>
 
-      <Paper sx={{ backgroundColor: '#2e3a4a' }}>
+      <Paper sx={{ backgroundColor: 'var(--surface-color)' }}>
         <Tabs
           value={tabValue}
           onChange={handleTabChange}
           sx={{
             '& .MuiTab-root': {
-              color: '#e0e6ed',
-              '&.Mui-selected': { color: '#40c4ff' },
+              color: 'var(--text-color)',
+              '&.Mui-selected': { color: 'var(--primary-color)' },
             },
-            '& .MuiTabs-indicator': { backgroundColor: '#40c4ff' },
+            '& .MuiTabs-indicator': { backgroundColor: 'var(--primary-color)' },
           }}
         >
           <Tab label="실측목록" />
@@ -1234,18 +1234,18 @@ const MeasurementData: React.FC = () => {
               alignItems: 'center',
             }}
           >
-            <Typography variant="h6" sx={{ color: '#e0e6ed' }}>
+            <Typography variant="h6" sx={{ color: 'var(--text-color)' }}>
               실측 데이터 목록 ({measurementEvents.length}건)
             </Typography>
           </Box>
 
-          <TableContainer component={Paper} sx={{ backgroundColor: '#232a36' }}>
+          <TableContainer component={Paper} sx={{ backgroundColor: 'var(--background-color)' }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
                   <TableCell
                     sx={{
-                      color: '#e0e6ed',
+                      color: 'var(--text-color)',
                       fontWeight: 'bold',
                       fontSize: '14px',
                       py: 1,
@@ -1255,7 +1255,7 @@ const MeasurementData: React.FC = () => {
                   </TableCell>
                   <TableCell
                     sx={{
-                      color: '#e0e6ed',
+                      color: 'var(--text-color)',
                       fontWeight: 'bold',
                       fontSize: '14px',
                       py: 1,
@@ -1265,7 +1265,7 @@ const MeasurementData: React.FC = () => {
                   </TableCell>
                   <TableCell
                     sx={{
-                      color: '#e0e6ed',
+                      color: 'var(--text-color)',
                       fontWeight: 'bold',
                       fontSize: '14px',
                       py: 1,
@@ -1275,7 +1275,7 @@ const MeasurementData: React.FC = () => {
                   </TableCell>
                   <TableCell
                     sx={{
-                      color: '#e0e6ed',
+                      color: 'var(--text-color)',
                       fontWeight: 'bold',
                       fontSize: '14px',
                       py: 1,
@@ -1285,7 +1285,7 @@ const MeasurementData: React.FC = () => {
                   </TableCell>
                   <TableCell
                     sx={{
-                      color: '#e0e6ed',
+                      color: 'var(--text-color)',
                       fontWeight: 'bold',
                       fontSize: '14px',
                       py: 1,
@@ -1295,7 +1295,7 @@ const MeasurementData: React.FC = () => {
                   </TableCell>
                   <TableCell
                     sx={{
-                      color: '#e0e6ed',
+                      color: 'var(--text-color)',
                       fontWeight: 'bold',
                       fontSize: '14px',
                       py: 1,
@@ -1305,7 +1305,7 @@ const MeasurementData: React.FC = () => {
                   </TableCell>
                   <TableCell
                     sx={{
-                      color: '#e0e6ed',
+                      color: 'var(--text-color)',
                       fontWeight: 'bold',
                       fontSize: '14px',
                       py: 1,
@@ -1315,7 +1315,7 @@ const MeasurementData: React.FC = () => {
                   </TableCell>
                   <TableCell
                     sx={{
-                      color: '#e0e6ed',
+                      color: 'var(--text-color)',
                       fontWeight: 'bold',
                       fontSize: '14px',
                       py: 1,
@@ -1325,7 +1325,7 @@ const MeasurementData: React.FC = () => {
                   </TableCell>
                   <TableCell
                     sx={{
-                      color: '#e0e6ed',
+                      color: 'var(--text-color)',
                       fontWeight: 'bold',
                       fontSize: '14px',
                       py: 1,
@@ -1342,57 +1342,57 @@ const MeasurementData: React.FC = () => {
                     onDoubleClick={() => handleEventDoubleClick(event)}
                     sx={{
                       cursor: 'pointer',
-                      '&:hover': { backgroundColor: '#2e3a4a' },
+                      '&:hover': { backgroundColor: 'var(--hover-color)' },
                     }}
                   >
                     <TableCell
-                      sx={{ color: '#e0e6ed', fontSize: '14px', py: 1 }}
+                      sx={{ color: 'var(--text-color)', fontSize: '14px', py: 1 }}
                     >
                       {formatDate(event.date)} {event.time}
                     </TableCell>
                     <TableCell
-                      sx={{ color: '#e0e6ed', fontSize: '14px', py: 1 }}
+                      sx={{ color: 'var(--text-color)', fontSize: '14px', py: 1 }}
                     >
                       {event.customerName}
                     </TableCell>
                     <TableCell
-                      sx={{ color: '#40c4ff', fontSize: '14px', py: 1 }}
+                      sx={{ color: 'var(--primary-color)', fontSize: '14px', py: 1 }}
                     >
                       {event.estimateNo}
                     </TableCell>
                     <TableCell
-                      sx={{ color: '#e0e6ed', fontSize: '14px', py: 1 }}
+                      sx={{ color: 'var(--text-color)', fontSize: '14px', py: 1 }}
                     >
                       {event.address || '-'}
                     </TableCell>
                     <TableCell
-                      sx={{ color: '#e0e6ed', fontSize: '14px', py: 1 }}
+                      sx={{ color: 'var(--text-color)', fontSize: '14px', py: 1 }}
                     >
                       {event.description || '-'}
                     </TableCell>
                     <TableCell
-                      sx={{ color: '#e0e6ed', fontSize: '14px', py: 1 }}
+                      sx={{ color: 'var(--text-color)', fontSize: '14px', py: 1 }}
                     >
                       <Chip
                         label={event.projectType || '-'}
                         size="small"
                         sx={{
                           backgroundColor: event.projectType
-                            ? '#2e3a4a'
-                            : '#666',
-                          color: '#e0e6ed',
+                            ? 'var(--surface-color)'
+                            : 'var(--text-secondary-color)',
+                          color: 'var(--text-color)',
                           fontSize: '12px',
-                          border: '1px solid #40c4ff',
+                          border: '1px solid var(--primary-color)',
                         }}
                       />
                     </TableCell>
                     <TableCell
-                      sx={{ color: '#e0e6ed', fontSize: '14px', py: 1 }}
+                      sx={{ color: 'var(--text-color)', fontSize: '14px', py: 1 }}
                     >
                       {event.measurementData.length}개 항목
                     </TableCell>
                     <TableCell
-                      sx={{ color: '#e0e6ed', fontSize: '14px', py: 1 }}
+                      sx={{ color: 'var(--text-color)', fontSize: '14px', py: 1 }}
                     >
                       {formatDate(event.createdAt)}
                     </TableCell>

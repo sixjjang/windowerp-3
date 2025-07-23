@@ -88,7 +88,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     maxWidth="lg"
     fullWidth
     PaperProps={{
-      sx: { backgroundColor: '#232a36', color: '#e0e6ed', maxHeight: '90vh' },
+              sx: { backgroundColor: 'var(--surface-color)', color: 'var(--text-color)', maxHeight: '90vh' },
     }}
   >
     <DialogTitle
@@ -244,7 +244,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                   style={{
                     width: '100%',
                     borderCollapse: 'collapse',
-                    background: '#232a36',
+                    background: 'var(--surface-color)',
                     color: '#e0e6ed',
                   }}
                 >
@@ -281,7 +281,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                       <tr
                         key={item.id}
                         style={{
-                          background: idx % 2 === 0 ? '#232a36' : '#263040',
+                          background: idx % 2 === 0 ? 'var(--surface-color)' : 'var(--background-color)',
                         }}
                       >
                         <td style={{ border: '1px solid #2e3a4a', padding: 6 }}>
@@ -1461,21 +1461,24 @@ const DeliveryManagement: React.FC = () => {
   };
 
   // 스케줄 자동 등록/수정 로직
-  useEffect(() => {
-    const registerSchedules = async () => {
-      for (const delivery of deliveries) {
-        if (delivery.constructionDate) {
-          // 상세 스케줄 생성 함수 사용
-          await createDetailedSchedule(delivery);
-        }
-      }
-    };
+  // deliveries가 변경될 때 자동으로 스케줄 등록 (자동 저장 비활성화)
+  // useEffect(() => {
+  //   const registerSchedules = async () => {
+  //     for (const delivery of deliveries) {
+  //       if (delivery.constructionDate) {
+  //         if (delivery.constructionDate) {
+  //           // 상세 스케줄 생성 함수 사용
+  //           await createDetailedSchedule(delivery);
+  //         }
+  //       }
+  //     }
+  //   };
 
-    // deliveries가 변경될 때만 실행
-    if (deliveries.length > 0) {
-      registerSchedules();
-    }
-  }, [deliveries.length]); // 의존성을 단순화
+  //   // deliveries가 변경될 때만 실행
+  //   if (deliveries.length > 0) {
+  //     registerSchedules();
+  //   }
+  // }, [deliveries.length]); // 의존성을 단순화
 
   // AS 출력 핸들러들
   const handleASPrint = (asRecord: any) => {
@@ -1952,20 +1955,6 @@ const DeliveryManagement: React.FC = () => {
     Order[] | null
   >(null);
 
-  const [orders, setOrders] = useState<any[]>([]);
-  useEffect(
-    () => {
-      try {
-        setOrders(JSON.parse(localStorage.getItem('orders') || '[]'));
-      } catch {
-        setOrders([]);
-      }
-    },
-    [
-      /* 필요시 의존성 추가 */
-    ]
-  );
-
   const [workerDialogOpen, setWorkerDialogOpen] = useState(false);
   const [newWorker, setNewWorker] = useState({
     name: '',
@@ -1973,17 +1962,19 @@ const DeliveryManagement: React.FC = () => {
     vehicleNumber: '',
   });
 
+
+
   return (
     <Box
       sx={{
         height: '100vh',
         display: 'flex',
         flexDirection: 'column',
-        backgroundColor: '#1a1a1a',
+        backgroundColor: 'var(--background-color)',
       }}
     >
       {/* 검색 조건과 통계 정보 - 한 줄에 배치 */}
-      <Box sx={{ p: 1, backgroundColor: '#263040' }}>
+      <Box sx={{ p: 1, backgroundColor: 'var(--surface-color)' }}>
         <Grid container spacing={1} alignItems="center">
           {/* 검색창 */}
           <Grid item xs={12} md={3}>
@@ -1992,15 +1983,15 @@ const DeliveryManagement: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 1,
-                backgroundColor: 'rgba(255,255,255,0.05)',
+                backgroundColor: 'var(--background-color)',
                 backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255,255,255,0.1)',
+                border: '1px solid var(--border-color)',
                 borderRadius: 1,
                 p: 1,
                 height: '100%',
               }}
             >
-              <SearchIcon sx={{ color: '#40c4ff', fontSize: '1.2rem' }} />
+              <SearchIcon sx={{ color: 'var(--primary-color)', fontSize: '1.2rem' }} />
               <TextField
                 placeholder="고객명, 프로젝트명, 연락처, 주소로 검색..."
                 variant="outlined"
@@ -2016,20 +2007,20 @@ const DeliveryManagement: React.FC = () => {
                 sx={{
                   flex: 1,
                   '& .MuiOutlinedInput-root': {
-                    color: '#e0e6ed',
+                    color: 'var(--text-color)',
                     fontSize: '0.85rem',
                     '& fieldset': {
-                      borderColor: 'rgba(255,255,255,0.2)',
+                      borderColor: 'var(--border-color)',
                     },
                     '&:hover fieldset': {
-                      borderColor: 'rgba(255,255,255,0.3)',
+                      borderColor: 'var(--hover-color)',
                     },
                     '&.Mui-focused fieldset': {
-                      borderColor: '#40c4ff',
+                      borderColor: 'var(--primary-color)',
                     },
                   },
                   '& .MuiInputBase-input::placeholder': {
-                    color: '#888',
+                    color: 'var(--text-secondary-color)',
                     opacity: 1,
                   },
                 }}
@@ -2039,15 +2030,15 @@ const DeliveryManagement: React.FC = () => {
                 size="small"
                 onClick={handleSearchReset}
                 sx={{
-                  color: '#b0b8c1',
-                  borderColor: 'rgba(255,255,255,0.2)',
+                  color: 'var(--text-secondary-color)',
+                  borderColor: 'var(--border-color)',
                   fontSize: '0.75rem',
                   py: 0.5,
                   px: 1,
                   minWidth: 'auto',
                   '&:hover': {
-                    borderColor: '#ff6b6b',
-                    color: '#ff6b6b',
+                    borderColor: 'var(--primary-color)',
+                    color: 'var(--primary-color)',
                   },
                 }}
               >
@@ -2069,15 +2060,82 @@ const DeliveryManagement: React.FC = () => {
             </Box>
           </Grid>
 
+          {/* 전체 시공일정 저장 버튼 */}
+          <Grid item xs={12} md={2}>
+            <Button
+              variant="contained"
+              color="primary"
+              fullWidth
+              onClick={async () => {
+                const deliveriesWithConstructionDate = deliveries.filter(
+                  delivery => delivery.constructionDate
+                );
+                
+                if (deliveriesWithConstructionDate.length === 0) {
+                  setSnackbar({
+                    open: true,
+                    message: '시공일자가 있는 납품이 없습니다.',
+                    severity: 'warning',
+                  });
+                  return;
+                }
+
+                try {
+                  let successCount = 0;
+                  let errorCount = 0;
+
+                  for (const delivery of deliveriesWithConstructionDate) {
+                    try {
+                      await createDetailedSchedule(delivery);
+                      successCount++;
+                    } catch (error) {
+                      console.error(`시공일정 저장 실패 (${delivery.customerName}):`, error);
+                      errorCount++;
+                    }
+                  }
+
+                  if (errorCount === 0) {
+                    setSnackbar({
+                      open: true,
+                      message: `${successCount}개의 시공일정이 스케줄에 저장되었습니다.`,
+                      severity: 'success',
+                    });
+                  } else {
+                    setSnackbar({
+                      open: true,
+                      message: `${successCount}개 성공, ${errorCount}개 실패했습니다.`,
+                      severity: 'warning',
+                    });
+                  }
+                } catch (error) {
+                  console.error('전체 시공일정 저장 실패:', error);
+                  setSnackbar({
+                    open: true,
+                    message: '전체 시공일정 저장에 실패했습니다.',
+                    severity: 'error',
+                  });
+                }
+              }}
+              sx={{
+                backgroundColor: '#40c4ff',
+                '&:hover': { backgroundColor: '#33a3cc' },
+                height: '100%',
+                fontSize: '0.8rem',
+              }}
+            >
+              전체 시공일정 저장
+            </Button>
+          </Grid>
+
           {/* 통계 정보 - 좌측 정렬 */}
           <Grid item xs={3} md={1.5}>
             <Box
               sx={{
-                backgroundColor: '#2d2d2d',
+                backgroundColor: 'var(--background-color)',
                 p: 1,
                 borderRadius: 1,
                 textAlign: 'left',
-                border: '1px solid rgba(255,255,255,0.1)',
+                border: '1px solid var(--border-color)',
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
@@ -2088,7 +2146,7 @@ const DeliveryManagement: React.FC = () => {
               <Typography
                 variant="h6"
                 sx={{
-                  color: '#40c4ff',
+                  color: 'var(--primary-color)',
                   fontWeight: 'bold',
                   fontSize: '1.5rem',
                 }}
@@ -2097,7 +2155,7 @@ const DeliveryManagement: React.FC = () => {
               </Typography>
               <Typography
                 variant="caption"
-                sx={{ color: '#b0b8c1', fontSize: '0.7rem' }}
+                sx={{ color: 'var(--text-secondary-color)', fontSize: '0.7rem' }}
               >
                 전체
               </Typography>
@@ -2106,11 +2164,11 @@ const DeliveryManagement: React.FC = () => {
           <Grid item xs={3} md={1.5}>
             <Box
               sx={{
-                backgroundColor: '#2d2d2d',
+                backgroundColor: 'var(--background-color)',
                 p: 1,
                 borderRadius: 1,
                 textAlign: 'left',
-                border: '1px solid rgba(255,255,255,0.1)',
+                border: '1px solid var(--border-color)',
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
@@ -2130,7 +2188,7 @@ const DeliveryManagement: React.FC = () => {
               </Typography>
               <Typography
                 variant="caption"
-                sx={{ color: '#b0b8c1', fontSize: '0.7rem' }}
+                sx={{ color: 'var(--text-secondary-color)', fontSize: '0.7rem' }}
               >
                 준비중
               </Typography>
@@ -2139,11 +2197,11 @@ const DeliveryManagement: React.FC = () => {
           <Grid item xs={3} md={1.5}>
             <Box
               sx={{
-                backgroundColor: '#2d2d2d',
+                backgroundColor: 'var(--background-color)',
                 p: 1,
                 borderRadius: 1,
                 textAlign: 'left',
-                border: '1px solid rgba(255,255,255,0.1)',
+                border: '1px solid var(--border-color)',
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
@@ -2163,7 +2221,7 @@ const DeliveryManagement: React.FC = () => {
               </Typography>
               <Typography
                 variant="caption"
-                sx={{ color: '#b0b8c1', fontSize: '0.7rem' }}
+                sx={{ color: 'var(--text-secondary-color)', fontSize: '0.7rem' }}
               >
                 미수금
               </Typography>
@@ -2563,7 +2621,7 @@ const DeliveryManagement: React.FC = () => {
                                 return '';
                               }
                             })()}
-                            onChange={async e => {
+                            onChange={e => {
                               const val = e.target.value;
                               if (val) {
                                 const localDateTime = new Date(val);
@@ -2581,14 +2639,8 @@ const DeliveryManagement: React.FC = () => {
                                 };
                                 updateDelivery(delivery.id, updatedDelivery);
                                 
-                                // 시공일시 변경 시 스케줄 자동 업데이트 (중복 방지)
+                                // 자동 저장 비활성화 - 수동 저장 버튼으로 변경
                                 console.log('시공일시 변경 감지:', dateStr, timeStr);
-                                try {
-                                  await createDetailedSchedule(updatedDelivery);
-                                  console.log('✅ 시공일정이 스케줄에 자동 업데이트되었습니다.');
-                                } catch (error) {
-                                  console.error('❌ 시공일정 스케줄 업데이트 실패:', error);
-                                }
                               }
                             }}
                             fullWidth
@@ -2656,6 +2708,44 @@ const DeliveryManagement: React.FC = () => {
                         <Grid item xs={4} sx={{ mt: 1 }}>
                           <Button size="small" variant="outlined" fullWidth onClick={() => setWorkerDialogOpen(true)}>
                             신규등록
+                          </Button>
+                        </Grid>
+                        <Grid item xs={12} sx={{ mt: 2 }}>
+                          <Button 
+                            variant="contained" 
+                            color="primary" 
+                            fullWidth 
+                            onClick={async () => {
+                              if (delivery.constructionDate) {
+                                try {
+                                  await createDetailedSchedule(delivery);
+                                  setSnackbar({
+                                    open: true,
+                                    message: '시공일정이 스케줄에 저장되었습니다.',
+                                    severity: 'success',
+                                  });
+                                } catch (error) {
+                                  console.error('❌ 시공일정 스케줄 저장 실패:', error);
+                                  setSnackbar({
+                                    open: true,
+                                    message: '시공일정 저장에 실패했습니다.',
+                                    severity: 'error',
+                                  });
+                                }
+                              } else {
+                                setSnackbar({
+                                  open: true,
+                                  message: '시공일자를 먼저 입력해주세요.',
+                                  severity: 'warning',
+                                });
+                              }
+                            }}
+                            sx={{ 
+                              backgroundColor: '#40c4ff',
+                              '&:hover': { backgroundColor: '#33a3cc' }
+                            }}
+                          >
+                            시공일정 스케줄 저장
                           </Button>
                         </Grid>
                       </Grid>
@@ -2983,13 +3073,10 @@ const DeliveryManagement: React.FC = () => {
                           onClick={() => {
                             // delivery에 contractNo가 없으므로 projectName을 contractNo로 매칭 (fallback)
                             // @ts-ignore
-                            const vendorOrders = orders.filter(
-                              o =>
-                                o.status === '발주완료' &&
-                                o.contractNo === delivery.projectName &&
-                                o.address === delivery.address
+                            const projectOrders = (delivery.orders || []).filter(
+                              (o: any) => o.status === '발주완료'
                             );
-                            setOrderDetailModalGroup(vendorOrders);
+                            setOrderDetailModalGroup(projectOrders);
                           }}
                           title="발주서 확인"
                           sx={{
@@ -3750,20 +3837,24 @@ const DeliveryManagement: React.FC = () => {
                           c => c.projectName === delivery.projectName
                         );
 
-                        // 발주 정보 가져오기 (orders에서 찾기)
-                        let orders: any[] = [];
+                        // localStorage에서 orders 가져오기 (임시 해결책)
+                        let orders: Order[] = [];
                         try {
-                          orders = JSON.parse(
-                            localStorage.getItem('orders') || '[]'
-                          );
-                        } catch {}
+                          const savedOrders = localStorage.getItem('order-management-storage');
+                          if (savedOrders) {
+                            const parsed = JSON.parse(savedOrders);
+                            orders = parsed.state?.orders || [];
+                          }
+                        } catch (error) {
+                          console.error('orders 로드 실패:', error);
+                        }
+                        
                         const projectOrders = orders.filter(
-                          o =>
+                          (o: Order) =>
                             o.status === '발주완료' &&
-                            o.address &&
+                            o.deliveryAddress &&
                             delivery.address &&
-                            o.address.trim().toLowerCase() ===
-                              delivery.address.trim().toLowerCase()
+                            o.deliveryAddress.trim().toLowerCase() === delivery.address.trim().toLowerCase()
                         );
                         const firstOrder = projectOrders[0];
 
@@ -4088,9 +4179,9 @@ const DeliveryManagement: React.FC = () => {
             </Accordion>
           ))
         ) : (
-          <Box sx={{ textAlign: 'center', color: '#b0b8c1', py: 8 }}>
-            <SearchIcon sx={{ fontSize: 64, color: '#666', mb: 2 }} />
-            <Typography variant="h6" sx={{ mb: 1 }}>
+          <Box sx={{ textAlign: 'center', color: 'var(--text-secondary-color)', py: 8 }}>
+            <SearchIcon sx={{ fontSize: 64, color: 'var(--text-secondary-color)', mb: 2 }} />
+            <Typography variant="h6" sx={{ mb: 1, color: 'var(--text-color)' }}>
               {searchConditions.searchText !== '' ||
               searchConditions.customerName !== '' ||
               searchConditions.projectName !== '' ||
@@ -4099,7 +4190,7 @@ const DeliveryManagement: React.FC = () => {
                 ? '검색 결과가 없습니다.'
                 : '납품 건이 없습니다.'}
             </Typography>
-            <Typography variant="body2" sx={{ color: '#888' }}>
+            <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)' }}>
               {searchConditions.searchText !== '' ||
               searchConditions.customerName !== '' ||
               searchConditions.projectName !== '' ||

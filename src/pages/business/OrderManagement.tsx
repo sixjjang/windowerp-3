@@ -2437,13 +2437,13 @@ const OrderManagement: React.FC = () => {
         sx={{
           p: 2,
           borderBottom: 1,
-          borderColor: '#2e3a4a',
-          backgroundColor: '#232a36',
-          color: '#e0e6ed',
+          borderColor: 'var(--border-color)',
+          backgroundColor: 'var(--background-color)',
+          color: 'var(--text-color)',
         }}
       >
         <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Typography variant="h4">주문관리</Typography>
+          <Typography variant="h4" sx={{ color: 'var(--text-color)' }}>주문관리</Typography>
           <Button
             variant="contained"
             color="primary"
@@ -2466,15 +2466,15 @@ const OrderManagement: React.FC = () => {
             p: 2,
             overflowY: 'auto',
             borderRight: 1,
-            borderColor: '#2e3a4a',
-            backgroundColor: '#1a1f2e',
-            color: '#e0e6ed',
+            borderColor: 'var(--border-color)',
+            backgroundColor: 'var(--background-color)',
+            color: 'var(--text-color)',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
           <Box sx={{ flex: 0.4, overflowY: 'auto' }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" gutterBottom sx={{ color: 'var(--text-color)' }}>
               계약서 목록 (주문전)
             </Typography>
             <List>
@@ -2493,7 +2493,7 @@ const OrderManagement: React.FC = () => {
                       sx={{
                         mb: 1,
                         borderRadius: 1,
-                        '&.Mui-selected': { backgroundColor: '#263040' },
+                        '&.Mui-selected': { backgroundColor: 'var(--hover-color)' },
                         pr: 4,
                       }}
                     >
@@ -2502,7 +2502,11 @@ const OrderManagement: React.FC = () => {
                           <Box display="flex" alignItems="center">
                             <Box
                               component="span"
-                              sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}
+                              sx={{ 
+                                fontWeight: 'bold', 
+                                fontSize: '0.875rem',
+                                color: 'var(--text-color)'
+                              }}
                             >
                               {extractBestAddress(contract.address)}
                             </Box>
@@ -2521,7 +2525,7 @@ const OrderManagement: React.FC = () => {
                         }
                         secondary={`${contract.customerName} | 할인후금액: ${(contract.discountedAmount || 0).toLocaleString()}원 | 시공일자: ${contract.constructionDate ? new Date(contract.constructionDate).toLocaleDateString() : '미정'}`}
                         secondaryTypographyProps={{
-                          sx: { color: '#b0b8c1', fontSize: '0.75rem' },
+                          sx: { color: 'var(--secondary-text-color)', fontSize: '0.75rem' },
                         }}
                       />
                     </ListItemButton>
@@ -2546,10 +2550,10 @@ const OrderManagement: React.FC = () => {
                 ))}
             </List>
           </Box>
-          <Divider sx={{ my: 2, borderColor: '#2e3a4a' }} />
+          <Divider sx={{ my: 2, borderColor: 'var(--border-color)' }} />
           <Box sx={{ flex: 0.6, overflowY: 'auto' }}>
             <Box sx={{ mb: 2 }}>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant="h6" gutterBottom sx={{ color: 'var(--text-color)' }}>
                 발주완료목록
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
@@ -2565,16 +2569,16 @@ const OrderManagement: React.FC = () => {
                     fontSize: '0.75rem',
                     backgroundColor:
                       completedOrderFilterType === 'today'
-                        ? '#40c4ff'
+                        ? 'var(--primary-color)'
                         : 'transparent',
                     color:
-                      completedOrderFilterType === 'today' ? '#fff' : '#40c4ff',
-                    borderColor: '#40c4ff',
+                      completedOrderFilterType === 'today' ? '#fff' : 'var(--primary-color)',
+                    borderColor: 'var(--primary-color)',
                     '&:hover': {
                       backgroundColor:
                         completedOrderFilterType === 'today'
-                          ? '#40c4ff'
-                          : 'rgba(64, 196, 255, 0.1)',
+                          ? 'var(--primary-color)'
+                          : 'var(--hover-color)',
                     },
                   }}
                 >
@@ -2586,10 +2590,10 @@ const OrderManagement: React.FC = () => {
                   onClick={() => handleFilterTypeChange('week')}
                   sx={{
                     fontSize: '0.75rem',
-                    color: '#40c4ff',
-                    borderColor: '#40c4ff',
+                    color: 'var(--primary-color)',
+                    borderColor: 'var(--primary-color)',
                     '&:hover': {
-                      backgroundColor: 'rgba(64, 196, 255, 0.1)',
+                      backgroundColor: 'var(--hover-color)',
                     },
                   }}
                 >
@@ -2601,10 +2605,10 @@ const OrderManagement: React.FC = () => {
                   onClick={() => handleFilterTypeChange('month')}
                   sx={{
                     fontSize: '0.75rem',
-                    color: '#40c4ff',
-                    borderColor: '#40c4ff',
+                    color: 'var(--primary-color)',
+                    borderColor: 'var(--primary-color)',
                     '&:hover': {
-                      backgroundColor: 'rgba(64, 196, 255, 0.1)',
+                      backgroundColor: 'var(--hover-color)',
                     },
                   }}
                 >
@@ -2616,10 +2620,10 @@ const OrderManagement: React.FC = () => {
                   onClick={() => handleFilterTypeChange('custom')}
                   sx={{
                     fontSize: '0.75rem',
-                    color: '#40c4ff',
-                    borderColor: '#40c4ff',
+                    color: 'var(--primary-color)',
+                    borderColor: 'var(--primary-color)',
                     '&:hover': {
-                      backgroundColor: 'rgba(64, 196, 255, 0.1)',
+                      backgroundColor: 'var(--hover-color)',
                     },
                   }}
                 >
@@ -2642,10 +2646,10 @@ const OrderManagement: React.FC = () => {
                     sx={{
                       mb: 1,
                       borderRadius: 1,
-                      backgroundColor: '#232a36',
+                      backgroundColor: 'var(--background-color)',
                       cursor: 'pointer',
                       '&:hover': {
-                        backgroundColor: '#2e3a4a',
+                        backgroundColor: 'var(--hover-color)',
                         transform: 'translateY(-1px)',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
                       },
@@ -2656,7 +2660,15 @@ const OrderManagement: React.FC = () => {
                     <ListItemText
                       primary={customerAddress}
                       secondary={`[${group[0].orderDate}] ${group.length}개 거래처 완료`}
-                      primaryTypographyProps={{ style: { fontWeight: 'bold' } }}
+                      primaryTypographyProps={{ 
+                        style: { 
+                          fontWeight: 'bold',
+                          color: 'var(--text-color)'
+                        } 
+                      }}
+                      secondaryTypographyProps={{
+                        sx: { color: 'var(--secondary-text-color)' }
+                      }}
                     />
                     <Button
                       size="small"
@@ -2689,46 +2701,46 @@ const OrderManagement: React.FC = () => {
           sx={{
             width: '5px',
             cursor: 'col-resize',
-            bgcolor: isResizing ? '#40c4ff' : '#2e3a4a',
-            '&:hover': { bgcolor: '#40c4ff' },
+            bgcolor: isResizing ? 'var(--primary-color)' : 'var(--border-color)',
+            '&:hover': { bgcolor: 'var(--primary-color)' },
           }}
         />
 
         <Box
           sx={{
             width: `${100 - contractPanelWidth}%`,
+            backgroundColor: 'var(--background-color)',
             p: 2,
             overflowY: 'auto',
-            backgroundColor: '#232a36',
-            color: '#e0e6ed',
+            color: 'var(--text-color)',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
           {selectedContract && showCustomerInfo && (
-            <Box
-              sx={{
-                mb: 2,
-                p: 1.5,
-                bgcolor: '#263040',
-                borderRadius: 1,
-                border: '1px solid #40c4ff',
-                boxShadow: '0 2px 8px rgba(64, 196, 255, 0.1)',
-              }}
-            >
-              <Box
+                          <Box
                 sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  mb: 1.5,
-                  pb: 1,
-                  borderBottom: '1px solid #40c4ff',
+                  mb: 2,
+                  p: 1.5,
+                  bgcolor: 'var(--background-color)',
+                  borderRadius: 1,
+                  border: '1px solid var(--primary-color)',
+                  boxShadow: '0 2px 8px rgba(64, 196, 255, 0.1)',
                 }}
               >
+                              <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    mb: 1.5,
+                    pb: 1,
+                    borderBottom: '1px solid var(--primary-color)',
+                  }}
+                >
                 <Box
                   component="span"
                   sx={{
-                    color: '#40c4ff',
+                    color: 'var(--primary-color)',
                     fontWeight: 'bold',
                     display: 'flex',
                     alignItems: 'center',
@@ -2763,7 +2775,7 @@ const OrderManagement: React.FC = () => {
                     <Typography
                       variant="caption"
                       sx={{
-                        color: '#b0b8c1',
+                        color: 'var(--secondary-text-color)',
                         mb: 0.5,
                         fontSize: '0.7rem',
                         fontWeight: 500,
@@ -2776,7 +2788,7 @@ const OrderManagement: React.FC = () => {
                       variant="body2"
                       sx={{
                         fontWeight: 'bold',
-                        color: '#40c4ff',
+                        color: 'var(--primary-color)',
                         fontSize: '0.8rem',
                       }}
                     >
@@ -2810,7 +2822,7 @@ const OrderManagement: React.FC = () => {
                       variant="body2"
                       sx={{
                         fontWeight: 'bold',
-                        color: '#e0e6ed',
+                        color: 'var(--text-color)',
                         fontSize: '0.8rem',
                       }}
                     >
@@ -2843,7 +2855,7 @@ const OrderManagement: React.FC = () => {
                     <Typography
                       variant="body2"
                       sx={{
-                        color: '#e0e6ed',
+                        color: 'var(--text-color)',
                         fontWeight: 500,
                         fontSize: '0.8rem',
                       }}
@@ -2878,8 +2890,8 @@ const OrderManagement: React.FC = () => {
                       variant="body2"
                       sx={{
                         color: selectedContract.emergencyContact
-                          ? '#e0e6ed'
-                          : '#666',
+                          ? 'var(--text-color)'
+                          : 'var(--secondary-text-color)',
                         fontWeight: 500,
                         fontSize: '0.8rem',
                       }}
@@ -3131,7 +3143,7 @@ const OrderManagement: React.FC = () => {
                   height: '100%',
                 }}
               >
-                <Typography variant="h5" sx={{ color: '#b0b8c1' }}>
+                <Typography variant="h5" sx={{ color: 'var(--secondary-text-color)' }}>
                   진행중인 발주가 없습니다.
                 </Typography>
               </Box>
