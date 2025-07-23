@@ -73,7 +73,6 @@ import {
   generateAutoTitle,
 } from '../../utils/scheduleUtils';
 import TabPanel from '../../components/schedule/TabPanel';
-import { UserContext } from '../../components/Layout';
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -160,7 +159,6 @@ const Schedule: React.FC = () => {
   const { deliveries } = useDeliveryStore();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { nickname, profileImage } = useContext(UserContext);
 
   const { createScheduleNotification } = useNotificationStore();
   
@@ -354,6 +352,9 @@ const Schedule: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [speedDialOpen, setSpeedDialOpen] = useState(false);
 
+  const [userName, setUserName] = useState<string>('');
+  const [userDialogOpen, setUserDialogOpen] = useState(false);
+  
   // 사용자 정보 상태 (채팅 권한 체크 제거)
   const [currentUser, setCurrentUser] = useState<{ id: number; username: string; role: string } | null>(null);
   const [hasChatPermission, setHasChatPermission] = useState<boolean>(true); // 항상 허용
@@ -383,9 +384,16 @@ const Schedule: React.FC = () => {
   const [integratedRepeatPattern, setIntegratedRepeatPattern] = useState<'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'>('none');
   const [integratedRepeatEndDate, setIntegratedRepeatEndDate] = useState<string>('');
 
-  // 사용자 이름 입력 모달 관련 상태 제거 - UserContext 사용
+  // 닉네임이 없을 때만 다이얼로그 표시 (한 번만)
+  const [nicknameDialogShown, setNicknameDialogShown] = useState(false);
   
-  // 사용자 이름 입력 모달 제거 - UserContext의 nickname 사용
+  useEffect(() => {
+    // 닉네임이 없고 아직 다이얼로그를 보여주지 않았을 때만 표시
+    if (!userName && !nicknameDialogShown) {
+      setUserDialogOpen(true);
+      setNicknameDialogShown(true);
+    }
+  }, [userName, nicknameDialogShown]);
 
   // 현재 사용자 정보 조회 (채팅 권한 체크 제거)
   const fetchCurrentUserAndPermissions = async () => {
@@ -434,6 +442,7 @@ const Schedule: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         if (data.nickname && data.nickname.trim()) {
+          setUserName(data.nickname);
           console.log('서버에서 닉네임 로드:', data.nickname);
         } else {
           console.log('서버에 저장된 닉네임이 없습니다.');
@@ -624,7 +633,109 @@ const Schedule: React.FC = () => {
     }
   }, [measurementDialogOpen, currentMeasurementEvent]);
 
-  // 사용자 이름 입력 관련 함수들 제거 - UserContext 사용
+  const handleUserNameSave = async () => {
+    if (userName && userName.trim()) {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          setSnackbar({
+            open: true,
+            message: '로그인이 필요합니다.',
+            severity: 'error',
+          });
+          return;
+        }
+
+        const response = await fetch(`${API_BASE}/nickname`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ nickname: userName.trim() })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('닉네임 서버 저장 성공:', data);
+          setUserDialogOpen(false);
+          setSnackbar({
+            open: true,
+            message: '닉네임이 저장되었습니다.',
+            severity: 'success',
+          });
+        } else {
+          const errorData = await response.json();
+          console.error('닉네임 저장 실패:', errorData);
+          setSnackbar({
+            open: true,
+            message: `닉네임 저장 실패: ${errorData.error}`,
+            severity: 'error',
+          });
+        }
+      } catch (error) {
+        console.error('닉네임 저장 오류:', error);
+        setSnackbar({
+          open: true,
+          message: '서버 연결 오류가 발생했습니다.',
+          severity: 'error',
+        });
+      }
+    }
+  };
+
+  const handleUserNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUserName(e.target.value);
+  };
+
+  const handleUserNameReset = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setSnackbar({
+          open: true,
+          message: '로그인이 필요합니다.',
+          severity: 'error',
+        });
+        return;
+      }
+
+      // 서버에서 닉네임 삭제
+      const response = await fetch(`${API_BASE}/nickname`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ nickname: '' })
+      });
+
+      if (response.ok) {
+        setUserName('');
+        setUserDialogOpen(true);
+        setSnackbar({
+          open: true,
+          message: '닉네임이 초기화되었습니다.',
+          severity: 'success',
+        });
+      } else {
+        const errorData = await response.json();
+        console.error('닉네임 초기화 실패:', errorData);
+        setSnackbar({
+          open: true,
+          message: `닉네임 초기화 실패: ${errorData.error}`,
+          severity: 'error',
+        });
+      }
+    } catch (error) {
+      console.error('닉네임 초기화 오류:', error);
+      setSnackbar({
+        open: true,
+        message: '서버 연결 오류가 발생했습니다.',
+        severity: 'error',
+      });
+    }
+  };
 
   // 스케줄 데이터 로드
   useEffect(() => {
@@ -1455,7 +1566,7 @@ const Schedule: React.FC = () => {
         estimateNo: estimateNo || '',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        createdBy: nickname || 'current_user',
+        createdBy: userName || 'current_user',
       };
 
       try {
@@ -1481,7 +1592,7 @@ const Schedule: React.FC = () => {
           createScheduleNotification(
             eventData.title,
             `새로운 ${eventData.type} 일정이 생성되었습니다.`,
-            nickname || '사용자',
+            userName || '사용자',
             result.id
           );
 
@@ -1695,7 +1806,7 @@ const Schedule: React.FC = () => {
                   : matched.lineLength,
               memo: matched.memo,
               measuredAt: new Date().toISOString(),
-              measuredBy: nickname || '사용자',
+              measuredBy: userName || '사용자',
             };
 
             // 폭수와 주름양 재계산
@@ -1792,7 +1903,7 @@ const Schedule: React.FC = () => {
         // 실측 정보 추가
         measurementInfo: {
           measuredAt: new Date().toISOString(),
-          measuredBy: nickname || '사용자',
+          measuredBy: userName || '사용자',
           eventId: event.id,
           eventTitle: event.title,
           customerName: event.customerName,
@@ -2335,7 +2446,7 @@ const Schedule: React.FC = () => {
       console.log('Firebase에 댓글 저장 시작:', {
         eventId: selectedEventForEdit.id,
         message: newIntegratedComment.trim(),
-        userName: nickname || '사용자'
+        userName: userName || '사용자'
       });
 
       // Firestore에 댓글 저장 (실시간 동기화)
@@ -2346,7 +2457,7 @@ const Schedule: React.FC = () => {
       const commentData: any = {
         eventId: selectedEventForEdit.id,
         userId: currentUser?.id?.toString() || 'current_user',
-        userName: nickname || '사용자',
+        userName: userName || '사용자',
         userAvatar: currentUser?.username || '',
         message: newIntegratedComment.trim(),
         timestamp: serverTimestamp(),
@@ -3640,7 +3751,7 @@ const Schedule: React.FC = () => {
       console.log('Firebase에 댓글 저장 시작:', {
         eventId: selectedEventForChat.id,
         message: newComment.trim(),
-        userName: nickname || '사용자'
+        userName: userName || '사용자'
       });
 
       // Firestore에 댓글 저장 (실시간 동기화)
@@ -3651,7 +3762,7 @@ const Schedule: React.FC = () => {
       const commentData: any = {
         eventId: selectedEventForChat.id,
         userId: currentUser?.id?.toString() || 'current_user',
-        userName: nickname || '사용자',
+        userName: userName || '사용자',
         userAvatar: currentUser?.username || '',
         message: newComment.trim(),
         timestamp: serverTimestamp(),
@@ -3841,7 +3952,7 @@ const Schedule: React.FC = () => {
           date: current.toISOString().split('T')[0],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          createdBy: nickname || 'current_user',
+          createdBy: userName || 'current_user',
         };
         eventsToAdd.push(newEvent);
       }
@@ -3882,7 +3993,14 @@ const Schedule: React.FC = () => {
 
   // 채팅 메시지 전송 시 userName 사용
   const handleSendMessage = () => {
-    // UserContext의 nickname 사용 - 모달 제거
+    if (!userName || !userName.trim()) {
+      if (!nicknameDialogShown) {
+        setUserDialogOpen(true);
+        setNicknameDialogShown(true);
+      }
+      return;
+    }
+    // 실시간 댓글 전송 (handleCommentSubmit과 동일)
     handleCommentSubmit();
   };
 
@@ -6190,7 +6308,7 @@ const Schedule: React.FC = () => {
                                 {scheduleEvent.comments &&
                                 scheduleEvent.comments.length > 0 ? (
                                   scheduleEvent.comments.map((comment: any, idx: number) => {
-                                    const isMine = comment.userName === nickname;
+                                    const isMine = comment.userName === userName;
                                     return (
                                       <Box key={comment.id} sx={{
                                         display: 'flex',
@@ -6418,7 +6536,7 @@ const Schedule: React.FC = () => {
                                             id: Date.now().toString(),
                                             eventId: scheduleEvent.id,
                                             userId: 'current_user',
-                                            userName: nickname || '사용자',
+                                            userName: userName || '사용자',
                                             message: newComment,
                                             timestamp: new Date().toISOString(),
                                             attachments: commentAttachments.map(
@@ -6520,7 +6638,7 @@ const Schedule: React.FC = () => {
                                           id: Date.now().toString(),
                                           eventId: scheduleEvent.id,
                                           userId: 'current_user',
-                                          userName: nickname || '사용자',
+                                          userName: userName || '사용자',
                                           message: newComment,
                                           timestamp: new Date().toISOString(),
                                           attachments: commentAttachments.map(
@@ -6896,7 +7014,7 @@ const Schedule: React.FC = () => {
                       realTimeComments[currentMeasurementEvent.id] &&
                       realTimeComments[currentMeasurementEvent.id].length > 0 ? (
                         realTimeComments[currentMeasurementEvent.id].map((comment: ScheduleComment, idx: number) => {
-                          const isMine = comment.userName === nickname;
+                          const isMine = comment.userName === userName;
                           return (
                             <Box key={comment.id} sx={{
                               display: 'flex',
@@ -7116,7 +7234,7 @@ const Schedule: React.FC = () => {
                                 console.log('Firebase에 실측 채팅 메시지 저장 시작:', {
                                   eventId: currentMeasurementEvent.id,
                                   message: newComment.trim(),
-                                  userName: nickname || '사용자'
+                                  userName: userName || '사용자'
                                 });
 
                                 const commentsRef = collection(db, 'schedules', currentMeasurementEvent.id, 'comments');
@@ -7126,7 +7244,7 @@ const Schedule: React.FC = () => {
                                 const commentData: any = {
                                   eventId: currentMeasurementEvent.id,
                                   userId: 'current_user',
-                                  userName: nickname || '사용자',
+                                  userName: userName || '사용자',
                                   userAvatar: '',
                                   message: newComment.trim(),
                                   timestamp: serverTimestamp(),
@@ -7215,7 +7333,7 @@ const Schedule: React.FC = () => {
                                 console.log('Firebase에 실측 채팅 메시지 저장 시작 (버튼):', {
                                   eventId: currentMeasurementEvent.id,
                                   message: newComment.trim(),
-                                  userName: nickname || '사용자'
+                                  userName: userName || '사용자'
                                 });
 
                                 const commentsRef = collection(db, 'schedules', currentMeasurementEvent.id, 'comments');
@@ -7225,7 +7343,7 @@ const Schedule: React.FC = () => {
                                 const commentData: any = {
                                   eventId: currentMeasurementEvent.id,
                                   userId: 'current_user',
-                                  userName: nickname || '사용자',
+                                  userName: userName || '사용자',
                                   userAvatar: '',
                                   message: newComment.trim(),
                                   timestamp: serverTimestamp(),
@@ -7290,7 +7408,122 @@ const Schedule: React.FC = () => {
           </DialogContent>
         </Dialog>
 
-        {/* 사용자 이름 입력 모달 제거 - UserContext의 nickname 사용 */}
+        <Dialog
+  open={userDialogOpen}
+  disableEscapeKeyDown
+  fullScreen={isMobile}
+  PaperProps={{
+    sx: {
+      backgroundColor: '#232a36',
+      color: '#e0e6ed',
+      borderRadius: { xs: 0, md: 3 },
+      boxShadow: '0 20px 60px rgba(64, 196, 255, 0.2)',
+      border: '1px solid #2e3a4a',
+      maxHeight: { xs: '100vh', md: '95vh' },
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+      width: { xs: '100vw', md: '400px' },
+      m: 0,
+    },
+  }}
+>
+  <DialogTitle
+    sx={{
+      borderBottom: 1,
+      borderColor: '#2e3a4a',
+      background: 'linear-gradient(135deg, #1e2634 0%, #2e3a4a 100%)',
+      color: '#40c4ff',
+      fontWeight: 'bold',
+      fontSize: { xs: '1.1rem', sm: '1.3rem' },
+      textAlign: 'center',
+      py: { xs: 2, sm: 2.5 },
+      px: { xs: 2, sm: 3 },
+      position: 'relative',
+      justifyContent: 'center',
+    }}
+  >
+    {isMobile && (
+      <IconButton
+        onClick={() => setUserDialogOpen(false)}
+        sx={{
+          position: 'absolute',
+          left: 8,
+          color: '#40c4ff',
+          '&:hover': { backgroundColor: 'rgba(64, 196, 255, 0.1)' },
+        }}
+      >
+        <ArrowBackIcon />
+      </IconButton>
+    )}
+    사용자 이름 입력
+  </DialogTitle>
+  <DialogContent
+    sx={{
+      pt: { xs: 3, sm: 2 },
+      pb: 0,
+      px: { xs: 2, sm: 3 },
+      flex: 1,
+      overflowY: 'auto',
+    }}
+  >
+    <TextField
+      autoFocus
+      margin="dense"
+      label="이름"
+      type="text"
+      fullWidth
+      value={userName}
+      onChange={handleUserNameChange}
+      onKeyDown={e => {
+        if (e.key === 'Enter') handleUserNameSave();
+      }}
+      sx={{
+        mb: 2,
+        '& .MuiInputBase-root': {
+          height: { xs: 56, sm: 48 },
+          fontSize: { xs: '1rem', sm: '0.875rem' },
+        },
+      }}
+      InputLabelProps={{
+        shrink: true,
+        sx: { fontSize: { xs: '1rem', sm: '0.875rem' } }
+      }}
+    />
+  </DialogContent>
+  <DialogActions
+    sx={{
+      borderTop: 1,
+      borderColor: '#2e3a4a',
+      p: { xs: 2, sm: 2 },
+      gap: { xs: 1, sm: 1 },
+      flexDirection: { xs: 'column', sm: 'row' },
+      '& .MuiButton-root': {
+        minWidth: { xs: '100%', sm: 'auto' },
+        height: { xs: 48, sm: 36 },
+        fontSize: { xs: '1rem', sm: '0.875rem' },
+        fontWeight: 500,
+      },
+    }}
+  >
+    <Button
+      onClick={handleUserNameSave}
+      disabled={!userName.trim()}
+      variant="contained"
+      sx={{
+        backgroundColor: '#40c4ff',
+        '&:hover': {
+          backgroundColor: '#2196f3',
+          boxShadow: '0 6px 16px rgba(64, 196, 255, 0.4)',
+          transform: 'translateY(-1px)',
+          transition: 'all 0.3s ease',
+        },
+      }}
+    >
+      확인
+    </Button>
+  </DialogActions>
+</Dialog>
 
         {/* 타입 관리 다이얼로그 */}
         <Dialog
@@ -8052,7 +8285,7 @@ const Schedule: React.FC = () => {
                         return null;
                       }
                       
-                      const isMine = comment.userName === nickname;
+                      const isMine = comment.userName === userName;
                       return (
                         <Box key={comment.id} sx={{
                           display: 'flex',

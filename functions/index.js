@@ -32,6 +32,35 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // CORS 핸들러
 const corsHandler = (req, res, callback) => {
+  // 요청의 Origin 확인
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    'https://windowerp-3.firebaseapp.com',
+    'https://windowerp-3.web.app',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'https://sixjjang.synology.me',
+    'http://sixjjang.synology.me'
+  ];
+  
+  // 허용된 Origin인지 확인
+  if (origin && allowedOrigins.includes(origin)) {
+    res.set('Access-Control-Allow-Origin', origin);
+  } else {
+    res.set('Access-Control-Allow-Origin', 'http://localhost:3000');
+  }
+  
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.set('Access-Control-Allow-Credentials', 'true');
+  res.set('Access-Control-Max-Age', '86400'); // 24시간 캐시
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
   return cors(req, res, callback);
 };
 
@@ -53,20 +82,29 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
-// Multer 설정 (파일 업로드용)
+// Multer 설정 (파일 업로드용) - 더 안정적인 설정
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB
     fieldSize: 10 * 1024 * 1024, // 10MB
+    files: 1, // 단일 파일만
+    fields: 10 // 최대 10개 필드
   },
   fileFilter: (req, file, cb) => {
-    // 엑셀 파일만 허용
+    console.log('파일 필터링:', file.originalname, file.mimetype);
+    // 엑셀 파일 및 기타 문서 파일 허용
     if (file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
         file.mimetype === 'application/vnd.ms-excel' ||
-        file.mimetype === 'application/octet-stream') {
+        file.mimetype === 'application/octet-stream' ||
+        file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        file.mimetype === 'application/pdf' ||
+        file.originalname.endsWith('.xlsx') ||
+        file.originalname.endsWith('.xls') ||
+        file.originalname.endsWith('.csv')) {
       cb(null, true);
     } else {
+      console.log('허용되지 않은 파일 타입:', file.mimetype);
       cb(new Error('엑셀 파일만 업로드 가능합니다.'), false);
     }
   }
@@ -149,6 +187,7 @@ exports.me = functions.https.onRequest(async (req, res) => {
           id: userSnapshot.id,
         username: userData.username,
         name: userData.name,
+        nickname: userData.nickname || userData.name || '',
           role: userData.role || 'user',
           profileImage: userData.profileImage
         });
@@ -531,31 +570,77 @@ exports.saveCustomer = functions.https.onRequest(async (req, res) => {
 
 // ===== 제품 관리 =====
 
-// 제품 목록 조회 (HTTP Request) - /products
+// 제품 목록 조회 (HTTP Request) - /products (가벼운 파일 방식)
 exports.products = functions.https.onRequest(async (req, res) => {
   return corsHandler(req, res, async () => {
     try {
-      const { vendor, brand, productType } = req.query;
+      const { vendor, brand, productType, useStorage = 'false' } = req.query;
       
-      let query = db.collection('products');
-      
-      if (vendor) {
-        query = query.where('vendor', '==', vendor);
+      // Storage에서 전체 데이터를 읽어오는 방식 (가벼운 파일)
+      if (useStorage === 'true') {
+        console.log('Storage에서 가벼운 파일로 제품 데이터 조회');
+        
+        // 가장 최근의 제품 배치 파일 찾기
+        const bucket = admin.storage().bucket();
+        const [files] = await bucket.getFiles({ prefix: 'products/batch_' });
+        
+        if (files.length === 0) {
+          return res.json([]);
+        }
+        
+        // 가장 최근 파일 선택
+        const latestFile = files.sort((a, b) => 
+          b.metadata.timeCreated.localeCompare(a.metadata.timeCreated)
+        )[0];
+        
+        console.log('최근 제품 파일:', latestFile.name);
+        
+        // Storage에서 JSON 파일 읽기
+        const [fileContent] = await latestFile.download();
+        const jsonData = JSON.parse(fileContent.toString('utf8'));
+        
+        let products = jsonData.products || [];
+        
+        // 필터링 적용
+        if (vendor) {
+          products = products.filter((p) => p.vendorName === vendor);
+        }
+        if (brand) {
+          products = products.filter((p) => p.brand === brand);
+        }
+        if (productType) {
+          products = products.filter((p) => p.category === productType);
+        }
+        
+        // 정렬
+        products.sort((a, b) => a.productName.localeCompare(b.productName));
+        
+        console.log(`Storage에서 ${products.length}개 제품 조회 완료`);
+        res.json(products);
+      } else {
+        // 기존 Firestore 방식 (하위 호환성)
+        console.log('Firestore에서 제품 데이터 조회');
+        
+        let query = db.collection('products');
+        
+        if (vendor) {
+          query = query.where('vendorName', '==', vendor);
+        }
+        if (brand) {
+          query = query.where('brand', '==', brand);
+        }
+        if (productType) {
+          query = query.where('category', '==', productType);
+        }
+        
+        const snapshot = await query.orderBy('productName').get();
+        const products = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        
+        res.json(products);
       }
-      if (brand) {
-        query = query.where('brand', '==', brand);
-      }
-      if (productType) {
-        query = query.where('productType', '==', productType);
-      }
-      
-      const snapshot = await query.orderBy('productName').get();
-      const products = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      res.json(products);
     } catch (error) {
       console.error('제품 조회 오류:', error);
       res.status(500).json({ error: error.message });
@@ -586,7 +671,7 @@ exports.saveProduct = functions.https.onRequest(async (req, res) => {
   });
 }, { timeoutSeconds: 300 }); // 5분으로 타임아웃 증가
 
-// 제품 배치 저장 (HTTP Request) - /saveProductsBatch
+// 제품 배치 저장 (HTTP Request) - /saveProductsBatch (가벼운 파일 방식)
 exports.saveProductsBatch = functions.https.onRequest(async (req, res) => {
   return corsHandler(req, res, async () => {
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
@@ -598,31 +683,88 @@ exports.saveProductsBatch = functions.https.onRequest(async (req, res) => {
         return res.status(400).json({ error: '제품 배열이 필요합니다.' });
       }
       
-      console.log(`${products.length}개의 제품 배치 저장 시작`);
+      console.log(`${products.length}개의 제품 가벼운 파일 저장 시작`);
       
-      // 배치 처리로 여러 제품을 한 번에 저장
+      // 가벼운 파일 방식으로 제품 데이터를 JSON으로 변환하여 Storage에 저장
+      const jsonData = {
+        products,
+        metadata: {
+          totalCount: products.length,
+          uploadDate: new Date().toISOString(),
+          version: '1.0'
+        }
+      };
+      
+      const jsonBuffer = Buffer.from(JSON.stringify(jsonData, null, 2), 'utf8');
+      console.log('JSON 데이터 변환 완료, 크기:', jsonBuffer.length);
+      
+      // Firebase Storage에 JSON 파일 업로드
+      const bucket = admin.storage().bucket();
+      const fileName = `products/batch_${Date.now()}_${products.length}_products.json`;
+      const file = bucket.file(fileName);
+      
+      console.log('Firebase Storage 업로드 시작:', fileName);
+      
+      await file.save(jsonBuffer, {
+        metadata: {
+          contentType: 'application/json',
+          customMetadata: {
+            uploadDate: new Date().toISOString(),
+            productCount: products.length.toString()
+          }
+        },
+      });
+      
+      console.log('Firebase Storage 업로드 완료');
+      
+      // Firestore에 메타데이터만 저장 (가벼운 방식)
       const batch = db.batch();
       const savedIds = [];
       
       products.forEach(product => {
         const docRef = db.collection('products').doc();
-        product.createdAt = admin.firestore.FieldValue.serverTimestamp();
-        product.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-        batch.set(docRef, product);
+        const lightProduct = {
+          id: docRef.id,
+          vendorName: product.vendorName || '',
+          brand: product.brand || '',
+          category: product.category || '',
+          productCode: product.productCode || '',
+          productName: product.productName || '',
+          width: product.width || '',
+          minOrderQty: product.minOrderQty || 0,
+          details: product.details || '',
+          salePrice: product.salePrice || 0,
+          purchaseCost: product.purchaseCost || 0,
+          largePlainPrice: product.largePlainPrice || 0,
+          largePlainCost: product.largePlainCost || 0,
+          fabricPurchaseCostYD: product.fabricPurchaseCostYD || 0,
+          processingFee: product.processingFee || 0,
+          estimatedCost: product.estimatedCost || 0,
+          insideOutside: product.insideOutside || '',
+          note: product.note || '',
+          space: product.space || '',
+          spaceCustom: product.spaceCustom || '',
+          storageFile: fileName, // Storage 파일 경로 저장
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+        
+        batch.set(docRef, lightProduct);
         savedIds.push(docRef.id);
       });
       
       await batch.commit();
       
-      console.log(`${products.length}개의 제품 배치 저장 완료`);
+      console.log(`${products.length}개의 제품 가벼운 파일 저장 완료`);
       
       res.json({
-        message: `${products.length}개의 제품이 저장되었습니다.`,
+        message: `${products.length}개의 제품이 가벼운 파일로 저장되었습니다.`,
         savedCount: products.length,
-        savedIds: savedIds
+        savedIds: savedIds,
+        storageFile: fileName
       });
     } catch (error) {
-      console.error('제품 배치 저장 오류:', error);
+      console.error('제품 가벼운 파일 저장 오류:', error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -1392,74 +1534,146 @@ exports.historicalDataUpload = functions.https.onRequest(async (req, res) => {
       console.log('요청 헤더:', req.headers);
       console.log('요청 바디 타입:', req.headers['content-type']);
       
-      // multer를 사용한 파일 업로드 처리
-      upload.single('file')(req, res, async (err) => {
-        if (err) {
-          console.error('파일 업로드 오류:', err);
-          return res.status(400).json({ error: err.message });
-        }
-
+      // JWT 토큰 검증 (헤더 또는 URL 파라미터에서)
+      let userId = null;
+      let token = null;
+      
+      // URL 파라미터에서 토큰 확인
+      if (req.query.token) {
+        token = req.query.token;
+      } else if (req.headers['authorization']) {
+        token = req.headers['authorization'].split(' ')[1];
+      }
+      
+      if (token) {
         try {
-          console.log('파일 업로드 성공');
-          console.log('업로드된 파일:', req.file);
-          console.log('요청 바디:', req.body);
-          
-          const { type, year, sheetName } = req.body;
-          console.log('파싱된 데이터:', { type, year, sheetName });
-          
-          if (!type || !year) {
-            console.error('필수 파라미터 누락:', { type, year });
-            return res.status(400).json({ error: 'type과 year가 필요합니다.' });
-          }
-
-          if (!req.file) {
-            console.error('파일이 없습니다.');
-            return res.status(400).json({ error: '파일이 필요합니다.' });
-          }
-
-          // Firebase Storage에 파일 업로드
-          const bucket = admin.storage().bucket();
-          const fileName = `historical-data/${type}/${year}/${uuidv4()}_${req.file.originalname}`;
-          const file = bucket.file(fileName);
-
-          console.log('Firebase Storage 업로드 시작:', fileName);
-          
-          await file.save(req.file.buffer, {
-            metadata: {
-              contentType: req.file.mimetype,
-            },
-          });
-
-          console.log('Firebase Storage 업로드 완료');
-
-          // Firestore에 메타데이터 저장
-          const recordData = {
-            type,
-            year: parseInt(year),
-            filename: fileName,
-            originalName: req.file.originalname,
-            sheetName: sheetName || 'Sheet1',
-            uploadDate: admin.firestore.FieldValue.serverTimestamp(),
-            fileSize: req.file.size,
-            mimeType: req.file.mimetype
-          };
-
-          console.log('Firestore 저장 데이터:', recordData);
-
-          const docRef = await db.collection('historical-data').add(recordData);
-          
-          console.log('Firestore 저장 완료:', docRef.id);
-          
-          res.json({ 
-            message: '과거자료가 업로드되었습니다.',
-            id: docRef.id,
-            fileName: fileName
-          });
-        } catch (innerError) {
-          console.error('내부 처리 오류:', innerError);
-          res.status(500).json({ error: innerError.message });
+          const decoded = jwt.verify(token, JWT_SECRET);
+          userId = decoded.id;
+          console.log('인증된 사용자:', userId);
+        } catch (error) {
+          console.log('토큰 검증 실패:', error.message);
+          return res.status(401).json({ error: '유효하지 않은 토큰입니다.' });
         }
-      });
+      }
+      
+      // raw body 파싱을 위한 미들웨어
+      const rawBody = req.body;
+      console.log('Raw body type:', typeof rawBody);
+      console.log('Raw body length:', rawBody ? rawBody.length : 'undefined');
+      
+      // Content-Type 확인
+      const contentType = req.headers['content-type'] || '';
+      console.log('Content-Type:', contentType);
+      
+      if (!contentType.includes('application/json')) {
+        return res.status(400).json({ error: 'application/json 형식이 필요합니다.' });
+      }
+      
+      // 미리보기 데이터 처리
+      try {
+        console.log('미리보기 데이터 처리 시작');
+        console.log('요청 헤더:', req.headers);
+        console.log('요청 바디 타입:', typeof req.body);
+        console.log('요청 바디:', JSON.stringify(req.body, null, 2));
+        
+        const { fileName, previewData, merges, fileType, fileSize, type, year, sheetName, description } = req.body;
+        console.log('파싱된 데이터:', { 
+          fileName: !!fileName, 
+          previewData: !!previewData, 
+          fileType, 
+          fileSize, 
+          type, 
+          year, 
+          sheetName, 
+          description 
+        });
+        
+        if (!type || !year || !fileName || !previewData) {
+          console.error('필수 파라미터 누락:', { type, year, fileName: !!fileName, previewData: !!previewData });
+          return res.status(400).json({ error: '필수 파라미터가 누락되었습니다.' });
+        }
+
+        console.log('미리보기 데이터 수신 완료, 행 수:', previewData.length);
+
+        // 미리보기 데이터를 JSON 파일로 변환하여 Storage에 저장
+        const jsonData = {
+          previewData,
+          merges: merges || [],
+          metadata: {
+            fileName,
+            fileType,
+            fileSize,
+            type,
+            year,
+            sheetName,
+            description,
+            uploadedBy: userId,
+            uploadDate: new Date().toISOString()
+          }
+        };
+
+        const jsonBuffer = Buffer.from(JSON.stringify(jsonData, null, 2), 'utf8');
+        console.log('JSON 데이터 변환 완료, 크기:', jsonBuffer.length);
+
+        // Firebase Storage에 JSON 파일 업로드
+        const bucket = admin.storage().bucket();
+        const storageFileName = `historical-data/${type}/${year}/${uuidv4()}_${fileName.replace(/\.[^/.]+$/, '')}.json`;
+        const file = bucket.file(storageFileName);
+
+        console.log('Firebase Storage 업로드 시작:', storageFileName);
+        
+        // 폴더 구조 확인 및 생성
+        const folderPath = `historical-data/${type}/${year}/`;
+        console.log('폴더 경로:', folderPath);
+        
+        await file.save(jsonBuffer, {
+          metadata: {
+            contentType: 'application/json',
+            customMetadata: {
+              uploadedBy: userId,
+              uploadDate: new Date().toISOString(),
+              originalFileName: fileName
+            }
+          },
+        });
+
+        console.log('Firebase Storage 업로드 완료');
+
+        // Firestore에 메타데이터 저장
+        const recordData = {
+          type,
+          year: parseInt(year),
+          filename: storageFileName,
+          originalName: fileName,
+          sheetName: sheetName || 'Sheet1',
+          description: description || '',
+          uploadedBy: userId,
+          uploadDate: admin.firestore.FieldValue.serverTimestamp(),
+          fileSize: fileSize,
+          mimeType: 'application/json',
+          dataRows: previewData.length,
+          dataColumns: previewData[0] ? previewData[0].length : 0,
+          hasMerges: (merges && merges.length > 0)
+        };
+
+        console.log('Firestore 저장 데이터:', recordData);
+
+        // Firestore에 메타데이터 저장 (컬렉션 자동 생성)
+        const docRef = await db.collection('historical-data').add(recordData);
+        
+        console.log('Firestore 저장 완료:', docRef.id);
+        console.log('저장된 데이터:', recordData);
+      
+        res.json({ 
+          success: true,
+          message: '과거자료가 업로드되었습니다.',
+          id: docRef.id,
+          fileName: storageFileName
+        });
+      } catch (innerError) {
+        console.error('내부 처리 오류:', innerError);
+        res.status(500).json({ error: innerError.message });
+      }
     } catch (error) {
       console.error('과거자료 업로드 오류:', error);
       res.status(500).json({ error: error.message });
@@ -1567,28 +1781,45 @@ exports.historicalDataPreview = functions.https.onRequest(async (req, res) => {
   // OPTIONS 요청 처리
   if (req.method === 'OPTIONS') {
     res.status(200).send();
-      return;
+    return;
+  }
+    
+  try {
+    const recordId = req.query.id;
+    
+    if (!recordId) {
+      return res.status(400).json({ error: 'id 파라미터가 필요합니다.' });
     }
     
-    try {
-      const recordId = req.params.id;
-      
-      const doc = await db.collection('historical-data').doc(recordId).get();
-      if (!doc.exists) {
-        return res.status(404).json({ error: '과거자료를 찾을 수 없습니다.' });
-      }
+    const doc = await db.collection('historical-data').doc(recordId).get();
+    if (!doc.exists) {
+      return res.status(404).json({ error: '과거자료를 찾을 수 없습니다.' });
+    }
 
-      const data = doc.data();
-      // 실제로는 파일에서 데이터를 읽어와야 함
+    const data = doc.data();
+    
+    // Firebase Storage에서 JSON 파일 읽기
+    try {
+      const bucket = admin.storage().bucket();
+      const file = bucket.file(data.filename);
+      
+      const [fileContent] = await file.download();
+      const jsonData = JSON.parse(fileContent.toString('utf8'));
+      
       res.json({
         id: doc.id,
         ...data,
-        previewData: [['미리보기 데이터 예시']] // 실제 데이터로 교체 필요
+        data: jsonData.previewData,
+        merges: jsonData.merges || []
       });
-    } catch (error) {
-      console.error('과거자료 미리보기 오류:', error);
-      res.status(500).json({ error: error.message });
+    } catch (storageError) {
+      console.error('Storage 파일 읽기 실패:', storageError);
+      res.status(500).json({ error: '파일 데이터를 읽을 수 없습니다.' });
     }
+  } catch (error) {
+    console.error('과거자료 미리보기 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 과거자료 다운로드 (HTTP Request) - /historical-data/download
@@ -1629,7 +1860,136 @@ exports.historicalDataDownload = functions.https.onRequest(async (req, res) => {
   }
 });
 
-// 과거자료 삭제 (HTTP Request) - /historical-data/:id
+// 과거자료 배치 업로드 (HTTP Request) - /historical-data/batch-upload
+exports.historicalDataBatchUpload = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      console.log('과거자료 배치 업로드 요청 시작');
+      
+      // JWT 토큰 검증
+      const authHeader = req.headers['authorization'];
+      let userId = null;
+      if (authHeader) {
+        const token = authHeader.split(' ')[1];
+        try {
+          const decoded = jwt.verify(token, JWT_SECRET);
+          userId = decoded.id;
+          console.log('인증된 사용자:', userId);
+        } catch (error) {
+          console.log('토큰 검증 실패:', error.message);
+          return res.status(401).json({ error: '유효하지 않은 토큰입니다.' });
+        }
+      }
+      
+      // multer를 사용한 다중 파일 업로드 처리
+      upload.array('files', 10)(req, res, async (err) => {
+        if (err) {
+          console.error('파일 업로드 오류:', err);
+          return res.status(400).json({ error: err.message });
+        }
+
+        try {
+          console.log('배치 파일 업로드 성공');
+          console.log('업로드된 파일 수:', req.files.length);
+          console.log('요청 바디:', req.body);
+          
+          const { files } = req.body;
+          const fileData = JSON.parse(files || '[]');
+          
+          if (!req.files || req.files.length === 0) {
+            return res.status(400).json({ error: '업로드할 파일이 없습니다.' });
+          }
+
+          const results = [];
+          const bucket = admin.storage().bucket();
+
+          for (let i = 0; i < req.files.length; i++) {
+            const file = req.files[i];
+            const fileInfo = fileData[i] || {};
+            
+            const { type, year, sheetName, description } = fileInfo;
+            
+            if (!type || !year) {
+              results.push({
+                originalName: file.originalname,
+                success: false,
+                error: 'type과 year가 필요합니다.'
+              });
+              continue;
+            }
+
+            try {
+              // Firebase Storage에 파일 업로드
+              const fileName = `historical-data/${type}/${year}/${uuidv4()}_${file.originalname}`;
+              const storageFile = bucket.file(fileName);
+
+              await storageFile.save(file.buffer, {
+                metadata: {
+                  contentType: file.mimetype,
+                  customMetadata: {
+                    uploadedBy: userId,
+                    uploadDate: new Date().toISOString()
+                  }
+                },
+              });
+
+              // Firestore에 메타데이터 저장
+              const recordData = {
+                type,
+                year: parseInt(year),
+                filename: fileName,
+                originalName: file.originalname,
+                sheetName: sheetName || 'Sheet1',
+                description: description || '',
+                uploadedBy: userId,
+                uploadDate: admin.firestore.FieldValue.serverTimestamp(),
+                fileSize: file.size,
+                mimeType: file.mimetype
+              };
+
+              const docRef = await db.collection('historical-data').add(recordData);
+              
+              results.push({
+                originalName: file.originalname,
+                success: true,
+                id: docRef.id,
+                fileName: fileName
+              });
+              
+            } catch (fileError) {
+              console.error(`파일 ${file.originalname} 업로드 실패:`, fileError);
+              results.push({
+                originalName: file.originalname,
+                success: false,
+                error: fileError.message
+              });
+            }
+          }
+          
+          const successCount = results.filter(r => r.success).length;
+          const failureCount = results.filter(r => !r.success).length;
+          
+          res.json({ 
+            success: true,
+            message: `배치 업로드 완료: ${successCount}개 성공, ${failureCount}개 실패`,
+            results: results
+          });
+          
+        } catch (innerError) {
+          console.error('배치 업로드 내부 처리 오류:', innerError);
+          res.status(500).json({ error: innerError.message });
+        }
+      });
+    } catch (error) {
+      console.error('과거자료 배치 업로드 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 과거자료 삭제 (HTTP Request) - /historical-data/delete
 exports.historicalDataDelete = functions.https.onRequest(async (req, res) => {
   // CORS 헤더를 명시적으로 설정
   res.set('Access-Control-Allow-Origin', '*');
@@ -1643,17 +2003,52 @@ exports.historicalDataDelete = functions.https.onRequest(async (req, res) => {
     return;
   }
   
-    if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+  if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
     
-    try {
-      const recordId = req.params.id;
-      await db.collection('historical-data').doc(recordId).delete();
-      
-      res.json({ message: '과거자료가 삭제되었습니다.' });
-    } catch (error) {
-      console.error('과거자료 삭제 오류:', error);
-      res.status(500).json({ error: error.message });
+  try {
+    const recordId = req.query.id;
+    
+    if (!recordId) {
+      return res.status(400).json({ error: 'id 파라미터가 필요합니다.' });
     }
+    
+    console.log('삭제 요청 받음:', recordId);
+    
+    // Firestore에서 레코드 조회
+    const docRef = db.collection('historical-data').doc(recordId);
+    const doc = await docRef.get();
+    
+    if (!doc.exists) {
+      return res.status(404).json({ error: '과거자료를 찾을 수 없습니다.' });
+    }
+    
+    const data = doc.data();
+    console.log('삭제할 레코드:', data);
+    
+    // Firebase Storage에서 파일 삭제
+    if (data.filename) {
+      try {
+        const bucket = admin.storage().bucket();
+        const file = bucket.file(data.filename);
+        
+        console.log('Storage 파일 삭제 시도:', data.filename);
+        await file.delete();
+        console.log('Storage 파일 삭제 완료');
+      } catch (storageError) {
+        console.error('Storage 파일 삭제 실패:', storageError);
+        // Storage 파일이 없어도 Firestore 레코드는 삭제 진행
+      }
+    }
+    
+    // Firestore에서 레코드 삭제
+    await docRef.delete();
+    console.log('Firestore 레코드 삭제 완료');
+    
+    res.json({ message: '과거자료가 삭제되었습니다.' });
+  } catch (error) {
+    console.error('과거자료 삭제 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // ===== 테스트용 HTTP 함수 =====
@@ -2605,12 +3000,32 @@ exports.historicalDataUpdate = functions.https.onRequest(async (req, res) => {
   if (req.method !== 'PUT') return res.status(405).send('Method Not Allowed');
   
   try {
-    const recordId = req.params.id;
+    // URL 경로에서 ID 추출
+    const pathParts = req.path.split('/');
+    const recordId = pathParts[pathParts.length - 1];
+    
+    if (!recordId) {
+      return res.status(400).json({ error: '레코드 ID가 필요합니다.' });
+    }
+    
+    console.log('업데이트 요청 받음:', recordId);
+    
     const updateData = req.body;
     updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
     
-    await db.collection('historical-data').doc(recordId).update(updateData);
+    console.log('업데이트 데이터:', updateData);
     
+    // Firestore에서 레코드 존재 확인
+    const docRef = db.collection('historical-data').doc(recordId);
+    const doc = await docRef.get();
+    
+    if (!doc.exists) {
+      return res.status(404).json({ error: '과거자료를 찾을 수 없습니다.' });
+    }
+    
+    await docRef.update(updateData);
+    
+    console.log('업데이트 완료');
     res.json({ message: 'Historical Data가 업데이트되었습니다.' });
   } catch (error) {
     console.error('Historical Data 업데이트 오류:', error);
@@ -2948,4 +3363,225 @@ exports.registerStaff = exports.registerUser;
 
 // register 엔드포인트 추가 (LoginPage 호환성)
 exports.register = exports.registerUser;
+
+// ===== 비밀번호 변경 =====
+
+// 비밀번호 변경 (HTTP Request) - /profile/change-password
+exports.changePassword = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      // JWT 토큰 검증
+      const authHeader = req.headers['authorization'];
+      const token = authHeader && authHeader.split(' ')[1];
+
+      if (!token) {
+        return res.status(401).json({ error: 'Access token required' });
+      }
+
+      let decoded;
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
+      } catch (error) {
+        return res.status(403).json({ error: 'Invalid token' });
+      }
+
+      const userId = decoded.id || decoded.userId;
+      
+      if (!userId) {
+        return res.status(400).json({ error: '유효한 사용자 ID가 없습니다.' });
+      }
+
+      const { currentPassword, newPassword } = req.body;
+      
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: '현재 비밀번호와 새 비밀번호가 필요합니다.' });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({ error: '새 비밀번호는 6자 이상이어야 합니다.' });
+      }
+
+      // 현재 사용자 정보 조회
+      const userDoc = await db.collection('users').doc(userId).get();
+      if (!userDoc.exists) {
+        return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+      }
+
+      const userData = userDoc.data();
+
+      // 현재 비밀번호 검증
+      const isValidPassword = await bcrypt.compare(currentPassword, userData.password);
+      if (!isValidPassword) {
+        return res.status(401).json({ error: '현재 비밀번호가 올바르지 않습니다.' });
+      }
+
+      // 새 비밀번호 해시화
+      const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+      // 비밀번호 업데이트
+      await db.collection('users').doc(userId).update({
+        password: hashedNewPassword,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      console.log(`비밀번호 변경 성공: ${userId}`);
+
+      res.json({ 
+        success: true,
+        message: '비밀번호가 성공적으로 변경되었습니다.'
+      });
+
+    } catch (error) {
+      console.error('비밀번호 변경 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// ===== 프로필 이미지 업로드 =====
+
+// 프로필 이미지 업로드 (HTTP Request) - /profile/upload-image
+exports.uploadProfileImage = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      // JWT 토큰 검증
+      const authHeader = req.headers['authorization'];
+      const token = authHeader && authHeader.split(' ')[1];
+
+      if (!token) {
+        return res.status(401).json({ error: 'Access token required' });
+      }
+
+      let decoded;
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
+      } catch (error) {
+        return res.status(403).json({ error: 'Invalid token' });
+      }
+
+      const userId = decoded.id || decoded.userId;
+      
+      if (!userId) {
+        return res.status(400).json({ error: '유효한 사용자 ID가 없습니다.' });
+      }
+      
+      // 이미지 데이터 확인
+      const { imageData, imageType } = req.body;
+      
+      if (!imageData || !imageType) {
+        return res.status(400).json({ error: '이미지 데이터와 타입이 필요합니다.' });
+      }
+
+      // 이미지 타입 검증
+      if (!imageType.startsWith('image/')) {
+        return res.status(400).json({ error: '유효한 이미지 타입이 아닙니다.' });
+      }
+
+      // Base64 이미지 데이터를 Buffer로 변환
+      const base64Data = imageData.replace(/^data:image\/[a-z]+;base64,/, '');
+      const imageBuffer = Buffer.from(base64Data, 'base64');
+
+      // 이미지 크기 검증 (5MB 제한)
+      if (imageBuffer.length > 5 * 1024 * 1024) {
+        return res.status(400).json({ error: '이미지 크기는 5MB를 초과할 수 없습니다.' });
+      }
+
+      // Firebase Storage에 업로드
+      const bucket = admin.storage().bucket();
+      const fileName = `profile-images/${userId}_${Date.now()}.jpg`;
+      const file = bucket.file(fileName);
+
+      // 메타데이터 설정
+      const metadata = {
+        contentType: 'image/jpeg',
+        metadata: {
+          userId: userId,
+          uploadedAt: new Date().toISOString()
+        }
+      };
+
+      // 파일 업로드
+      await file.save(imageBuffer, {
+        metadata: metadata,
+        resumable: false
+      });
+
+      // 파일을 공개로 설정
+      await file.makePublic();
+
+      // 공개 URL 생성
+      const url = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+
+      // Firestore에 프로필 이미지 URL 저장
+      await db.collection('users').doc(userId).update({
+        profileImage: url,
+        profileImageUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      console.log(`프로필 이미지 업로드 성공: ${userId} -> ${fileName}`);
+
+      res.json({ 
+        success: true,
+        message: '프로필 이미지가 업로드되었습니다.',
+        profileImage: url,
+        fileName: fileName
+      });
+
+    } catch (error) {
+      console.error('프로필 이미지 업로드 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 프로필 이미지 삭제 (HTTP Request) - /profile/delete-image
+exports.deleteProfileImage = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      // JWT 토큰 검증
+      const authHeader = req.headers['authorization'];
+      const token = authHeader && authHeader.split(' ')[1];
+
+      if (!token) {
+        return res.status(401).json({ error: 'Access token required' });
+      }
+
+      let decoded;
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
+      } catch (error) {
+        return res.status(403).json({ error: 'Invalid token' });
+      }
+
+      const userId = decoded.id || decoded.userId;
+      
+      if (!userId) {
+        return res.status(400).json({ error: '유효한 사용자 ID가 없습니다.' });
+      }
+
+      // Firestore에서 프로필 이미지 URL 제거
+      await db.collection('users').doc(userId).update({
+        profileImage: null,
+        profileImageUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      console.log(`프로필 이미지 삭제 성공: ${userId}`);
+
+      res.json({ 
+        success: true,
+        message: '프로필 이미지가 삭제되었습니다.'
+      });
+
+    } catch (error) {
+      console.error('프로필 이미지 삭제 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
 

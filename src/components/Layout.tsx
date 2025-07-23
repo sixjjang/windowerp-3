@@ -491,37 +491,55 @@ const Layout: React.FC = () => {
 
     setProfileUploadLoading(true);
     try {
-      const formData = new FormData();
-      formData.append('profileImage', profileImageFile);
-
       const token = localStorage.getItem('token');
       console.log('프로필 사진 업로드 시작:', profileImageFile.name);
       
-      const response = await fetch(`${API_BASE}/profile/upload-image`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
+      // 파일을 Base64로 변환
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const base64Data = e.target?.result as string;
+          const imageType = profileImageFile.type;
+          
+          const response = await fetch(`${API_BASE}/uploadProfileImage`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              imageData: base64Data,
+              imageType: imageType
+            }),
+          });
 
-      console.log('업로드 응답 상태:', response.status);
+          console.log('업로드 응답 상태:', response.status);
+          
+          if (response.ok) {
+            const data = await response.json();
+            console.log('업로드 성공 응답:', data);
+            setProfileImage(data.profileImage);
+            setProfileImageFile(null);
+            setProfileImagePreview('');
+            // 성공 메시지 표시
+            alert('프로필 사진이 성공적으로 업로드되었습니다.');
+          } else {
+            const errorText = await response.text();
+            console.error('프로필 사진 업로드 실패:', response.status, errorText);
+            alert('프로필 사진 업로드에 실패했습니다.');
+          }
+        } catch (error) {
+          console.error('프로필 사진 업로드 오류:', error);
+          alert('프로필 사진 업로드 중 오류가 발생했습니다.');
+        } finally {
+          setProfileUploadLoading(false);
+        }
+      };
       
-      if (response.ok) {
-        const data = await response.json();
-        console.log('업로드 성공 응답:', data);
-        setProfileImage(`${API_BASE}/profile/image/${userId}`);
-        setProfileImageFile(null);
-        setProfileImagePreview('');
-        // 성공 메시지 표시
-        alert('프로필 사진이 성공적으로 업로드되었습니다.');
-      } else {
-        const errorText = await response.text();
-        console.error('프로필 사진 업로드 실패:', response.status, errorText);
-      }
+      reader.readAsDataURL(profileImageFile);
+      
     } catch (error) {
       console.error('프로필 사진 업로드 오류:', error);
-    } finally {
       setProfileUploadLoading(false);
     }
   };
@@ -548,7 +566,7 @@ const Layout: React.FC = () => {
     setProfileUploadLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE}/profile/delete-image`, {
+      const response = await fetch(`${API_BASE}/deleteProfileImage`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -563,9 +581,11 @@ const Layout: React.FC = () => {
         alert('프로필 사진이 삭제되었습니다.');
       } else {
         console.error('프로필 사진 삭제 실패');
+        alert('프로필 사진 삭제에 실패했습니다.');
       }
     } catch (error) {
       console.error('프로필 사진 삭제 오류:', error);
+      alert('프로필 사진 삭제 중 오류가 발생했습니다.');
     } finally {
       setProfileUploadLoading(false);
     }
@@ -637,45 +657,58 @@ const Layout: React.FC = () => {
     setNicknameError('');
     setNicknameSuccess('');
     setNicknameLoading(true);
+    
     const token = localStorage.getItem('token');
     if (!token) {
       setNicknameError('로그인이 필요합니다.');
       setNicknameLoading(false);
       return;
     }
+    
     if (!nicknameInput.trim()) {
       setNicknameError('닉네임을 입력하세요.');
       setNicknameLoading(false);
       return;
     }
+    
     try {
-      const res = await fetch(`${API_BASE}/me/nickname`, {
+      console.log('닉네임 변경 요청:', nicknameInput);
+      
+      const res = await fetch(`${API_BASE}/nickname`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ name: nicknameInput }),
+        body: JSON.stringify({ nickname: nicknameInput.trim() }),
       });
+      
+      console.log('닉네임 변경 응답 상태:', res.status);
+      
       if (!res.ok) {
-        setNicknameError(await res.text());
+        const errorText = await res.text();
+        console.error('닉네임 변경 실패:', errorText);
+        setNicknameError(errorText || '닉네임 변경에 실패했습니다.');
         setNicknameLoading(false);
         return;
       }
-      // 닉네임 변경 성공 시 서버에서 다시 받아오기
-      const userRes = await fetch(`${API_BASE}/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (userRes.ok) {
-        const userData = await userRes.json();
-        setNickname(userData.name || userData.nickname || nicknameInput);
-      } else {
-        setNickname(nicknameInput);
-      }
+      
+      const result = await res.json();
+      console.log('닉네임 변경 성공:', result);
+      
+      // 닉네임 변경 성공 시 즉시 업데이트
+      setNickname(nicknameInput.trim());
       setNicknameSuccess('닉네임이 변경되었습니다.');
-      setTimeout(() => setNicknameDialogOpen(false), 1000);
-    } catch {
-      setNicknameError('서버 오류');
+      
+      // 1초 후 다이얼로그 닫기
+      setTimeout(() => {
+        setNicknameDialogOpen(false);
+        setNicknameSuccess('');
+      }, 1000);
+      
+    } catch (error) {
+      console.error('닉네임 변경 오류:', error);
+      setNicknameError('서버 오류가 발생했습니다.');
     } finally {
       setNicknameLoading(false);
     }
@@ -707,7 +740,7 @@ const Layout: React.FC = () => {
     
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE}/profile/change-password`, {
+      const response = await fetch(`${API_BASE}/changePassword`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

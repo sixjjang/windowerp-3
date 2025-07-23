@@ -450,13 +450,13 @@ const ProductManagement: React.FC = () => {
         });
         
         if (allNewProducts.length > 0) {
-          console.log('Firebase에 저장할 제품들:', allNewProducts);
+          console.log('가벼운 파일로 변환하여 저장할 제품들:', allNewProducts);
           
           try {
-            // 배치 처리로 모든 제품을 한 번에 저장
-            console.log(`${allNewProducts.length}개 제품 배치 저장 시작`);
+            // 가벼운 파일 방식으로 제품 데이터 저장
+            console.log(`${allNewProducts.length}개 제품 가벼운 파일 저장 시작`);
             const result = await productService.saveProductsBatch(allNewProducts);
-            console.log('제품 배치 저장 완료:', result);
+            console.log('제품 가벼운 파일 저장 완료:', result);
             
             // 데이터 다시 로드
             try {
@@ -467,9 +467,9 @@ const ProductManagement: React.FC = () => {
               console.error('제품 목록 다시 로드 실패:', error);
             }
             
-            alert(`엑셀 업로드 완료! ${result.savedCount}개 제품이 Firebase에 저장되었습니다.`);
+            alert(`엑셀 업로드 완료! ${result.savedCount}개 제품이 가벼운 파일로 저장되었습니다.`);
           } catch (error) {
-            console.error('제품 배치 저장 실패:', error);
+            console.error('제품 가벼운 파일 저장 실패:', error);
             alert('제품 업로드에 실패했습니다. 다시 시도해주세요.');
           }
         } else {
@@ -485,47 +485,56 @@ const ProductManagement: React.FC = () => {
   };
 
   // Excel Download (Current Data) - 업체별로 시트 분리
-  const handleExcelDownload = () => {
-    const wb = XLSX.utils.book_new();
-    
-    // 업체별로 제품 그룹화
-    const vendorGroups: { [key: string]: Product[] } = {};
-    products.forEach(product => {
-      const vendorName = product.vendorName || '미분류';
-      if (!vendorGroups[vendorName]) {
-        vendorGroups[vendorName] = [];
-      }
-      vendorGroups[vendorName].push(product);
-    });
-    
-    // 각 업체별로 시트 생성
-    Object.keys(vendorGroups).forEach(vendorName => {
-      const vendorProducts = vendorGroups[vendorName];
-      const data = vendorProducts.map(p => [
-        p.vendorName,
-        p.brand,
-        p.category,
-        p.productCode,
-        p.productName,
-        p.width,
-        p.minOrderQty,
-        p.details,
-        p.salePrice,
-        p.purchaseCost,
-        p.largePlainPrice,
-        p.largePlainCost,
-        p.fabricPurchaseCostYD,
-        p.processingFee,
-        p.estimatedCost,
-        p.insideOutside,
-        p.note,
-      ]);
+  const handleExcelDownload = async () => {
+    try {
+      console.log('가벼운 파일에서 엑셀 파일로 변환하여 다운로드 시작');
       
-      const ws = XLSX.utils.aoa_to_sheet([productHeaders, ...data]);
-      XLSX.utils.book_append_sheet(wb, ws, vendorName);
-    });
-    
-    XLSX.writeFile(wb, `제품목록_${new Date().toISOString().split('T')[0]}.xlsx`);
+      // 가벼운 파일 데이터를 엑셀로 변환
+      const wb = XLSX.utils.book_new();
+      
+      // 업체별로 제품 그룹화
+      const vendorGroups: { [key: string]: Product[] } = {};
+      products.forEach(product => {
+        const vendorName = product.vendorName || '미분류';
+        if (!vendorGroups[vendorName]) {
+          vendorGroups[vendorName] = [];
+        }
+        vendorGroups[vendorName].push(product);
+      });
+      
+      // 각 업체별로 시트 생성
+      Object.keys(vendorGroups).forEach(vendorName => {
+        const vendorProducts = vendorGroups[vendorName];
+        const data = vendorProducts.map(p => [
+          p.vendorName,
+          p.brand,
+          p.category,
+          p.productCode,
+          p.productName,
+          p.width,
+          p.minOrderQty,
+          p.details,
+          p.salePrice,
+          p.purchaseCost,
+          p.largePlainPrice,
+          p.largePlainCost,
+          p.fabricPurchaseCostYD,
+          p.processingFee,
+          p.estimatedCost,
+          p.insideOutside,
+          p.note,
+        ]);
+        
+        const ws = XLSX.utils.aoa_to_sheet([productHeaders, ...data]);
+        XLSX.utils.book_append_sheet(wb, ws, vendorName);
+      });
+      
+      console.log('엑셀 파일 생성 완료');
+      XLSX.writeFile(wb, `제품목록_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (error) {
+      console.error('엑셀 다운로드 실패:', error);
+      alert('엑셀 다운로드에 실패했습니다.');
+    }
   };
 
   const handleTemplateDownload = () => {

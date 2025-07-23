@@ -388,16 +388,25 @@ export const orderService = {
 
 // 제품 데이터 서비스
 export const productService = {
-  // 제품 목록 가져오기
-  async getProducts() {
+  // 제품 목록 가져오기 (가벼운 파일 방식)
+  async getProducts(useStorage = true) {
     try {
-      const productsRef = collection(db, 'products');
-      const q = query(productsRef, orderBy('createdAt', 'desc'));
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      if (useStorage) {
+        // 가벼운 파일 방식으로 Storage에서 조회
+        console.log('가벼운 파일 방식으로 제품 조회');
+        const result = await callFirebaseFunction('products', { useStorage: 'true' }, 'GET');
+        return result;
+      } else {
+        // 기존 Firestore 방식 (하위 호환성)
+        console.log('Firestore 방식으로 제품 조회');
+        const productsRef = collection(db, 'products');
+        const q = query(productsRef, orderBy('createdAt', 'desc'));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+      }
     } catch (error) {
       console.error('제품 목록 가져오기 실패:', error);
       throw error;

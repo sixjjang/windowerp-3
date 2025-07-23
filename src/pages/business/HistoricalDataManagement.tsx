@@ -93,6 +93,61 @@ const HistoricalDataManagement: React.FC = () => {
   const [editFileName, setEditFileName] = useState('');
   const [editYear, setEditYear] = useState(selectedYear);
 
+  // 준비된 파일 목록
+  const [preparedFiles, setPreparedFiles] = useState<Array<{
+    file: File;
+    type: string;
+    year: number;
+    sheetName: string;
+    description: string;
+  }>>([]);
+
+  // localStorage에 준비된 파일 정보 저장 (무한 루프 방지)
+  useEffect(() => {
+    const saveFiles = async () => {
+      if (preparedFiles.length > 0) {
+        try {
+          // 메타데이터만 저장 (파일 크기가 클 수 있으므로)
+          const fileInfo = preparedFiles.map(f => ({
+            name: f.file.name,
+            type: f.type,
+            year: f.year,
+            sheetName: f.sheetName,
+            description: f.description,
+            size: f.file.size,
+            lastModified: f.file.lastModified
+          }));
+          localStorage.setItem('preparedFiles', JSON.stringify(fileInfo));
+        } catch (error) {
+          console.error('파일 저장 실패:', error);
+        }
+      } else {
+        localStorage.removeItem('preparedFiles');
+      }
+    };
+    
+    // 디바운스로 저장 빈도 제한
+    const timeoutId = setTimeout(saveFiles, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [preparedFiles]);
+
+  // 페이지 로드 시 저장된 파일 정보 확인 (실제 파일은 복원 불가)
+  useEffect(() => {
+    const saved = localStorage.getItem('preparedFiles');
+    if (saved) {
+      try {
+        const files = JSON.parse(saved);
+        if (files.length > 0) {
+          alert(`이전에 준비된 ${files.length}개 파일이 있었습니다. 새로고침으로 인해 파일이 초기화되었습니다. 파일을 다시 업로드해주세요.`);
+          localStorage.removeItem('preparedFiles');
+        }
+      } catch (error) {
+        console.error('저장된 파일 정보 로드 실패:', error);
+        localStorage.removeItem('preparedFiles');
+      }
+    }
+  }, []);
+
   const years = Array.from(
     { length: 10 },
     (_, i) => new Date().getFullYear() - i
@@ -212,11 +267,17 @@ const HistoricalDataManagement: React.FC = () => {
     if (!selectedFile || selectedSheets.length === 0) return;
 
     setUploading(true);
-    let successCount = 0;
-    let errorCount = 0;
-    
+
     try {
-      // 선택된 각 시트별로 업로드
+      // 1단계: 로컬에서 시트별 파일 생성
+      const newPreparedFiles: Array<{
+        file: File;
+        type: string;
+        year: number;
+        sheetName: string;
+        description: string;
+      }> = [];
+      
       for (const sheetName of selectedSheets) {
         try {
           const sheetDataArray = sheetData[sheetName];
@@ -243,53 +304,204 @@ const HistoricalDataManagement: React.FC = () => {
           // File 객체 생성
           const sheetFile = new File([blob], newFileName, { type: blob.type });
           
-          // Firebase Functions를 통해 업로드
-          const formData = new FormData();
-          formData.append('file', sheetFile);
-          formData.append('type', selectedType);
-          formData.append('year', selectedYear.toString());
-          formData.append('sheetName', sheetName);
-
-          const response = await fetch(`${API_BASE}/historicalDataUpload`, {
-            method: 'POST',
-            body: formData,
+          // 준비된 파일 목록에 추가
+          newPreparedFiles.push({
+            file: sheetFile,
+            type: selectedType,
+            year: selectedYear,
+            sheetName: sheetName,
+            description: `${selectedFile.name} - ${sheetName}`
           });
-
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
-
-          const result = await response.json();
-          console.log(`시트 ${sheetName} 업로드 결과:`, result);
-          
-          console.log(`시트 ${sheetName} 업로드 성공:`, result.fileName);
-          successCount++;
           
         } catch (error) {
-          console.error(`시트 ${sheetName} 업로드 실패:`, error);
-          errorCount++;
+          console.error(`시트 ${sheetName} 처리 실패:`, error);
         }
       }
       
-      // 업로드 완료 후 목록 갱신
-      loadRecords();
+      // 2단계: 준비된 파일들을 기존 목록에 추가
+      setPreparedFiles(prev => [...prev, ...newPreparedFiles]);
       
-      if (errorCount === 0) {
-        alert(`${successCount}개 시트가 성공적으로 업로드되었습니다.`);
-      } else {
-        alert(`업로드 완료: ${successCount}개 성공, ${errorCount}개 실패`);
-      }
-      
-    } catch (error) {
-      console.error('업로드 실패:', error);
-      alert('업로드 중 오류가 발생했습니다.');
-    } finally {
-      setUploading(false);
+      // 3단계: 다이얼로그 닫기
       setSheetSelectionDialog(false);
       setSelectedFile(null);
       setAvailableSheets([]);
       setSelectedSheets([]);
       setSheetData({});
+      
+      alert(`${newPreparedFiles.length}개 파일이 준비되었습니다. 서버 업로드 버튼을 눌러 Firebase에 업로드하세요.`);
+      
+    } catch (error) {
+      console.error('파일 준비 실패:', error);
+      alert('파일 준비 중 오류가 발생했습니다.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // 준비된 파일 미리보기
+  const handlePreparedFilePreview = async (fileInfo: {
+    file: File;
+    type: string;
+    year: number;
+    sheetName: string;
+    description: string;
+  }) => {
+    try {
+      const arrayBuffer = await fileInfo.file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const worksheet = workbook.Sheets[fileInfo.sheetName];
+      
+      if (!worksheet) {
+        alert('시트를 찾을 수 없습니다.');
+        return;
+      }
+
+      // 빈 셀 포함하여 데이터 추출
+      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+      const data: string[][] = [];
+      
+      for (let row = range.s.r; row <= range.e.r; row++) {
+        const rowData: string[] = [];
+        for (let col = range.s.c; col <= range.e.c; col++) {
+          const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+          const cell = worksheet[cellAddress];
+          rowData.push(cell ? cell.v?.toString() || '' : '');
+        }
+        data.push(rowData);
+      }
+
+      // 미리보기용 레코드 생성
+      const previewRecord: HistoricalRecord = {
+        id: 'preview',
+        type: fileInfo.type as 'delivery' | 'estimate',
+        year: fileInfo.year,
+        filename: fileInfo.file.name,
+        originalName: fileInfo.file.name,
+        uploadDate: new Date().toISOString(),
+        fileSize: fileInfo.file.size,
+        previewData: data,
+        merges: worksheet['!merges'] || []
+      };
+
+      setSelectedRecord(previewRecord);
+      setPreviewDialog(true);
+      
+    } catch (error) {
+      console.error('미리보기 실패:', error);
+      alert('미리보기를 불러올 수 없습니다.');
+    }
+  };
+
+  // 서버 업로드 함수 (미리보기 데이터 방식)
+  const handleServerUpload = async () => {
+    if (preparedFiles.length === 0) return;
+
+    setUploading(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    try {
+      const token = localStorage.getItem('token');
+      
+      // 개별 파일 업로드
+      for (const fileInfo of preparedFiles) {
+        try {
+          console.log(`업로드 시작: ${fileInfo.file.name}`);
+          
+          // Excel 파일을 읽어서 미리보기 데이터 추출
+          console.log('Excel 파일을 읽어서 미리보기 데이터 추출 중...');
+          
+          const arrayBuffer = await fileInfo.file.arrayBuffer();
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          const worksheet = workbook.Sheets[fileInfo.sheetName];
+          
+          if (!worksheet) {
+            throw new Error('시트를 찾을 수 없습니다.');
+          }
+
+          // 빈 셀 포함하여 데이터 추출 (미리보기와 동일한 방식)
+          const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+          const data: string[][] = [];
+          
+          for (let row = range.s.r; row <= range.e.r; row++) {
+            const rowData: string[] = [];
+            for (let col = range.s.c; col <= range.e.c; col++) {
+              const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+              const cell = worksheet[cellAddress];
+              rowData.push(cell ? cell.v?.toString() || '' : '');
+            }
+            data.push(rowData);
+          }
+
+          console.log('미리보기 데이터 추출 완료, 행 수:', data.length);
+
+          // 미리보기 데이터로 업로드
+          const uploadData = {
+            fileName: fileInfo.file.name,
+            previewData: data,
+            merges: worksheet['!merges'] || [],
+            fileType: fileInfo.file.type,
+            fileSize: fileInfo.file.size,
+            type: fileInfo.type,
+            year: fileInfo.year,
+            sheetName: fileInfo.sheetName || 'Sheet1',
+            description: fileInfo.description || ''
+          };
+
+          // 업로드 요청
+          console.log('업로드 데이터:', {
+            fileName: uploadData.fileName,
+            fileSize: uploadData.fileSize,
+            fileType: uploadData.fileType,
+            type: uploadData.type,
+            year: uploadData.year,
+            sheetName: uploadData.sheetName,
+            description: uploadData.description,
+            dataRows: uploadData.previewData.length
+          });
+
+          const response = await fetch(`${API_BASE}/historicalDataUpload`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(uploadData),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`업로드 실패: ${errorText}`);
+            throw new Error(errorText || `HTTP ${response.status}`);
+          }
+
+          const result = await response.json();
+          console.log(`${fileInfo.file.name} 업로드 성공`);
+          successCount++;
+          
+        } catch (error) {
+          console.error(`${fileInfo.file.name} 업로드 실패:`, error);
+          errorCount++;
+        }
+      }
+      
+      // 성공한 파일들 제거
+      if (successCount > 0) {
+        setPreparedFiles([]);
+        loadRecords();
+      }
+      
+      if (errorCount === 0) {
+        alert(`${successCount}개 파일이 성공적으로 업로드되었습니다.`);
+      } else {
+        alert(`업로드 완료: ${successCount}개 성공, ${errorCount}개 실패`);
+      }
+      
+    } catch (error) {
+      console.error('서버 업로드 실패:', error);
+      alert('서버 업로드 중 오류가 발생했습니다.');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -360,6 +572,7 @@ const HistoricalDataManagement: React.FC = () => {
       setPreviewDialog(true);
     } catch (error) {
       console.error('미리보기 로드 실패:', error);
+      alert('미리보기를 불러올 수 없습니다.');
     }
   };
 
@@ -410,6 +623,20 @@ const HistoricalDataManagement: React.FC = () => {
   // 스크롤 핸들러
   const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
     setScrollTop(event.currentTarget.scrollTop);
+  };
+
+  // 숫자 포맷팅 함수 (순수 숫자만 포맷팅)
+  const formatNumber = (content: string): string => {
+    if (!content || content.trim() === '') return content;
+    
+    // 순수 숫자인지 확인 (소수점, 음수 부호 포함)
+    const numericRegex = /^-?\d+(\.\d+)?$/;
+    if (numericRegex.test(content.trim())) {
+      const num = parseFloat(content);
+      return num.toLocaleString();
+    }
+    
+    return content;
   };
 
   // 셀 내용 길이에 따른 표시 방식 결정
@@ -739,7 +966,7 @@ const HistoricalDataManagement: React.FC = () => {
             </Button>
           </Grid>
 
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={2}>
             <Chip
               label={`${records.length}개 파일`}
               color="primary"
@@ -747,8 +974,132 @@ const HistoricalDataManagement: React.FC = () => {
               sx={{ borderColor: 'var(--primary-color)', color: 'var(--primary-color)' }}
             />
           </Grid>
+
+          <Grid item xs={12} md={2}>
+            <Chip
+              label={`${preparedFiles.length}개 준비됨`}
+              color="secondary"
+              variant="outlined"
+              sx={{ borderColor: 'var(--secondary-color)', color: 'var(--secondary-color)' }}
+            />
+          </Grid>
         </Grid>
       </Box>
+
+      {/* 준비된 파일 목록 */}
+      {preparedFiles.length > 0 && (
+        <Box
+          sx={{
+            p: 2,
+            backgroundColor: 'var(--surface-color)',
+            borderBottom: '1px solid var(--border-color)',
+          }}
+        >
+          <Typography
+            variant="h6"
+            sx={{ color: 'var(--text-color)', fontWeight: 'bold', mb: 2 }}
+          >
+            📁 준비된 파일 목록 ({preparedFiles.length}개)
+          </Typography>
+          
+          <Box sx={{ mb: 2 }}>
+            <Button
+              variant="contained"
+              onClick={handleServerUpload}
+              disabled={uploading}
+              sx={{
+                backgroundColor: 'var(--success-color)',
+                '&:hover': { backgroundColor: 'var(--success-hover-color)' },
+                mr: 2
+              }}
+            >
+              {uploading ? '업로드 중...' : '서버에 업로드'}
+            </Button>
+            
+            <Button
+              variant="outlined"
+              onClick={() => setPreparedFiles([])}
+              disabled={uploading}
+              sx={{
+                color: 'var(--error-color)',
+                borderColor: 'var(--error-color)',
+                '&:hover': {
+                  borderColor: 'var(--error-hover-color)',
+                  backgroundColor: 'var(--error-hover-color)',
+                }
+              }}
+            >
+              전체 삭제
+            </Button>
+          </Box>
+
+          <Grid container spacing={2}>
+            {preparedFiles.map((fileInfo, index) => (
+              <Grid item xs={12} md={6} lg={4} key={index}>
+                <Box
+                  sx={{
+                    p: 2,
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 1,
+                    backgroundColor: 'var(--background-color)',
+                  }}
+                >
+                  <Typography
+                    variant="subtitle2"
+                    sx={{ color: 'var(--text-color)', fontWeight: 'bold', mb: 1 }}
+                  >
+                    {fileInfo.file.name}
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)', mb: 1 }}>
+                    유형: {fileInfo.type === 'delivery' ? '납품관리' : '견적관리'}
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)', mb: 1 }}>
+                    년도: {fileInfo.year}년
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)', mb: 1 }}>
+                    시트명: {fileInfo.sheetName}
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)', mb: 1 }}>
+                    크기: {(fileInfo.file.size / 1024).toFixed(1)} KB
+                  </Typography>
+                  
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                      size="small"
+                      onClick={() => handlePreparedFilePreview(fileInfo)}
+                      sx={{ 
+                        color: 'var(--primary-color)',
+                        borderColor: 'var(--primary-color)',
+                        '&:hover': {
+                          borderColor: 'var(--hover-color)',
+                          backgroundColor: 'var(--hover-color)',
+                        }
+                      }}
+                      variant="outlined"
+                    >
+                      미리보기
+                    </Button>
+                    
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        setPreparedFiles(prev => prev.filter((_, i) => i !== index));
+                      }}
+                      sx={{ color: 'var(--error-color)' }}
+                    >
+                      삭제
+                    </Button>
+                  </Box>
+                </Box>
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+      )}
 
       {/* 검색 영역 */}
       <Box
@@ -1064,7 +1415,7 @@ const HistoricalDataManagement: React.FC = () => {
               p: 2,
               maxHeight: '70vh',
               overflow: 'auto',
-              overflowX: 'auto', // 가로 스크롤 허용
+              overflowX: 'scroll', // 항상 가로 스크롤 표시
               '&::-webkit-scrollbar': {
                 width: '8px',
                 height: '8px',
@@ -1159,7 +1510,7 @@ const HistoricalDataManagement: React.FC = () => {
                                 const key = `${actualRowIndex},${colIndex}`;
                                 const merge = mergeMap[key];
                                 if (merge && merge.skip) return null;
-                                const cellContent = cell || '';
+                                const cellContent = formatNumber(cell || '');
                                 const isHighlighted =
                                   highlightedCell?.row === actualRowIndex &&
                                   highlightedCell?.col === colIndex;

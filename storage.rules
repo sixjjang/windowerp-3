@@ -41,6 +41,14 @@ service firebase.storage {
                    request.resource.contentType.matches('image/.*');
     }
     
+    // 프로필 이미지 (Firebase Functions용)
+    match /profile-images/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+                   isValidFileSize() && 
+                   request.resource.contentType.matches('image/.*');
+    }
+    
     // 과거자료 파일
     match /historical-data/{type}/{year}/{fileName} {
       allow read: if isAuthenticated();
