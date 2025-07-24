@@ -166,6 +166,16 @@ const Schedule: React.FC = () => {
   
   // 중복 처리 방지를 위한 ref
   const processedDeliveryIds = useRef<Set<string>>(new Set());
+  
+  // 채팅 자동 스크롤을 위한 ref
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  
+  // 채팅 자동 스크롤 함수
+  const scrollToBottom = () => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  };
 
   // 기본 상태 관리
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
@@ -554,6 +564,28 @@ const Schedule: React.FC = () => {
     };
   }, [commentUnsubscribers]);
 
+  // 채팅 메시지가 변경될 때 자동 스크롤
+  useEffect(() => {
+    // 채팅 다이얼로그가 열려있을 때만 자동 스크롤
+    if (selectedEventForChat && selectedEventForChat.comments) {
+      // 약간의 지연을 두어 DOM 업데이트 후 스크롤
+      setTimeout(() => {
+        scrollToBottom();
+      }, 100);
+    }
+  }, [selectedEventForChat?.comments]);
+
+  // 통합 모달의 채팅 메시지가 변경될 때 자동 스크롤
+  useEffect(() => {
+    // 통합 모달이 열려있을 때만 자동 스크롤
+    if (selectedEventForEdit && integratedEventDialogOpen && realTimeComments[selectedEventForEdit.id]) {
+      // 약간의 지연을 두어 DOM 업데이트 후 스크롤
+      setTimeout(() => {
+        scrollToBottom();
+      }, 100);
+    }
+  }, [realTimeComments, selectedEventForEdit?.id, integratedEventDialogOpen]);
+
   // 납품관리 메모 변경 시 스케줄 업데이트
   useEffect(() => {
     // 납품관리 메모가 변경될 때마다 스케줄의 description 업데이트
@@ -637,15 +669,23 @@ const Schedule: React.FC = () => {
           setEvents(localData);
         }
 
-        // Firebase Functions에서 데이터 로드
-        const response = await fetch(`${API_BASE}/schedules`);
+        // 현재 날짜 기준으로 로드할 기간 설정 (전후 6개월씩, 총 13개월)
+        const currentDate = new Date();
+        const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 6, 1);
+        const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 6, 0);
+        
+        const startDateStr = startDate.toISOString().split('T')[0];
+        const endDateStr = endDate.toISOString().split('T')[0];
+
+        console.log(`스케줄 로드 기간: ${startDateStr} ~ ${endDateStr}`);
+
+        // Firebase Functions에서 기간별 데이터 로드
+        const response = await fetch(`${API_BASE}/schedules?startDate=${startDateStr}&endDate=${endDateStr}`);
         console.log('스케줄 로드 응답 상태:', response.status);
         
         if (response.ok) {
           const serverData = await response.json();
           console.log('서버에서 받은 스케줄 데이터 개수:', serverData.length);
-          console.log('서버 스케줄 ID들:', serverData.map((event: any) => event.id));
-          console.log('서버 스케줄 상세 데이터:', serverData);
           
           // 서버 데이터를 그대로 사용 (실제 Firebase 문서 상태 반영)
           // ID가 일관되게 유지되도록 처리
@@ -1969,7 +2009,7 @@ const Schedule: React.FC = () => {
         };
 
         const url = editingEvent
-          ? `${API_BASE}/schedules/${editingEvent.id}`
+          ? `${API_BASE}/schedules/${encodeURIComponent(editingEvent.id)}`
           : `${API_BASE}/schedules`;
 
         const method = editingEvent ? 'PUT' : 'POST';
@@ -1999,7 +2039,7 @@ const Schedule: React.FC = () => {
             // 편집 모드: 기존 이벤트 업데이트
             const updatedEvents = events.map(event =>
               event.id === editingEvent.id
-                ? ({ ...event, ...eventData } as ScheduleEvent)
+                ? ({ ...event, ...eventData, updatedAt: new Date().toISOString() } as ScheduleEvent)
                 : event
             );
             setEvents(updatedEvents);
@@ -2038,9 +2078,10 @@ const Schedule: React.FC = () => {
           }
         } else {
           const errorData = await response.json();
+          console.error('스케줄 저장 실패:', errorData);
           setSnackbar({
             open: true,
-            message: `저장 실패: ${errorData.error}`,
+            message: `저장 실패: ${errorData.error || '알 수 없는 오류'}`,
             severity: 'error',
           });
           return;
@@ -2093,10 +2134,12 @@ const Schedule: React.FC = () => {
         
         const response = await fetch(deleteUrl, {
           method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
         });
 
         console.log('삭제 응답 상태:', response.status);
-        console.log('삭제 응답 헤더:', Object.fromEntries(response.headers.entries()));
 
         if (response.ok) {
           const responseData = await response.json();
@@ -2183,18 +2226,21 @@ const Schedule: React.FC = () => {
           startDate: integratedEventData.startDate,
           endDate: integratedEventData.endDate,
           endTime: integratedEventData.endTime,
+          // 캘린더 표시를 위한 date 필드도 업데이트 (시작 날짜 기준)
+          date: integratedEventData.startDate || selectedEventForEdit.date,
           updatedAt: new Date().toISOString(),
         };
       } else {
         // 단일 일정 - 기간 설정 관련 필드 완전 제거
+        const { startDate, endDate, endTime, ...cleanEventData } = integratedEventData;
         updatedEvent = {
           ...selectedEventForEdit,
-          ...integratedEventData,
+          ...cleanEventData,
           repeatPattern: integratedRepeatPattern,
           repeatEndDate: integratedRepeatEndDate,
           comments: integratedEventComments,
-          // 단일 일정의 경우 date만 사용
-          date: integratedEventData.date || selectedEventForEdit.date,
+          // 단일 일정의 경우 date 필드 강제 업데이트
+          date: cleanEventData.date || selectedEventForEdit.date || new Date().toISOString().split('T')[0],
           // 기간 설정 관련 필드 완전 제거
           startDate: undefined,
           endDate: undefined,
@@ -2211,7 +2257,7 @@ const Schedule: React.FC = () => {
       });
 
       // 서버에 업데이트 요청
-      const url = `${API_BASE}/schedules/${selectedEventForEdit.id}`;
+      const url = `${API_BASE}/schedules/${encodeURIComponent(selectedEventForEdit.id)}`;
       const response = await fetch(url, {
         method: 'PUT',
         headers: {
@@ -2255,7 +2301,7 @@ const Schedule: React.FC = () => {
         console.error('통합 모달 저장 실패:', errorData);
         setSnackbar({
           open: true,
-          message: `서버 저장 실패: ${errorData.error}`,
+          message: `서버 저장 실패: ${errorData.error || '알 수 없는 오류'}`,
           severity: 'error',
         });
       }
@@ -2278,9 +2324,12 @@ const Schedule: React.FC = () => {
         console.log('통합 모달 삭제 요청:', { eventId: selectedEventForEdit.id });
 
         // 서버에서 삭제 요청
-        const url = `${API_BASE}/schedules/${selectedEventForEdit.id}`;
+        const url = `${API_BASE}/schedules/${encodeURIComponent(selectedEventForEdit.id)}`;
         const response = await fetch(url, {
           method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
         });
 
         console.log('통합 모달 삭제 응답 상태:', response.status);
@@ -2312,7 +2361,7 @@ const Schedule: React.FC = () => {
           console.error('통합 모달 삭제 실패:', errorData);
           setSnackbar({
             open: true,
-            message: `서버 삭제 실패: ${errorData.error}`,
+            message: `서버 삭제 실패: ${errorData.error || '알 수 없는 오류'}`,
             severity: 'error',
           });
         }
@@ -4162,34 +4211,8 @@ const Schedule: React.FC = () => {
               📅 스케줄
             </Typography>
 
-            {/* 새 일정 버튼과 검색창은 항상 표시 */}
+            {/* 검색창만 표시 */}
             <Box display="flex" gap={1} alignItems="center">
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={() => {
-                  setIsPeriodMode(false);
-                  setEventDialogOpen(true);
-                }}
-                sx={{
-                  backgroundColor: 'var(--primary-color)',
-                  fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' },
-                  px: { xs: 0.5, sm: 1, md: 2 },
-                  py: { xs: 0.25, sm: 0.5, md: 1 },
-                  minWidth: { xs: 'auto', sm: 'auto' },
-                  display: {
-                    xs: 'inline-flex',
-                    sm: 'inline-flex',
-                    md: 'inline-flex',
-                  },
-                  '& .MuiButton-startIcon': {
-                    marginRight: { xs: 0.5, sm: 1 },
-                  },
-                }}
-              >
-                새 일정
-              </Button>
               <TextField
                 size="small"
                 placeholder="검색: 제목, 고객명, 연락처, 주소, 프로젝트명, 채팅내용"
@@ -4412,23 +4435,55 @@ const Schedule: React.FC = () => {
 
           {/* 뷰 선택 탭 */}
           <Box sx={{ mb: 2 }}>
-            <Tabs
-              value={viewMode}
-              onChange={(e, newValue) => setViewMode(newValue)}
-              sx={{
-                '& .MuiTab-root': {
-                  color: 'var(--text-color)',
-                  fontSize: { xs: '1rem', sm: '1.1rem' },
-                  fontWeight: 'bold',
-                  '&.Mui-selected': { color: 'var(--primary-color)' },
-                },
-                '& .MuiTabs-indicator': { backgroundColor: 'var(--primary-color)' },
-              }}
-            >
-              <Tab label="월간" />
-              <Tab label="주간" />
-              <Tab label="일간" />
-            </Tabs>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <Tabs
+                value={viewMode}
+                onChange={(e, newValue) => setViewMode(newValue)}
+                sx={{
+                  '& .MuiTab-root': {
+                    color: 'var(--text-color)',
+                    fontSize: { xs: '1rem', sm: '1.1rem' },
+                    fontWeight: 'bold',
+                    '&.Mui-selected': { color: 'var(--primary-color)' },
+                  },
+                  '& .MuiTabs-indicator': { backgroundColor: 'var(--primary-color)' },
+                }}
+              >
+                <Tab label="월간" />
+                <Tab label="주간" />
+                <Tab label="일간" />
+              </Tabs>
+              
+              {/* 새일정 버튼 - 일간 뷰에서는 우측에 배치 */}
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center',
+                ml: { xs: 'auto', sm: 'auto', md: viewMode === 2 ? 'auto' : 0 }
+              }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<AddIcon />}
+                  onClick={() => {
+                    setIsPeriodMode(false);
+                    setEventDialogOpen(true);
+                  }}
+                  sx={{
+                    backgroundColor: 'var(--primary-color)',
+                    fontSize: { xs: '0.75rem', sm: '0.875rem', md: '0.875rem' },
+                    px: { xs: 1, sm: 1.5, md: 2 },
+                    py: { xs: 0.5, sm: 0.75, md: 1 },
+                    minWidth: { xs: 'auto', sm: 'auto' },
+                    display: 'inline-flex',
+                    '& .MuiButton-startIcon': {
+                      marginRight: { xs: 0.5, sm: 0.75, md: 1 },
+                    },
+                  }}
+                >
+                  새 일정
+                </Button>
+              </Box>
+            </Box>
           </Box>
 
           {/* 스케줄 뷰 */}
@@ -6181,10 +6236,12 @@ const Schedule: React.FC = () => {
                               </Typography>
                               {/* 메시지 목록 */}
                               <Box
+                                ref={chatScrollRef}
                                 sx={{
                                   maxHeight: { xs: 300, sm: 350 },
                                   overflowY: 'auto',
                                   mb: 2,
+                                  scrollBehavior: 'smooth',
                                 }}
                               >
                                 {scheduleEvent.comments &&
@@ -6194,35 +6251,71 @@ const Schedule: React.FC = () => {
                                     return (
                                       <Box key={comment.id} sx={{
                                         display: 'flex',
-                                        flexDirection: 'column',
-                                        alignItems: isMine ? 'flex-end' : 'flex-start',
-                                        mb: 1.2,
+                                        flexDirection: isMine ? 'row-reverse' : 'row',
+                                        alignItems: 'flex-start',
+                                        mb: 1.5,
+                                        gap: 1,
                                       }}>
+                                        {/* 아바타 */}
+                                        <Avatar
+                                          src={isMine ? profileImage : undefined}
+                                          sx={{
+                                            width: 32,
+                                            height: 32,
+                                            fontSize: '0.875rem',
+                                            bgcolor: isMine ? '#40c4ff' : '#666',
+                                            color: '#fff',
+                                          }}
+                                        >
+                                          {isMine ? (profileImage ? '' : nickname?.charAt(0)?.toUpperCase()) : comment.userName?.charAt(0)?.toUpperCase()}
+                                        </Avatar>
+                                        
+                                        {/* 메시지 컨테이너 */}
                                         <Box sx={{
-                                          maxWidth: '80%',
-                                          background: isMine ? '#1a2733' : '#10171e',
-                                          color: isMine ? '#fff' : '#e0e6ed',
-                                          borderRadius: 3,
-                                          boxShadow: '0 2px 8px 0 rgba(0,0,0,0.10)',
-                                          px: 1.5, py: 0.7,
-                                          alignSelf: isMine ? 'flex-end' : 'flex-start',
-                                          fontSize: '1.05rem',
-                                          lineHeight: 1.3,
-                                          minHeight: '2.1em',
-                                          display: 'flex', alignItems: 'center',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          alignItems: isMine ? 'flex-end' : 'flex-start',
+                                          maxWidth: '70%',
                                         }}>
-                                          <Typography variant="body2" sx={{ p: 0, m: 0, fontSize: 'inherit', lineHeight: 'inherit', wordBreak: 'break-word' }}>
-                                            {comment.message}
+                                          {/* 사용자 이름 */}
+                                          <Typography variant="caption" sx={{
+                                            color: '#b0b8c1',
+                                            mb: 0.5,
+                                            fontSize: '0.75rem',
+                                            fontWeight: 500,
+                                          }}>
+                                            {comment.userName}
+                                          </Typography>
+                                          
+                                          {/* 메시지 버블 */}
+                                          <Box sx={{
+                                            background: isMine ? '#1a2733' : '#10171e',
+                                            color: isMine ? '#fff' : '#e0e6ed',
+                                            borderRadius: 3,
+                                            boxShadow: '0 2px 8px 0 rgba(0,0,0,0.10)',
+                                            px: 1.5, py: 0.7,
+                                            fontSize: '1.05rem',
+                                            lineHeight: 1.3,
+                                            minHeight: '2.1em',
+                                            display: 'flex', alignItems: 'center',
+                                            wordBreak: 'break-word',
+                                          }}>
+                                            <Typography variant="body2" sx={{ p: 0, m: 0, fontSize: 'inherit', lineHeight: 'inherit' }}>
+                                              {comment.message}
+                                            </Typography>
+                                          </Box>
+                                          
+                                          {/* 시간 */}
+                                          <Typography variant="caption" sx={{
+                                            color: '#b0b8c1',
+                                            mt: 0.3,
+                                            textAlign: isMine ? 'right' : 'left',
+                                            px: 0.5,
+                                            fontSize: '0.7rem',
+                                          }}>
+                                            {new Date(comment.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                           </Typography>
                                         </Box>
-                                        <Typography variant="caption" sx={{
-                                          color: '#b0b8c1',
-                                          mt: 0.3,
-                                          textAlign: isMine ? 'right' : 'left',
-                                          px: 0.5,
-                                        }}>
-                                          {new Date(comment.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </Typography>
                                       </Box>
                                     );
                                   })
@@ -7769,7 +7862,25 @@ const Schedule: React.FC = () => {
                   control={
                     <Checkbox
                       checked={integratedIsPeriodMode}
-                      onChange={(e) => setIntegratedIsPeriodMode(e.target.checked)}
+                      onChange={(e) => {
+                        const isChecked = e.target.checked;
+                        setIntegratedIsPeriodMode(isChecked);
+                        
+                        // 기간설정 해제 시 기간 관련 필드 제거
+                        if (!isChecked) {
+                          setIntegratedEventData(prev => {
+                            const { startDate, endDate, endTime, ...rest } = prev;
+                            return rest;
+                          });
+                        } else {
+                          // 기간설정 체크 시 종료날짜를 시작날짜와 동일하게 설정
+                          setIntegratedEventData(prev => ({
+                            ...prev,
+                            endDate: prev.date || prev.startDate || '',
+                            endTime: prev.time || ''
+                          }));
+                        }
+                      }}
                       sx={{
                         color: '#40c4ff',
                         '&.Mui-checked': { color: '#40c4ff' },
@@ -8031,16 +8142,20 @@ const Schedule: React.FC = () => {
                 ) : (
                   <>
                 {/* 채팅 목록 */}
-                <Box sx={{
-                  flex: 1,
-                  overflowY: 'auto',
-                  background: '#232a36',
-                  px: 3, py: 2,
-                  borderLeft: 1, borderRight: 1,
-                  borderColor: '#2e3a4a',
-                  display: 'flex', flexDirection: 'column',
-                  gap: 2,
-                }}>
+                <Box
+                  ref={chatScrollRef}
+                  sx={{
+                    flex: 1,
+                    overflowY: 'auto',
+                    background: '#232a36',
+                    px: 3, py: 2,
+                    borderLeft: 1, borderRight: 1,
+                    borderColor: '#2e3a4a',
+                    display: 'flex', flexDirection: 'column',
+                    gap: 2,
+                    scrollBehavior: 'smooth',
+                  }}
+                >
                   {(realTimeComments[selectedEventForEdit?.id || ''] || []).length === 0 ? (
                     <Typography variant="body2" sx={{ color: '#b0b8c1', textAlign: 'center', mt: 4 }}>
                       아직 댓글이 없습니다.

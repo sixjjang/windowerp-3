@@ -13,6 +13,10 @@ import {
   Input,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import FullscreenIcon from '@mui/icons-material/Fullscreen';
+import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
+import ZoomInIcon from '@mui/icons-material/ZoomIn';
+import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 
 interface Props {
   open: boolean;
@@ -38,6 +42,8 @@ const HistoricalDocumentsModal: React.FC<Props> = ({ open, onClose }) => {
   const [searchResults, setSearchResults] = useState<
     { row: number; col: number; value: string }[]
   >([]);
+  const [isFullscreen, setIsFullscreen] = useState(true); // 기본값을 true로 변경
+  const [zoomLevel, setZoomLevel] = useState(1); // 줌 레벨 상태 추가
   const previewRef = useRef<HTMLDivElement>(null);
 
   // 연도별 파일 목록 불러오기
@@ -155,17 +161,80 @@ const HistoricalDocumentsModal: React.FC<Props> = ({ open, onClose }) => {
     return { map, skip };
   }
 
+  // 핀치 줌 핸들러
+  const handlePinchZoom = (event: React.WheelEvent) => {
+    // 모바일에서만 작동하도록 체크
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      const delta = event.deltaY > 0 ? -0.1 : 0.1;
+      const newZoom = Math.max(0.3, Math.min(3, zoomLevel + delta));
+      setZoomLevel(newZoom);
+    }
+  };
+
+  // 터치 이벤트 핸들러 (모바일 핀치 줌)
+  const handleTouchStart = (event: React.TouchEvent) => {
+    if (event.touches.length === 2) {
+      const touch1 = event.touches[0];
+      const touch2 = event.touches[1];
+      const initialDistance = Math.hypot(
+        touch1.clientX - touch2.clientX,
+        touch1.clientY - touch2.clientY
+      );
+      
+      const handleTouchMove = (moveEvent: TouchEvent) => {
+        if (moveEvent.touches.length === 2) {
+          const newTouch1 = moveEvent.touches[0];
+          const newTouch2 = moveEvent.touches[1];
+          const newDistance = Math.hypot(
+            newTouch1.clientX - newTouch2.clientX,
+            newTouch1.clientY - newTouch2.clientY
+          );
+          
+          const scale = newDistance / initialDistance;
+          const newZoom = Math.max(0.3, Math.min(3, zoomLevel * scale));
+          setZoomLevel(newZoom);
+        }
+      };
+      
+      const handleTouchEnd = () => {
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', handleTouchEnd);
+      };
+      
+      document.addEventListener('touchmove', handleTouchMove);
+      document.addEventListener('touchend', handleTouchEnd);
+    }
+  };
+
+  // 줌 인/아웃 핸들러
+  const handleZoomIn = () => {
+    const newZoom = Math.min(3, zoomLevel + 0.2);
+    setZoomLevel(newZoom);
+  };
+
+  const handleZoomOut = () => {
+    const newZoom = Math.max(0.3, zoomLevel - 0.2);
+    setZoomLevel(newZoom);
+  };
+
+  const handleZoomReset = () => {
+    setZoomLevel(1);
+  };
+
   return (
     <Dialog
       open={open}
       onClose={onClose}
-      maxWidth={false}
+      maxWidth={isFullscreen ? false : "xl"}
+      fullWidth={isFullscreen}
+      fullScreen={isFullscreen}
       PaperProps={{
         sx: {
-          width: '90vw',
-          height: '90vh',
-          maxWidth: 'none',
-          maxHeight: 'none',
+          width: isFullscreen ? '100vw' : '90vw',
+          height: isFullscreen ? '100vh' : '90vh',
+          maxWidth: isFullscreen ? 'none' : 'none',
+          maxHeight: isFullscreen ? 'none' : 'none',
           p: 0,
           background: '#23272f',
         },
@@ -187,14 +256,53 @@ const HistoricalDocumentsModal: React.FC<Props> = ({ open, onClose }) => {
         >
           과거자료 보기
         </Typography>
-        <IconButton onClick={onClose} sx={{ color: '#fff' }}>
-          <CloseIcon />
-        </IconButton>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <IconButton 
+            onClick={handleZoomOut}
+            sx={{ color: '#fff' }}
+            title="줌 아웃"
+            disabled={zoomLevel <= 0.3}
+          >
+            <ZoomOutIcon />
+          </IconButton>
+          <Typography
+            variant="body2"
+            sx={{ 
+              color: '#fff', 
+              fontSize: '0.875rem',
+              minWidth: '60px',
+              textAlign: 'center',
+              cursor: 'pointer'
+            }}
+            onClick={handleZoomReset}
+            title="줌 리셋"
+          >
+            {Math.round(zoomLevel * 100)}%
+          </Typography>
+          <IconButton 
+            onClick={handleZoomIn}
+            sx={{ color: '#fff' }}
+            title="줌 인"
+            disabled={zoomLevel >= 3}
+          >
+            <ZoomInIcon />
+          </IconButton>
+          <IconButton 
+            onClick={() => setIsFullscreen(!isFullscreen)} 
+            sx={{ color: '#fff' }}
+            title={isFullscreen ? '전체보기 해제' : '전체보기'}
+          >
+            {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+          </IconButton>
+          <IconButton onClick={onClose} sx={{ color: '#fff' }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
       </DialogTitle>
       <DialogContent
         sx={{
           p: 3,
-          height: 'calc(90vh - 64px)',
+          height: isFullscreen ? 'calc(100vh - 64px)' : 'calc(90vh - 64px)',
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -276,14 +384,40 @@ const HistoricalDocumentsModal: React.FC<Props> = ({ open, onClose }) => {
         {/* 미리보기 */}
         <Box
           ref={previewRef}
+          onWheel={handlePinchZoom}
+          onTouchStart={handleTouchStart}
           sx={{
             flex: 1,
             background: '#181c23',
             borderRadius: 2,
             p: 1,
             overflow: 'auto',
+            overflowX: 'scroll', // 가로 스크롤 항상 표시
+            overflowY: 'scroll', // 세로 스크롤 항상 표시
             color: '#fff',
             fontSize: 13,
+            transform: `scale(${zoomLevel})`,
+            transformOrigin: 'top left',
+            transition: 'transform 0.1s ease-out',
+            // 스크롤바 스타일링
+            '&::-webkit-scrollbar': {
+              width: '12px',
+              height: '12px',
+            },
+            '&::-webkit-scrollbar-track': {
+              background: '#2a2a2a',
+              borderRadius: '6px',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              background: '#555',
+              borderRadius: '6px',
+              '&:hover': {
+                background: '#777',
+              },
+            },
+            '&::-webkit-scrollbar-corner': {
+              background: '#2a2a2a',
+            },
           }}
         >
           {preview ? (

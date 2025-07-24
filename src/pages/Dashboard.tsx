@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Grid,
@@ -55,9 +55,19 @@ import {
   Person as PersonIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
+  Image as ImageIcon,
+  PhotoLibrary as PhotoLibraryIcon,
+  Download as DownloadIcon,
+  CloudUpload as CloudUploadIcon,
 } from '@mui/icons-material';
 import { UserContext } from '../components/Layout';
 import { API_BASE } from '../utils/auth';
+import { db } from '../firebase/config';
+import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, updateDoc, getDocs, deleteDoc } from 'firebase/firestore';
+import { storage } from '../firebase/config';
+import { ref, uploadBytes, getDownloadURL, listAll } from 'firebase/storage';
+import { userService } from '../utils/firebaseDataService';
+import { ensureFirebaseAuth } from '../utils/auth';
 
 // ScheduleEvent 타입 정의 (Schedule.tsx와 동일하게 최소 필드만)
 interface ScheduleEvent {
@@ -189,7 +199,7 @@ const defaultQuickLinks = {
 };
 
 const Dashboard: React.FC = () => {
-  const { nickname } = useContext(UserContext);
+  const { nickname, userId } = useContext(UserContext);
   const navigate = useNavigate();
   const [todayEvents, setTodayEvents] = useState<ScheduleEvent[]>([]);
   const [callMemo, setCallMemo] = useState('');
@@ -199,22 +209,10 @@ const Dashboard: React.FC = () => {
   const [quickLinks, setQuickLinks] = useState(defaultQuickLinks);
   const [editLinks, setEditLinks] = useState<any>(quickLinks);
   const [quickLinksOpen, setQuickLinksOpen] = useState(false);
+
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState([
-    {
-      id: 1,
-      user: '관리자',
-      text: '안녕하세요! 무엇을 도와드릴까요? 😊',
-      time: '12:00',
-    },
-    {
-      id: 2,
-      user: nickname || '나',
-      text: '채팅 테스트 메시지입니다.',
-      time: '12:01',
-    },
-  ]);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [scheduleExpanded, setScheduleExpanded] = useState(true);
@@ -225,7 +223,126 @@ const Dashboard: React.FC = () => {
   const [selectedScheduleDetail, setSelectedScheduleDetail] = useState<any>(null);
   const [scheduleDetailModalOpen, setScheduleDetailModalOpen] = useState(false);
   const [newScheduleComment, setNewScheduleComment] = useState('');
-  const [chatScrollRef, setChatScrollRef] = useState<HTMLDivElement | null>(null);
+  const [users, setUsers] = useState<any[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  
+  // 채팅 자동 스크롤 함수
+  const scrollToBottom = () => {
+    if (chatScrollRef.current) {
+      (chatScrollRef.current as HTMLDivElement).scrollTop = (chatScrollRef.current as HTMLDivElement).scrollHeight;
+    }
+  };
+
+  // 사진 선택 핸들러
+  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      setSelectedImage(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // 사진 업로드 함수
+  const handleImageUpload = async () => {
+    if (!selectedImage) return;
+
+    try {
+      setUploadingImage(true);
+      
+      // Firebase Auth 확인 및 인증
+      const firebaseUser = await ensureFirebaseAuth();
+      if (!firebaseUser) {
+        throw new Error('Firebase Auth 인증이 필요합니다. 다시 로그인해주세요.');
+      }
+      
+      console.log('Firebase Auth 인증 완료:', firebaseUser.uid);
+      
+      const imageRef = ref(storage, `employeeChat/${Date.now()}_${selectedImage.name}`);
+      const snapshot = await uploadBytes(imageRef, selectedImage);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+
+      // Firebase에 이미지 메시지 저장
+      await addDoc(collection(db, 'employeeChat'), {
+        user: nickname || '사용자',
+        text: '',
+        imageUrl: downloadURL,
+        imageName: selectedImage.name,
+        timestamp: serverTimestamp(),
+        userId: userId || 'current_user',
+        messageType: 'image'
+      });
+
+      // 상태 초기화
+      setSelectedImage(null);
+      setImagePreview(null);
+      setUploadingImage(false);
+    } catch (error) {
+      console.error('이미지 업로드 오류:', error);
+      setUploadingImage(false);
+      alert('이미지 업로드에 실패했습니다: ' + (error as Error).message);
+    }
+  };
+
+  // 갤러리 열기 함수
+  const handleOpenGallery = async () => {
+    try {
+      // Firebase Auth 확인 및 인증
+      const firebaseUser = await ensureFirebaseAuth();
+      if (!firebaseUser) {
+        throw new Error('Firebase Auth 인증이 필요합니다. 다시 로그인해주세요.');
+      }
+      
+      console.log('Firebase Auth 인증 완료 (갤러리):', firebaseUser.uid);
+      
+      const imagesRef = ref(storage, 'employeeChat');
+      const result = await listAll(imagesRef);
+      
+      const imageUrls = await Promise.all(
+        result.items.map(async (item) => {
+          const url = await getDownloadURL(item);
+          return {
+            url,
+            name: item.name,
+            fullPath: item.fullPath
+          };
+        })
+      );
+      
+      setChatImages(imageUrls);
+      setGalleryModalOpen(true);
+    } catch (error) {
+      console.error('갤러리 로드 오류:', error);
+      alert('갤러리를 불러오는데 실패했습니다: ' + (error as Error).message);
+    }
+  };
+
+  // 이미지 다운로드 함수
+  const handleImageDownload = (imageUrl: string, imageName: string) => {
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = imageName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // 선택된 이미지들 다운로드
+  const handleSelectedImagesDownload = () => {
+    selectedImagesForDownload.forEach((imageUrl) => {
+      const link = document.createElement('a');
+      link.href = imageUrl;
+      link.download = `image_${Date.now()}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+    setSelectedImagesForDownload([]);
+  };
   const [contextMenu, setContextMenu] = useState<{
     mouseX: number;
     mouseY: number;
@@ -238,8 +355,17 @@ const Dashboard: React.FC = () => {
     label: '',
     url: '',
     value: '',
-    icon: 'LinkIcon'
+    icon: 'LinkIcon',
+    customIcon: null as File | null
   });
+
+  // 사진 관련 state
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [galleryModalOpen, setGalleryModalOpen] = useState(false);
+  const [chatImages, setChatImages] = useState<any[]>([]);
+  const [selectedImagesForDownload, setSelectedImagesForDownload] = useState<string[]>([]);
 
   // 전화 메모 불러오기
   useEffect(() => {
@@ -248,6 +374,83 @@ const Dashboard: React.FC = () => {
       if (saved) setCallMemos(JSON.parse(saved));
     } catch { }
   }, []);
+
+  // Firebase에서 빠른링크 로드
+  useEffect(() => {
+    const loadQuickLinks = async () => {
+      try {
+        const quickLinksSnapshot = await getDocs(collection(db, 'quickLinks'));
+        const links: any = {};
+        
+        quickLinksSnapshot.forEach((doc) => {
+          const data = doc.data();
+          links[doc.id] = {
+            ...data,
+            icon: getIconComponent(data.icon || 'LinkIcon'), // 아이콘 컴포넌트로 변환
+          };
+        });
+        
+        setQuickLinks(links);
+        setEditLinks(links);
+      } catch (error) {
+        console.error('빠른링크 로드 오류:', error);
+        // 에러 발생 시 기본값 사용
+        setQuickLinks(defaultQuickLinks);
+        setEditLinks(defaultQuickLinks);
+      }
+    };
+
+    loadQuickLinks();
+  }, []);
+
+  // Firebase 전체 사용자 채팅 실시간 구독
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      query(collection(db, 'employeeChat'), orderBy('timestamp', 'asc')),
+      (snapshot) => {
+        const messages = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          time: doc.data().timestamp?.toDate?.() 
+            ? doc.data().timestamp.toDate().toLocaleTimeString('ko-KR', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : new Date().toLocaleTimeString('ko-KR', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+        }));
+        setChatMessages(messages);
+        
+        // 온라인 사용자 목록 업데이트 (최근 5분 내 메시지 보낸 사용자)
+        const recentUsers = new Set<string>();
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        
+        messages.forEach((msg: any) => {
+          if (msg.timestamp && new Date(msg.timestamp) > fiveMinutesAgo) {
+            recentUsers.add(msg.user);
+          }
+        });
+        
+        setOnlineUsers(Array.from(recentUsers));
+      },
+      (error) => {
+        console.error('전체 사용자 채팅 구독 오류:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  // 채팅 메시지가 변경될 때 자동 스크롤
+  useEffect(() => {
+    if (chatOpen && chatMessages.length > 0) {
+      setTimeout(() => {
+        scrollToBottom();
+      }, 100);
+    }
+  }, [chatMessages, chatOpen]);
 
   // 스케줄 데이터 fetch
   useEffect(() => {
@@ -370,7 +573,7 @@ const Dashboard: React.FC = () => {
             if (!activeChats[chatKey]) {
               console.log('Dashboard: 새로운 스케줄 채팅 활성화:', chatKey);
               setActiveChats(prev => {
-                const newState = { ...prev, [chatKey]: true };
+                const newState = { ...prev };
                 console.log('Dashboard: activeChats 상태 업데이트:', newState);
                 return newState;
               });
@@ -470,18 +673,18 @@ const Dashboard: React.FC = () => {
 
   // 모달이 열릴 때 채팅 스크롤을 맨 아래로 이동
   useEffect(() => {
-    if (scheduleDetailModalOpen && chatScrollRef) {
+    if (scheduleDetailModalOpen && chatScrollRef.current) {
       setTimeout(() => {
-        chatScrollRef.scrollTop = chatScrollRef.scrollHeight;
+        chatScrollRef.current!.scrollTop = chatScrollRef.current!.scrollHeight;
       }, 100);
     }
   }, [scheduleDetailModalOpen, chatScrollRef]);
 
   // 채팅 메시지가 업데이트될 때 스크롤을 맨 아래로 이동
   useEffect(() => {
-    if (scheduleDetailModalOpen && chatScrollRef && selectedScheduleChat?.messages) {
+    if (scheduleDetailModalOpen && chatScrollRef.current && selectedScheduleChat?.messages) {
       setTimeout(() => {
-        chatScrollRef.scrollTop = chatScrollRef.scrollHeight;
+        chatScrollRef.current!.scrollTop = chatScrollRef.current!.scrollHeight;
       }, 50);
     }
   }, [selectedScheduleChat?.messages, scheduleDetailModalOpen, chatScrollRef]);
@@ -533,7 +736,8 @@ const Dashboard: React.FC = () => {
       label: '',
       url: '',
       value: '',
-      icon: 'LinkIcon'
+      icon: 'LinkIcon',
+      customIcon: null
     });
     setQuickLinkDialogOpen(true);
   };
@@ -574,74 +778,135 @@ const Dashboard: React.FC = () => {
       label: link.label,
       url: link.url || '',
       value: link.value || link.url || '',
-      icon: iconString
+      icon: iconString,
+      customIcon: null
     });
     setQuickLinkDialogOpen(true);
   };
 
   // 빠른링크 삭제
-  const handleDeleteQuickLink = (key: string) => {
+  const handleDeleteQuickLink = async (key: string) => {
     if (window.confirm('정말로 이 항목을 삭제하시겠습니까?')) {
-      const updatedLinks = { ...editLinks };
-      delete updatedLinks[key];
-      setEditLinks(updatedLinks);
+      try {
+        // Firebase에서 삭제
+        const quickLinkRef = doc(db, 'quickLinks', key);
+        await deleteDoc(quickLinkRef);
+
+        // 로컬 상태 업데이트
+        const updatedLinks = { ...editLinks };
+        delete updatedLinks[key];
+        setEditLinks(updatedLinks);
+
+        alert('빠른링크가 삭제되었습니다.');
+      } catch (error) {
+        console.error('빠른링크 삭제 오류:', error);
+        alert('빠른링크 삭제에 실패했습니다. 다시 시도해주세요.');
+      }
+    }
+  };
+
+  // 아이콘 파일 선택 핸들러
+  const handleIconFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setNewQuickLink(prev => ({ ...prev, customIcon: file }));
     }
   };
 
   // 빠른링크 저장
-  const handleSaveQuickLink = () => {
+  const handleSaveQuickLink = async () => {
     if (!newQuickLink.label.trim()) {
       alert('제목을 입력해주세요.');
       return;
     }
 
-    const iconComponent = getIconComponent(newQuickLink.icon);
-    const linkData = {
-      label: newQuickLink.label.trim(),
-      url: newQuickLink.url.trim(),
-      value: newQuickLink.value.trim() || newQuickLink.url.trim(),
-      icon: iconComponent,
-    };
+    try {
+      let iconUrl = '';
+      
+      // 커스텀 아이콘이 있는 경우 Firebase Storage에 업로드
+      if (newQuickLink.customIcon) {
+        const storageRef = ref(storage, `quickLinks/icons/${Date.now()}_${newQuickLink.customIcon.name}`);
+        await uploadBytes(storageRef, newQuickLink.customIcon);
+        iconUrl = await getDownloadURL(storageRef);
+      }
 
-    if (editingQuickLink) {
-      // 편집 모드
-      const updatedLinks = { ...editLinks };
-      updatedLinks[editingQuickLink.key] = linkData;
-      setEditLinks(updatedLinks);
-    } else {
-      // 추가 모드
-      const newKey = `custom_${Date.now()}`;
-      const updatedLinks = { ...editLinks, [newKey]: linkData };
-      setEditLinks(updatedLinks);
+      const linkData = {
+        label: newQuickLink.label.trim(),
+        url: newQuickLink.url.trim(),
+        value: newQuickLink.value.trim() || newQuickLink.url.trim(),
+        icon: newQuickLink.icon, // 기본 아이콘 이름
+        customIconUrl: iconUrl, // 커스텀 아이콘 URL
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        userId: userId || 'current_user',
+      };
+
+      if (editingQuickLink) {
+        // 편집 모드 - Firebase 업데이트
+        const quickLinkRef = doc(db, 'quickLinks', editingQuickLink.key);
+        await updateDoc(quickLinkRef, {
+          ...linkData,
+          updatedAt: serverTimestamp(),
+        });
+
+        // 로컬 상태 업데이트
+        const updatedLinks = { ...editLinks };
+        updatedLinks[editingQuickLink.key] = {
+          ...linkData,
+          icon: getIconComponent(newQuickLink.icon), // UI용 아이콘 컴포넌트
+        };
+        setEditLinks(updatedLinks);
+      } else {
+        // 추가 모드 - Firebase에 새 문서 추가
+        const newQuickLinkRef = await addDoc(collection(db, 'quickLinks'), linkData);
+        
+        // 로컬 상태 업데이트
+        const newKey = newQuickLinkRef.id;
+        const updatedLinks = { ...editLinks, [newKey]: {
+          ...linkData,
+          icon: getIconComponent(newQuickLink.icon), // UI용 아이콘 컴포넌트
+        }};
+        setEditLinks(updatedLinks);
+      }
+
+      setQuickLinkDialogOpen(false);
+      setEditingQuickLink(null);
+              setNewQuickLink({
+          label: '',
+          url: '',
+          value: '',
+          icon: 'LinkIcon',
+          customIcon: null
+        });
+
+      alert('빠른링크가 저장되었습니다.');
+    } catch (error) {
+      console.error('빠른링크 저장 오류:', error);
+      alert('빠른링크 저장에 실패했습니다. 다시 시도해주세요.');
     }
-
-    setQuickLinkDialogOpen(false);
-    setEditingQuickLink(null);
-    setNewQuickLink({
-      label: '',
-      url: '',
-      value: '',
-      icon: 'LinkIcon'
-    });
   };
 
 
 
-  const handleSendChat = () => {
+  const handleSendChat = async () => {
     if (!chatInput.trim()) return;
-    setChatMessages([
-      ...chatMessages,
-      {
-        id: Date.now(),
-        user: nickname || '나',
-        text: chatInput,
-        time: new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      },
-    ]);
-    setChatInput('');
+
+    try {
+      // Firebase에 메시지 저장
+      await addDoc(collection(db, 'employeeChat'), {
+        user: nickname || '사용자',
+        text: chatInput.trim(),
+        timestamp: serverTimestamp(),
+        userId: userId || 'current_user',
+      });
+
+      // 입력 필드 초기화
+      setChatInput('');
+    } catch (error) {
+      console.error('채팅 메시지 저장 오류:', error);
+      // 에러 발생 시 사용자에게 알림
+      alert('메시지 전송에 실패했습니다. 다시 시도해주세요.');
+    }
   };
 
   const handleScheduleClick = (event: ScheduleEvent) => {
@@ -653,12 +918,6 @@ const Dashboard: React.FC = () => {
     setScheduleModalOpen(false);
     setSelectedEvent(null);
   };
-
-  // 참여자 더미 데이터 → 현재 로그인 닉네임 반영
-  const chatParticipants = [
-    { name: '관리자', color: '#FF4757' },
-    { name: nickname || '나', color: '#FF6B9D' },
-  ];
 
   const handleScheduleChatClick = (chatKey: string) => {
     const scheduleTitle = chatKey.replace('스케줄-', '');
@@ -765,8 +1024,8 @@ const Dashboard: React.FC = () => {
 
     // 채팅 스크롤을 맨 아래로 이동
     setTimeout(() => {
-      if (chatScrollRef) {
-        chatScrollRef.scrollTop = chatScrollRef.scrollHeight;
+      if (chatScrollRef.current) {
+        chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
       }
     }, 100);
   };
@@ -814,6 +1073,20 @@ const Dashboard: React.FC = () => {
     }
     handleContextMenuClose();
   };
+
+  // 사용자 목록 가져오기
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const userList = await userService.getUsers();
+        setUsers(userList);
+        console.log('사용자 목록 로드 완료:', userList.length, '명');
+      } catch (error) {
+        console.error('사용자 목록 로드 실패:', error);
+      }
+    };
+    fetchUsers();
+  }, []);
 
   return (
     <Box sx={{ p: 3, position: 'relative', minHeight: '100vh' }}>
@@ -1159,101 +1432,113 @@ const Dashboard: React.FC = () => {
 
       {/* 하단 2분할 영역 */}
       <Grid container spacing={3}>
-        <Grid item xs={12} md={6} sx={{ position: 'relative' }}>
-          {/* 좌측: 링크/정보공유 */}
-          <Collapse in={quickLinksOpen}>
-            <Card
-              sx={{
-                background: '#23232a',
-                borderRadius: 4,
-                boxShadow: '0 4px 24px rgba(255, 107, 157, 0.10)',
-                border: '1px solid rgba(255, 107, 157, 0.15)',
-                color: 'white',
-              }}
-            >
-              <CardContent sx={{ p: 3 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                  <Avatar
+        <Grid item xs={12} md={6}>
+          {/* 좌측: 빠른링크/정보공유 */}
+          <Card
+            sx={{
+              background: 'var(--surface-color)',
+              borderRadius: 4,
+              boxShadow: '0 4px 24px var(--border-color)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-color)',
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <Avatar
+                  sx={{
+                    background: 'var(--gradient-primary)',
+                    mr: 2,
+                    width: 40,
+                    height: 40,
+                    cursor: 'pointer',
+                    transition: 'transform 0.2s ease-in-out',
+                    '&:hover': {
+                      transform: 'scale(1.05)',
+                    },
+                  }}
+                  onClick={() => setQuickLinksOpen(!quickLinksOpen)}
+                >
+                  <LinkIcon />
+                </Avatar>
+                <Typography
+                  variant="h6"
+                  sx={{
+                    fontWeight: 700,
+                    color: 'var(--text-color)',
+                    flex: 1,
+                  }}
+                >
+                  빠른링크/정보공유
+                </Typography>
+                <IconButton
+                  onClick={() => setQuickLinksOpen(!quickLinksOpen)}
+                  sx={{
+                    color: 'var(--text-secondary-color)',
+                    '&:hover': {
+                      color: 'var(--primary-color)',
+                      backgroundColor: 'var(--hover-color)',
+                    },
+                    transition: 'all 0.2s ease-in-out',
+                    transform: quickLinksOpen ? 'rotate(0deg)' : 'rotate(180deg)',
+                  }}
+                >
+                  <ExpandMoreIcon />
+                </IconButton>
+                <Tooltip title="빠른링크 추가">
+                  <IconButton
+                    onClick={handleAddQuickLink}
                     sx={{
-                      background:
-                        'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)',
-                      mr: 2,
-                      width: 40,
-                      height: 40,
+                      color: 'var(--text-secondary-color)',
+                      '&:hover': {
+                        color: '#4CAF50',
+                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                      },
+                      transition: 'all 0.2s ease-in-out',
                     }}
                   >
-                    <LinkIcon />
-                  </Avatar>
-                  <Typography
-                    variant="h6"
-                    sx={{
-                      flexGrow: 1,
-                      fontWeight: 700,
-                      color: 'white',
-                    }}
-                  >
-                    빠른링크/정보공유
-                  </Typography>
-                  <Tooltip title="닫기">
-                    <IconButton
-                      onClick={() => setQuickLinksOpen(false)}
-                      sx={{ color: '#FF6B9D', ml: 1 }}
-                    >
-                      <CloseIcon />
-                    </IconButton>
-                  </Tooltip>
-                  {editMode ? (
-                    <>
-                      <Tooltip title="항목 추가">
-                        <IconButton
-                          onClick={handleAddQuickLink}
-                          sx={{
-                            color: '#4CAF50',
-                            '&:hover': {
-                              background: 'rgba(76, 175, 80, 0.1)',
-                            },
-                          }}
-                        >
-                          <AddIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="저장">
-                        <IconButton
-                          onClick={handleSaveLinks}
-                          sx={{
-                            color: '#FF6B9D',
-                            '&:hover': {
-                              background: 'rgba(255, 107, 157, 0.1)',
-                            },
-                          }}
-                        >
-                          <SaveIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </>
-                  ) : (
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<EditIcon />}
-                      onClick={() => {
-                        setEditLinks(quickLinks);
-                        setEditMode(true);
-                      }}
-                      sx={{
-                        borderColor: '#FF6B9D',
-                        color: '#FF6B9D',
-                        borderRadius: 2,
-                        '&:hover': {
-                          borderColor: '#FFB3D1',
+                    <AddIcon />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+
+              {/* 접힌 상태: 아이콘만 표시 */}
+              {!quickLinksOpen && (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center', py: 2 }}>
+                  {Object.entries(quickLinks).map(([key, link]: [string, any]) => (
+                    <Tooltip key={key} title={link.label}>
+                      <IconButton
+                        onClick={() => {
+                          if (link.url) {
+                            window.open(link.url, '_blank');
+                          } else {
+                            handleCopy(link.value);
+                          }
+                        }}
+                        sx={{
+                          width: 48,
+                          height: 48,
                           background: 'rgba(255, 107, 157, 0.1)',
-                        },
-                      }}
-                    >
-                      수정
-                    </Button>
-                  )}
+                          border: '1px solid rgba(255, 107, 157, 0.2)',
+                          color: 'var(--text-color)',
+                          '&:hover': {
+                            background: 'rgba(255, 107, 157, 0.2)',
+                            borderColor: 'rgba(255, 107, 157, 0.4)',
+                            transform: 'scale(1.05)',
+                          },
+                          transition: 'all 0.2s ease',
+                        }}
+                      >
+                        {typeof link.icon === 'string' ? getIconComponent(link.icon) : link.icon}
+                      </IconButton>
+                    </Tooltip>
+                  ))}
                 </Box>
+              )}
+
+              {/* 펼쳐진 상태: 전체 링크 목록 */}
+              <Collapse in={quickLinksOpen}>
+                <Box sx={{ mt: 2 }}>
 
                 <Grid container spacing={2}>
                   {Object.entries(quickLinks).map(([key, link]) => (
@@ -1415,34 +1700,11 @@ const Dashboard: React.FC = () => {
                     </Grid>
                   ))}
                 </Grid>
-              </CardContent>
-            </Card>
-          </Collapse>
-          {/* 플로팅 열기 버튼 */}
-          {!quickLinksOpen && (
-            <Fab
-              variant="extended"
-              color="secondary"
-              onClick={() => setQuickLinksOpen(true)}
-              sx={{
-                position: 'absolute',
-                left: 0,
-                bottom: -56,
-                zIndex: 10,
-                background: 'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)',
-                color: 'white',
-                fontWeight: 700,
-                boxShadow: '0 4px 16px rgba(255, 107, 157, 0.15)',
-                '&:hover': {
-                  background:
-                    'linear-gradient(135deg, #FFB3D1 0%, #FF6B7A 100%)',
-                },
-              }}
-            >
-              <LinkIcon sx={{ mr: 1 }} /> 빠른링크/정보공유 열기
-            </Fab>
-          )}
-        </Grid>
+              </Box>
+            </Collapse>
+          </CardContent>
+        </Card>
+      </Grid>
         <Grid item xs={12} md={6}>
           {/* 우측: 활성 채팅 영역 */}
           <Card
@@ -1475,7 +1737,7 @@ const Dashboard: React.FC = () => {
                     color: 'var(--text-color)',
                   }}
                 >
-                  활성 채팅
+                  스케줄별 채팅
                   {Object.keys(unreadChats).filter(key => unreadChats[key]).length > 0 && (
                     <Box
                       component="span"
@@ -1937,7 +2199,6 @@ const Dashboard: React.FC = () => {
 
                   {/* 채팅 메시지 영역 */}
                   <Box
-                    ref={setChatScrollRef}
                     sx={{ flex: 1, overflowY: 'auto', mb: 2, maxHeight: 300 }}
                   >
                     {selectedScheduleChat?.messages && selectedScheduleChat.messages.length > 0 ? (
@@ -2108,7 +2369,7 @@ const Dashboard: React.FC = () => {
             },
           }}
         >
-          <ChatIcon sx={{ mr: 1 }} /> 채팅 열기
+          <ChatIcon sx={{ mr: 1 }} /> 전체 채팅 열기
         </Fab>
       )}
 
@@ -2120,8 +2381,8 @@ const Dashboard: React.FC = () => {
             right: { xs: 8, md: 32 },
             bottom: { xs: 8, md: 32 },
             zIndex: 1300,
-            width: { xs: '90vw', sm: 340 },
-            maxWidth: 400,
+            width: { xs: '95vw', sm: 450 },
+            maxWidth: 500,
             boxShadow: '0 8px 32px rgba(255, 107, 157, 0.18)',
             borderRadius: 4,
             background: '#23232a',
@@ -2129,8 +2390,8 @@ const Dashboard: React.FC = () => {
             border: '2px solid #FF6B9D',
             display: 'flex',
             flexDirection: 'column',
-            minHeight: 320,
-            maxHeight: '60vh',
+            minHeight: 400,
+            maxHeight: '70vh',
           }}
         >
           {/* 채팅창 헤더 */}
@@ -2160,7 +2421,7 @@ const Dashboard: React.FC = () => {
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <GroupIcon sx={{ fontSize: 18, mr: 0.5 }} />
-                <span>직원간 대화 공간</span>
+                <span>전체 사용자 채팅 ({users.length}명)</span>
               </Box>
               <IconButton
                 onClick={() => setChatOpen(false)}
@@ -2171,43 +2432,53 @@ const Dashboard: React.FC = () => {
             </Box>
             {/* 참여자 표시 */}
             <Box
-              sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 0.5 }}
+              sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 0.5, flexWrap: 'wrap' }}
             >
-              {chatParticipants.map((p, i) => (
+              <Typography sx={{ fontSize: 11, color: '#fff', opacity: 0.8, mr: 1 }}>
+                참여자: {users.length}명 | 온라인: {onlineUsers.length}명
+              </Typography>
+              {users.slice(0, 5).map((user, i) => (
                 <Box
-                  key={p.name}
+                  key={user.id}
                   sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                 >
                   <Avatar
                     sx={{
-                      width: 22,
-                      height: 22,
-                      bgcolor: p.color,
-                      fontSize: 13,
+                      width: 20,
+                      height: 20,
+                      bgcolor: onlineUsers.includes(user.name || user.username) ? '#4CAF50' : '#666',
+                      fontSize: 11,
                     }}
                   >
-                    {p.name[0]}
+                    {(user.name || user.username || '?')[0]}
                   </Avatar>
                   <Typography
-                    sx={{ fontSize: 12, color: '#fff', opacity: 0.8 }}
+                    sx={{ fontSize: 10, color: '#fff', opacity: 0.8 }}
                   >
-                    {p.name}
+                    {user.name || user.username}
                   </Typography>
-                  {i < chatParticipants.length - 1 && (
+                  {i < Math.min(users.length, 5) - 1 && (
                     <span style={{ color: '#fff', opacity: 0.5 }}>|</span>
                   )}
                 </Box>
               ))}
+              {users.length > 5 && (
+                <Typography sx={{ fontSize: 10, color: '#fff', opacity: 0.6 }}>
+                  +{users.length - 5}명 더
+                </Typography>
+              )}
             </Box>
           </Box>
 
           {/* 채팅 메시지 리스트 */}
           <Box
+            ref={chatScrollRef}
             sx={{
               flex: 1,
               overflowY: 'auto',
               p: 1.2,
               background: 'rgba(255,255,255,0.02)',
+              scrollBehavior: 'smooth',
             }}
           >
             {chatMessages.map(msg => (
@@ -2230,7 +2501,7 @@ const Dashboard: React.FC = () => {
                     mr: msg.user === nickname ? 0 : 1,
                   }}
                 >
-                  {msg.user[0]}
+                  {msg.user?.charAt(0) || '?'}
                 </Avatar>
                 <Box
                   sx={{
@@ -2251,7 +2522,24 @@ const Dashboard: React.FC = () => {
                     mr: msg.user === nickname ? 1 : 0,
                   }}
                 >
-                  <Typography sx={{ fontWeight: 500 }}>{msg.text}</Typography>
+                  {msg.imageUrl ? (
+                    <Box sx={{ mb: 1 }}>
+                      <img
+                        src={msg.imageUrl}
+                        alt="채팅 이미지"
+                        style={{
+                          maxWidth: '100%',
+                          maxHeight: 200,
+                          borderRadius: 8,
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => window.open(msg.imageUrl, '_blank')}
+                      />
+                    </Box>
+                  ) : null}
+                  {msg.text && (
+                    <Typography sx={{ fontWeight: 500 }}>{msg.text}</Typography>
+                  )}
                   <Typography
                     sx={{
                       fontSize: 10,
@@ -2266,6 +2554,47 @@ const Dashboard: React.FC = () => {
               </Box>
             ))}
           </Box>
+          {/* 이미지 미리보기 */}
+          {imagePreview && (
+            <Box
+              sx={{
+                p: 1,
+                borderTop: '1px solid #FF6B9D',
+                background: 'rgba(255,255,255,0.05)',
+                position: 'relative',
+              }}
+            >
+              <Box sx={{ position: 'relative', display: 'inline-block' }}>
+                <img
+                  src={imagePreview}
+                  alt="미리보기"
+                  style={{
+                    maxWidth: 150,
+                    maxHeight: 150,
+                    borderRadius: 8,
+                  }}
+                />
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    setSelectedImage(null);
+                    setImagePreview(null);
+                  }}
+                  sx={{
+                    position: 'absolute',
+                    top: -8,
+                    right: -8,
+                    bgcolor: '#FF4757',
+                    color: 'white',
+                    '&:hover': { bgcolor: '#FF3742' },
+                  }}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            </Box>
+          )}
+
           {/* 채팅 입력창 */}
           <Box
             sx={{
@@ -2276,6 +2605,33 @@ const Dashboard: React.FC = () => {
               background: 'rgba(255,255,255,0.03)',
             }}
           >
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageSelect}
+              style={{ display: 'none' }}
+              id="image-input"
+            />
+            <label htmlFor="image-input">
+              <IconButton
+                component="span"
+                sx={{
+                  color: '#FF6B9D',
+                  '&:hover': { bgcolor: 'rgba(255, 107, 157, 0.1)' },
+                }}
+              >
+                <ImageIcon />
+              </IconButton>
+            </label>
+            <IconButton
+              onClick={handleOpenGallery}
+              sx={{
+                color: '#FF6B9D',
+                '&:hover': { bgcolor: 'rgba(255, 107, 157, 0.1)' },
+              }}
+            >
+              <PhotoLibraryIcon />
+            </IconButton>
             <TextField
               fullWidth
               size="small"
@@ -2308,7 +2664,8 @@ const Dashboard: React.FC = () => {
             />
             <Button
               variant="contained"
-              onClick={handleSendChat}
+              onClick={selectedImage ? handleImageUpload : handleSendChat}
+              disabled={uploadingImage || (!chatInput.trim() && !selectedImage)}
               sx={{
                 background: 'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)',
                 color: '#fff',
@@ -2323,9 +2680,13 @@ const Dashboard: React.FC = () => {
                   background:
                     'linear-gradient(135deg, #FFB3D1 0%, #FF6B7A 100%)',
                 },
+                '&:disabled': {
+                  background: 'rgba(255,255,255,0.1)',
+                  color: 'rgba(255,255,255,0.3)',
+                },
               }}
             >
-              전송
+              {uploadingImage ? '업로드중...' : selectedImage ? '사진전송' : '전송'}
             </Button>
           </Box>
         </Box>
@@ -2337,6 +2698,155 @@ const Dashboard: React.FC = () => {
         onClose={handleCloseScheduleModal}
         event={selectedEvent}
       />
+
+      {/* 갤러리 모달 */}
+      <Dialog
+        open={galleryModalOpen}
+        onClose={() => setGalleryModalOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: {
+            backgroundColor: '#23232a',
+            color: '#e0e6ed',
+            maxHeight: '90vh',
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            borderBottom: '1px solid #2e3a4a',
+            backgroundColor: '#1a1f2e',
+            color: '#40c4ff',
+            fontWeight: 'bold',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PhotoLibraryIcon />
+            채팅 이미지 갤러리
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            {selectedImagesForDownload.length > 0 && (
+              <Button
+                variant="contained"
+                size="small"
+                onClick={handleSelectedImagesDownload}
+                startIcon={<DownloadIcon />}
+                sx={{
+                  background: 'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)',
+                  color: 'white',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #FFB3D1 0%, #FF6B7A 100%)',
+                  },
+                }}
+              >
+                선택 다운로드 ({selectedImagesForDownload.length})
+              </Button>
+            )}
+            <IconButton
+              onClick={() => setGalleryModalOpen(false)}
+              sx={{ color: '#b0b8c1' }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          {chatImages.length > 0 ? (
+            <Grid container spacing={2}>
+              {chatImages.map((image, index) => (
+                <Grid item xs={6} sm={4} md={3} key={index}>
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      border: selectedImagesForDownload.includes(image.url) 
+                        ? '3px solid #FF6B9D' 
+                        : '1px solid #2e3a4a',
+                      borderRadius: 2,
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      '&:hover': {
+                        borderColor: '#FF6B9D',
+                      },
+                    }}
+                    onClick={() => {
+                      if (selectedImagesForDownload.includes(image.url)) {
+                        setSelectedImagesForDownload(prev => 
+                          prev.filter(url => url !== image.url)
+                        );
+                      } else {
+                        setSelectedImagesForDownload(prev => [...prev, image.url]);
+                      }
+                    }}
+                  >
+                    <img
+                      src={image.url}
+                      alt={image.name}
+                      style={{
+                        width: '100%',
+                        height: 150,
+                        objectFit: 'cover',
+                      }}
+                    />
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        top: 8,
+                        right: 8,
+                        display: 'flex',
+                        gap: 0.5,
+                      }}
+                    >
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleImageDownload(image.url, image.name);
+                        }}
+                        sx={{
+                          bgcolor: 'rgba(0,0,0,0.7)',
+                          color: 'white',
+                          '&:hover': { bgcolor: 'rgba(0,0,0,0.9)' },
+                        }}
+                      >
+                        <DownloadIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                    {selectedImagesForDownload.includes(image.url) && (
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          top: 8,
+                          left: 8,
+                          bgcolor: '#FF6B9D',
+                          borderRadius: '50%',
+                          width: 24,
+                          height: 24,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Typography sx={{ color: 'white', fontSize: 12 }}>✓</Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+          ) : (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <PhotoLibraryIcon sx={{ fontSize: 48, color: '#b0b8c1', mb: 2 }} />
+              <Typography color="#b0b8c1">
+                아직 업로드된 이미지가 없습니다.
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* 빠른링크 추가/편집 다이얼로그 */}
       <Dialog
@@ -2398,12 +2908,15 @@ const Dashboard: React.FC = () => {
               }}
             />
 
-            {/* URL 입력 */}
+            {/* 내용 입력 */}
             <TextField
-              label="URL (선택사항)"
-              value={newQuickLink.url}
-              onChange={(e) => setNewQuickLink(prev => ({ ...prev, url: e.target.value }))}
+              label="내용"
+              value={newQuickLink.value}
+              onChange={(e) => setNewQuickLink(prev => ({ ...prev, value: e.target.value }))}
               fullWidth
+              multiline
+              rows={3}
+              placeholder="링크 설명이나 복사할 텍스트를 입력하세요"
               sx={{
                 '& .MuiOutlinedInput-root': {
                   color: 'white',
@@ -2422,6 +2935,108 @@ const Dashboard: React.FC = () => {
                 },
               }}
             />
+
+            {/* URL 입력 */}
+            <TextField
+              label="URL (선택사항)"
+              value={newQuickLink.url}
+              onChange={(e) => setNewQuickLink(prev => ({ ...prev, url: e.target.value }))}
+              fullWidth
+              placeholder="https://example.com"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  color: 'white',
+                  '& fieldset': {
+                    borderColor: 'rgba(255, 107, 157, 0.3)',
+                  },
+                  '&:hover fieldset': {
+                    borderColor: 'rgba(255, 107, 157, 0.5)',
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: '#FF6B9D',
+                  },
+                },
+                '& .MuiInputLabel-root': {
+                  color: 'rgba(255, 255, 255, 0.7)',
+                },
+              }}
+            />
+
+            {/* 아이콘 선택 */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ color: 'white', mb: 1 }}>
+                아이콘 선택
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                {iconOptions.map((option) => (
+                  <Tooltip key={option.value} title={option.label}>
+                    <IconButton
+                      onClick={() => setNewQuickLink(prev => ({ ...prev, icon: option.value }))}
+                      sx={{
+                        width: 48,
+                        height: 48,
+                        background: newQuickLink.icon === option.value 
+                          ? 'rgba(255, 107, 157, 0.3)' 
+                          : 'rgba(255, 255, 255, 0.1)',
+                        border: newQuickLink.icon === option.value 
+                          ? '2px solid #FF6B9D' 
+                          : '1px solid rgba(255, 255, 255, 0.2)',
+                        color: 'white',
+                        '&:hover': {
+                          background: 'rgba(255, 107, 157, 0.2)',
+                          borderColor: '#FF6B9D',
+                        },
+                      }}
+                    >
+                      {option.icon}
+                    </IconButton>
+                  </Tooltip>
+                ))}
+              </Box>
+            </Box>
+
+            {/* 커스텀 아이콘 업로드 */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ color: 'white', mb: 1 }}>
+                커스텀 아이콘 업로드 (선택사항)
+              </Typography>
+              <input
+                accept="image/*"
+                style={{ display: 'none' }}
+                id="icon-file-input"
+                type="file"
+                onChange={handleIconFileSelect}
+              />
+              <label htmlFor="icon-file-input">
+                <Button
+                  variant="outlined"
+                  component="span"
+                  startIcon={<CloudUploadIcon />}
+                  sx={{
+                    borderColor: 'rgba(255, 107, 157, 0.5)',
+                    color: '#FF6B9D',
+                    '&:hover': {
+                      borderColor: '#FF6B9D',
+                      background: 'rgba(255, 107, 157, 0.1)',
+                    },
+                  }}
+                >
+                  아이콘 이미지 업로드
+                </Button>
+              </label>
+              {newQuickLink.customIcon && (
+                <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <img
+                    src={URL.createObjectURL(newQuickLink.customIcon)}
+                    alt="Preview"
+                    style={{ width: 32, height: 32, borderRadius: 4 }}
+                  />
+                  <Typography variant="body2" sx={{ color: 'white' }}>
+                    {newQuickLink.customIcon.name}
+                  </Typography>
+                </Box>
+              )}
+            </Box>
 
             {/* 내용 입력 */}
             <TextField

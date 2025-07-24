@@ -25,6 +25,7 @@ import ContractManagement from './pages/business/ContractManagement';
 import MeasurementData from './pages/business/MeasurementData';
 import HistoricalDataManagement from './pages/business/HistoricalDataManagement';
 import TimeTreeCallback from './pages/TimeTreeCallback';
+import CurtainSimulatorIframe from './pages/business/CurtainSimulatorIframe';
 import './styles/global.css';
 
 function AppContent() {
@@ -110,6 +111,7 @@ function AppContent() {
             <Route path="accounting" element={<Accounting />} />
             <Route path="statistics" element={<Statistics />} />
             <Route path="tax-invoice" element={<TaxInvoice />} />
+            <Route path="curtain-simulator" element={<CurtainSimulatorIframe />} />
 
             <Route path="admin/users" element={<AdminUserManagement />} />
             <Route

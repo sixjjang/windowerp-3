@@ -25,6 +25,7 @@ import {
   Tabs,
   Tab,
   TextField,
+  Divider,
 } from '@mui/material';
 import {
   Print as PrintIcon,
@@ -202,16 +203,68 @@ const TemplateSettingsModal: React.FC<{
     return saved || DEFAULT_NOTICE_TEXT;
   });
   const [activeTab, setActiveTab] = useState(0);
+  const [savedCompanies, setSavedCompanies] = useState<any[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
 
   useEffect(() => {
     setTemplate(currentTemplate);
   }, [currentTemplate]);
+
+  // 저장된 회사 정보 불러오기
+  useEffect(() => {
+    const loadSavedCompanies = () => {
+      try {
+        const saved = localStorage.getItem('companyInfo');
+        if (saved) {
+          const companies = JSON.parse(saved);
+          if (Array.isArray(companies)) {
+            // 우리회사 타입만 필터링
+            const ourCompanies = companies.filter((company: any) => company.type === '우리회사');
+            setSavedCompanies(ourCompanies);
+            
+            // 현재 선택된 회사 ID 찾기
+            if (ourCompanies.length > 0) {
+              const currentCompany = ourCompanies.find((company: any) => 
+                company.name === companyInfo.name && 
+                company.address === companyInfo.address
+              );
+              if (currentCompany) {
+                setSelectedCompanyId(currentCompany.id);
+              } else {
+                setSelectedCompanyId(ourCompanies[0].id);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('회사 정보 로드 중 오류:', error);
+      }
+    };
+
+    if (open) {
+      loadSavedCompanies();
+    }
+  }, [open, companyInfo.name, companyInfo.address]);
 
   const handleFieldToggle = (fieldKey: string) => {
     const newFields = template.fields.includes(fieldKey)
       ? template.fields.filter((f: string) => f !== fieldKey)
       : [...template.fields, fieldKey];
     setTemplate({ ...template, fields: newFields });
+  };
+
+  // 회사 선택 핸들러
+  const handleCompanySelect = (companyId: number) => {
+    setSelectedCompanyId(companyId);
+    const selectedCompany = savedCompanies.find(company => company.id === companyId);
+    if (selectedCompany) {
+      setCompanyInfo({
+        name: selectedCompany.name,
+        address: selectedCompany.address,
+        phone: selectedCompany.contact,
+        email: selectedCompany.email || ''
+      });
+    }
   };
 
   const handleSave = () => {
@@ -328,6 +381,51 @@ const TemplateSettingsModal: React.FC<{
           <Box>
             <Typography variant="h6" sx={{ mb: 2 }}>
               회사 정보 설정
+            </Typography>
+            
+            {/* 저장된 회사 선택 */}
+            {savedCompanies.length > 0 && (
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'bold' }}>
+                  등록된 회사 선택
+                </Typography>
+                <Grid container spacing={1}>
+                  {savedCompanies.map((company) => (
+                    <Grid item xs={12} sm={6} key={company.id}>
+                      <Box
+                        sx={{
+                          p: 2,
+                          border: selectedCompanyId === company.id ? '2px solid #1976d2' : '1px solid #ddd',
+                          borderRadius: 1,
+                          cursor: 'pointer',
+                          backgroundColor: selectedCompanyId === company.id ? '#f3f8ff' : 'transparent',
+                          '&:hover': {
+                            backgroundColor: selectedCompanyId === company.id ? '#f3f8ff' : '#f5f5f5',
+                          },
+                        }}
+                        onClick={() => handleCompanySelect(company.id)}
+                      >
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                          {company.name}
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.secondary', mb: 0.5 }}>
+                          {company.address}
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                          {company.contact}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Box>
+            )}
+
+            <Divider sx={{ my: 2 }} />
+
+            {/* 수동 입력 */}
+            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
+              수동 입력
             </Typography>
             <Grid container spacing={2}>
               <Grid item xs={12}>

@@ -626,7 +626,20 @@ const Layout: React.FC = () => {
 
         // 프로필 사진 정보 설정
         if (userData.profileImage) {
-          setProfileImage(`${API_BASE}/profile/image/${userData.id || userData.username || payload.username || payload.id}`);
+          console.log('사용자 프로필 이미지:', userData.profileImage);
+          // 프로필 이미지 URL이 완전한 URL이고 유효한 경우에만 사용
+          if (userData.profileImage.startsWith('http') && 
+              (userData.profileImage.includes('storage.googleapis.com') || 
+               userData.profileImage.startsWith('data:'))) {
+            setProfileImage(userData.profileImage);
+          } else {
+            // 상대 경로이거나 잘못된 URL인 경우 기본 아바타 사용
+            console.log('잘못된 프로필 이미지 URL 무시:', userData.profileImage);
+            setProfileImage('');
+          }
+        } else {
+          // 프로필 이미지가 없는 경우 기본 아바타 사용
+          setProfileImage('');
         }
       } catch (error) {
         console.error('인증 상태 확인 오류:', error);
@@ -947,7 +960,13 @@ const Layout: React.FC = () => {
                 <ListItem key={itemIndex} disablePadding>
                   <StyledListItemButton
                     selected={location.pathname === item.path}
-                    onClick={() => navigate(item.path)}
+                    onClick={() => {
+                      navigate(item.path);
+                      // 모바일에서 메뉴 아이템 클릭 시 메뉴 자동 닫기
+                      if (isMobile) {
+                        setDrawerOpen(false);
+                      }
+                    }}
                     sx={{
                       '& .MuiListItemText-primary': {
                         fontWeight: location.pathname === item.path ? 700 : 500,
@@ -1136,18 +1155,22 @@ const Layout: React.FC = () => {
                     }}
                   >
                     <Avatar
-                      src={profileImage || undefined}
+                      src={profileImage && profileImage.startsWith('http') && 
+                           (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:')) 
+                           ? profileImage : undefined}
                       sx={{
                         width: 32,
                         height: 32,
-                        background: profileImage
+                        background: profileImage && profileImage.startsWith('http') && 
+                                   (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:'))
                           ? 'transparent'
                           : 'var(--gradient-primary)',
                         fontSize: '0.875rem',
                         fontWeight: 600,
                       }}
                     >
-                      {!profileImage && (
+                      {(!profileImage || !profileImage.startsWith('http') || 
+                        (!profileImage.includes('storage.googleapis.com') && !profileImage.startsWith('data:'))) && (
                         <FavoriteIcon sx={{ fontSize: '1rem' }} />
                       )}
                     </Avatar>
@@ -1220,12 +1243,15 @@ const Layout: React.FC = () => {
                     }}
                   >
                     <Avatar
-                      src={profileImage || undefined}
+                      src={profileImage && profileImage.startsWith('http') && 
+                           (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:')) 
+                           ? profileImage : undefined}
                       sx={{
                         width: 100,
                         height: 100,
                         margin: 'auto',
-                        background: profileImage
+                        background: profileImage && profileImage.startsWith('http') && 
+                                   (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:'))
                           ? 'transparent'
                           : 'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)',
                         fontSize: '2rem',
@@ -1340,7 +1366,8 @@ const Layout: React.FC = () => {
                     />
                   </Button>
                   
-                  {profileImage && (
+                  {profileImage && profileImage.startsWith('http') && 
+                   (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:')) && (
                     <Button
                       fullWidth
                       variant="outlined"
@@ -1749,14 +1776,17 @@ const Layout: React.FC = () => {
             </DialogTitle>
             <DialogContent sx={{ color: 'white', pt: 3 }}>
               {/* 업로드된 프로필 사진 섹션 */}
-              {profileImage && profileImage.startsWith('http') && (
+              {profileImage && profileImage.startsWith('http') && 
+               (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:')) && (
                 <Box sx={{ mb: 4 }}>
                   <Typography variant="h6" sx={{ mb: 2, color: 'white' }}>
                     현재 프로필 사진
                   </Typography>
                   <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                     <Avatar
-                      src={profileImage}
+                      src={profileImage && profileImage.startsWith('http') && 
+                           (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:')) 
+                           ? profileImage : undefined}
                       sx={{ 
                         width: 80, 
                         height: 80, 
@@ -1825,14 +1855,17 @@ const Layout: React.FC = () => {
               </Box>
 
               {/* 업로드한 사진 선택 섹션 */}
-              {profileImage && profileImage.startsWith('http') && (
+              {profileImage && profileImage.startsWith('http') && 
+               (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:')) && (
                 <Box sx={{ mt: 3, textAlign: 'center' }}>
                   <Typography variant="h6" sx={{ mb: 2, color: 'white' }}>
                     업로드한 사진 선택
                   </Typography>
                   <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                     <Avatar
-                      src={profileImage}
+                      src={profileImage && profileImage.startsWith('http') && 
+                           (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:')) 
+                           ? profileImage : undefined}
                       sx={{
                         width: 60,
                         height: 60,

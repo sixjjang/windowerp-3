@@ -25,14 +25,20 @@ import {
   Tabs,
   Tab,
   TextField,
+  Divider,
+  Card,
+  CardMedia,
 } from '@mui/material';
 import {
   Print as PrintIcon,
   Settings as SettingsIcon,
   Save as SaveIcon,
+  Upload as UploadIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 
 import { Estimate, EstimateRow, OptionItem } from '../types';
+import { getCurrentUser } from '../utils/auth';
 
 interface EstimateTemplateProps {
   estimate: Estimate;
@@ -72,6 +78,7 @@ const DEFAULT_TEMPLATES = {
     showCustomerInfo: true,
     showCompanyInfo: true,
     showFooter: true,
+    showStamp: true,
   },
   template2: {
     name: '상세 템플릿',
@@ -88,6 +95,7 @@ const DEFAULT_TEMPLATES = {
     showCustomerInfo: true,
     showCompanyInfo: true,
     showFooter: true,
+    showStamp: true,
   },
   template3: {
     name: '전체 템플릿',
@@ -96,6 +104,7 @@ const DEFAULT_TEMPLATES = {
     showCustomerInfo: true,
     showCompanyInfo: true,
     showFooter: true,
+    showStamp: true,
   },
 };
 
@@ -163,16 +172,107 @@ const TemplateSettingsModal: React.FC<{
     return saved || DEFAULT_NOTICE_TEXT;
   });
   const [activeTab, setActiveTab] = useState(0);
+  const [savedCompanies, setSavedCompanies] = useState<any[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const [stampImage, setStampImage] = useState<string | null>(() => {
+    const saved = localStorage.getItem('estimateStampImage');
+    return saved || null;
+  });
+  const [stampImageFile, setStampImageFile] = useState<File | null>(null);
 
   useEffect(() => {
     setTemplate(currentTemplate);
   }, [currentTemplate]);
+
+  // 저장된 회사 정보 불러오기
+  useEffect(() => {
+    const loadSavedCompanies = async () => {
+      try {
+        console.log('견적서 템플릿에서 회사 정보 로드 시작');
+        
+        // Firebase에서 회사 정보 가져오기
+        const API_BASE = 'https://us-central1-windowerp-3.cloudfunctions.net';
+        const response = await fetch(`${API_BASE}/companyInfo`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Firebase에서 회사 정보 로드 완료:', data);
+          
+          if (Array.isArray(data)) {
+            // 우리회사 타입만 필터링
+            const ourCompanies = data.filter((company: any) => company.type === '우리회사');
+            setSavedCompanies(ourCompanies);
+            console.log('우리회사 정보 필터링 완료:', ourCompanies.length, '개');
+            
+            // 현재 선택된 회사 ID 찾기
+            if (ourCompanies.length > 0) {
+              const currentCompany = ourCompanies.find((company: any) => 
+                company.name === companyInfo.name && 
+                company.address === companyInfo.address
+              );
+              if (currentCompany) {
+                setSelectedCompanyId(currentCompany.id);
+                console.log('현재 회사 정보와 일치하는 회사 찾음:', currentCompany.name);
+              } else {
+                setSelectedCompanyId(ourCompanies[0].id);
+                console.log('첫 번째 회사 정보로 설정:', ourCompanies[0].name);
+              }
+            }
+          }
+        } else {
+          console.error('Firebase API 응답 오류:', response.status);
+          // Firebase 실패 시 localStorage에서 로드 (fallback)
+          const saved = localStorage.getItem('companyInfo');
+          if (saved) {
+            const companies = JSON.parse(saved);
+            if (Array.isArray(companies)) {
+              const ourCompanies = companies.filter((company: any) => company.type === '우리회사');
+              setSavedCompanies(ourCompanies);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('회사 정보 로드 중 오류:', error);
+        // 에러 시 localStorage에서 로드 (fallback)
+        try {
+          const saved = localStorage.getItem('companyInfo');
+          if (saved) {
+            const companies = JSON.parse(saved);
+            if (Array.isArray(companies)) {
+              const ourCompanies = companies.filter((company: any) => company.type === '우리회사');
+              setSavedCompanies(ourCompanies);
+            }
+          }
+        } catch (localError) {
+          console.error('localStorage 로드도 실패:', localError);
+        }
+      }
+    };
+
+    if (open) {
+      loadSavedCompanies();
+    }
+  }, [open, companyInfo.name, companyInfo.address]);
 
   const handleFieldToggle = (fieldKey: string) => {
     const newFields = template.fields.includes(fieldKey)
       ? template.fields.filter((f: string) => f !== fieldKey)
       : [...template.fields, fieldKey];
     setTemplate({ ...template, fields: newFields });
+  };
+
+  // 회사 선택 핸들러
+  const handleCompanySelect = (companyId: number) => {
+    setSelectedCompanyId(companyId);
+    const selectedCompany = savedCompanies.find(company => company.id === companyId);
+    if (selectedCompany) {
+      setCompanyInfo({
+        name: selectedCompany.name,
+        address: selectedCompany.address,
+        phone: selectedCompany.contact,
+        email: selectedCompany.email || ''
+      });
+    }
   };
 
   const handleSave = () => {
@@ -189,7 +289,48 @@ const TemplateSettingsModal: React.FC<{
     // 안내 문구 저장
     localStorage.setItem('estimateNoticeText', noticeText);
 
+    // 도장 표시 설정 저장
+    localStorage.setItem('estimateShowStamp', JSON.stringify(template.showStamp));
+
+    // 도장 이미지 저장
+    if (stampImage) {
+      localStorage.setItem('estimateStampImage', stampImage);
+    }
+
     onClose();
+  };
+
+  // 도장 이미지 업로드 핸들러
+  const handleStampImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // 파일 크기 체크 (5MB 이하)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('파일 크기는 5MB 이하여야 합니다.');
+        return;
+      }
+
+      // 이미지 파일 타입 체크
+      if (!file.type.startsWith('image/')) {
+        alert('이미지 파일만 업로드 가능합니다.');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        setStampImage(result);
+        setStampImageFile(file);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // 도장 이미지 삭제 핸들러
+  const handleStampImageDelete = () => {
+    setStampImage(null);
+    setStampImageFile(null);
+    localStorage.removeItem('estimateStampImage');
   };
 
   return (
@@ -203,6 +344,7 @@ const TemplateSettingsModal: React.FC<{
           >
             <Tab label="템플릿 설정" />
             <Tab label="회사 정보" />
+            <Tab label="도장 설정" />
             <Tab label="안내 문구" />
           </Tabs>
         </Box>
@@ -314,6 +456,22 @@ const TemplateSettingsModal: React.FC<{
                     label="푸터 표시"
                   />
                 </Grid>
+                <Grid item xs={6}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={template.showStamp}
+                        onChange={e =>
+                          setTemplate({
+                            ...template,
+                            showStamp: e.target.checked,
+                          })
+                        }
+                      />
+                    }
+                    label="회사 도장 표시"
+                  />
+                </Grid>
               </Grid>
             </Box>
           </>
@@ -324,6 +482,51 @@ const TemplateSettingsModal: React.FC<{
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
               회사 정보 설정
+            </Typography>
+            
+            {/* 저장된 회사 선택 */}
+            {savedCompanies.length > 0 && (
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'bold' }}>
+                  등록된 회사 선택
+                </Typography>
+                <Grid container spacing={1}>
+                  {savedCompanies.map((company) => (
+                    <Grid item xs={12} sm={6} key={company.id}>
+                      <Box
+                        sx={{
+                          p: 2,
+                          border: selectedCompanyId === company.id ? '2px solid #1976d2' : '1px solid #ddd',
+                          borderRadius: 1,
+                          cursor: 'pointer',
+                          backgroundColor: selectedCompanyId === company.id ? '#f3f8ff' : 'transparent',
+                          '&:hover': {
+                            backgroundColor: selectedCompanyId === company.id ? '#f3f8ff' : '#f5f5f5',
+                          },
+                        }}
+                        onClick={() => handleCompanySelect(company.id)}
+                      >
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                          {company.name}
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.secondary', mb: 0.5 }}>
+                          {company.address}
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                          {company.contact}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Box>
+            )}
+
+            <Divider sx={{ my: 2 }} />
+
+            {/* 수동 입력 */}
+            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
+              수동 입력
             </Typography>
             <Grid container spacing={2}>
               <Grid item xs={12}>
@@ -374,8 +577,106 @@ const TemplateSettingsModal: React.FC<{
           </Box>
         )}
 
-        {/* 안내 문구 탭 */}
+        {/* 도장 설정 탭 */}
         {activeTab === 2 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              도장 설정
+            </Typography>
+            
+            {/* 도장 이미지 업로드 */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
+                도장 이미지 업로드
+              </Typography>
+              
+              {stampImage ? (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ mb: 1, color: 'text.secondary' }}>
+                    현재 등록된 도장 이미지
+                  </Typography>
+                  <Card sx={{ maxWidth: 200, mb: 2 }}>
+                    <CardMedia
+                      component="img"
+                      image={stampImage}
+                      alt="도장 이미지"
+                      sx={{ 
+                        height: 150, 
+                        objectFit: 'contain',
+                        backgroundColor: '#f5f5f5'
+                      }}
+                    />
+                  </Card>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<DeleteIcon />}
+                    onClick={handleStampImageDelete}
+                    sx={{ mr: 1 }}
+                  >
+                    도장 이미지 삭제
+                  </Button>
+                </Box>
+              ) : (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ mb: 1, color: 'text.secondary' }}>
+                    도장 이미지를 업로드하면 기본 텍스트 도장 대신 사용됩니다.
+                  </Typography>
+                </Box>
+              )}
+              
+              <Button
+                variant="outlined"
+                component="label"
+                startIcon={<UploadIcon />}
+                sx={{ mr: 1 }}
+              >
+                도장 이미지 업로드
+                <input
+                  type="file"
+                  hidden
+                  accept="image/*"
+                  onChange={handleStampImageUpload}
+                />
+              </Button>
+              
+              <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'text.secondary' }}>
+                • 지원 형식: JPG, PNG, GIF, WebP<br/>
+                • 최대 파일 크기: 5MB<br/>
+                • 권장 크기: 200x200px 이상의 정사각형 이미지
+              </Typography>
+            </Box>
+
+            <Divider sx={{ my: 2 }} />
+
+            {/* 도장 표시 옵션 */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
+                도장 표시 옵션
+              </Typography>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={template.showStamp}
+                    onChange={e =>
+                      setTemplate({
+                        ...template,
+                        showStamp: e.target.checked,
+                      })
+                    }
+                  />
+                }
+                label="견적서에 도장 표시"
+              />
+              <Typography variant="body2" sx={{ mt: 1, color: 'text.secondary' }}>
+                체크하면 견적서 우상단에 도장이 표시됩니다.
+              </Typography>
+            </Box>
+          </Box>
+        )}
+
+        {/* 안내 문구 탭 */}
+        {activeTab === 3 && (
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
               안내 문구 설정
@@ -415,9 +716,22 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
   const printRef = useRef<HTMLDivElement>(null);
   const currentDate = new Date().toLocaleDateString('ko-KR');
   const [selectedTemplate, setSelectedTemplate] = useState('template1');
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [templates, setTemplates] = useState(() => {
     const saved = localStorage.getItem('estimateTemplates');
-    return saved ? JSON.parse(saved) : DEFAULT_TEMPLATES;
+    const savedTemplates = saved ? JSON.parse(saved) : DEFAULT_TEMPLATES;
+    
+    // 저장된 도장 설정 불러오기
+    const savedShowStamp = localStorage.getItem('estimateShowStamp');
+    if (savedShowStamp !== null) {
+      const showStamp = JSON.parse(savedShowStamp);
+      // 모든 템플릿에 도장 설정 적용
+      Object.keys(savedTemplates).forEach(key => {
+        savedTemplates[key].showStamp = showStamp;
+      });
+    }
+    
+    return savedTemplates;
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -430,6 +744,12 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
   const noticeText = (() => {
     const saved = localStorage.getItem('estimateNoticeText');
     return saved || DEFAULT_NOTICE_TEXT;
+  })();
+
+  // 저장된 도장 이미지 가져오기
+  const stampImage = (() => {
+    const saved = localStorage.getItem('estimateStampImage');
+    return saved || null;
   })();
 
   const totalAmount = estimate.rows.reduce((sum, row) => {
@@ -531,6 +851,25 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
 
   const currentTemplate = templates[selectedTemplate];
 
+  // 현재 로그인된 사용자 정보 가져오기
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      try {
+        const user = await getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        console.error('사용자 정보 로드 실패:', error);
+        // 기본 사용자 정보 설정
+        setCurrentUser({
+          name: '작성자',
+          phone: '010-2290-5000'
+        });
+      }
+    };
+
+    loadCurrentUser();
+  }, []);
+
   return (
     <>
       {/* 모달 다이얼로그 */}
@@ -620,12 +959,12 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                   </Typography>
                 </Box>
                 {currentTemplate.showCompanyInfo && (
-                  <Box sx={{ textAlign: 'right', flex: 1, fontSize: '10pt' }}>
+                  <Box sx={{ textAlign: 'right', flex: 1, fontSize: '10pt', position: 'relative' }}>
                     <Typography
                       variant="h6"
                       sx={{ fontWeight: 'bold', mb: 1, color: '#000' }}
                     >
-                      {companyInfo.name}
+                      {currentUser ? `${currentUser.name}(010-2290-5000)` : '작성자(010-2290-5000)'}
                     </Typography>
                     <Typography variant="body2" sx={{ mb: 0.5, color: '#000' }}>
                       {companyInfo.address}
@@ -636,6 +975,73 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                     <Typography variant="body2" sx={{ color: '#000' }}>
                       EMAIL: {companyInfo.email}
                     </Typography>
+                    
+                    {/* 회사 도장 */}
+                    {currentTemplate.showStamp && (
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          top: -15,
+                          right: -25,
+                          width: 90,
+                          height: 90,
+                          transform: 'rotate(-12deg)',
+                          zIndex: 1,
+                          pointerEvents: 'none',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                        }}
+                      >
+                        {stampImage ? (
+                          // 업로드된 도장 이미지 사용
+                          <Box
+                            component="img"
+                            src={stampImage}
+                            alt="회사 도장"
+                            sx={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'contain',
+                              filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
+                            }}
+                          />
+                        ) : (
+                          // 기본 텍스트 도장
+                          <Box
+                            sx={{
+                              width: '100%',
+                              height: '100%',
+                              borderRadius: '50%',
+                              background: `
+                                radial-gradient(circle at 30% 30%, rgba(255,0,0,0.4) 0%, rgba(255,0,0,0.2) 40%, rgba(255,0,0,0.1) 70%, rgba(255,0,0,0.05) 100%)
+                              `,
+                              border: '3px solid rgba(255,0,0,0.5)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '9pt',
+                              fontWeight: 'bold',
+                              color: 'rgba(255,0,0,0.9)',
+                              '&::before': {
+                                content: '""',
+                                position: 'absolute',
+                                top: '50%',
+                                left: '50%',
+                                width: '60%',
+                                height: '60%',
+                                borderRadius: '50%',
+                                border: '1px solid rgba(255,0,0,0.3)',
+                                transform: 'translate(-50%, -50%)',
+                              }
+                            }}
+                          >
+                            <Box sx={{ textAlign: 'center', lineHeight: 1.2 }}>
+                              <Box sx={{ fontSize: '6pt', mb: 0.5, fontWeight: 'bold' }}>윈도우</Box>
+                              <Box sx={{ fontSize: '7pt', fontWeight: 'bold' }}>갤러리</Box>
+                            </Box>
+                          </Box>
+                        )}
+                      </Box>
+                    )}
                   </Box>
                 )}
               </Box>
@@ -1112,10 +1518,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                     variant="body2"
                     sx={{ mb: 4, fontWeight: 'bold', color: '#000' }}
                   >
-                    회사명: {companyInfo.name}
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: '#000' }}>
-                    서명: _________________
+                    작성자: {currentUser ? currentUser.name : '작성자'}
                   </Typography>
                 </Box>
               </Box>
@@ -1177,7 +1580,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                   variant="h6"
                   sx={{ fontWeight: 'bold', mb: 1, color: '#000' }}
                 >
-                  {companyInfo.name}
+                  {currentUser ? `${currentUser.name}(010-2290-5000)` : '작성자(010-2290-5000)'}
                 </Typography>
                 <Typography variant="body2" sx={{ mb: 0.5, color: '#000' }}>
                   {companyInfo.address}
@@ -1648,10 +2051,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                 variant="body2"
                 sx={{ mb: 4, fontWeight: 'bold', color: '#000' }}
               >
-                회사명: {companyInfo.name}
-              </Typography>
-              <Typography variant="caption" sx={{ color: '#000' }}>
-                서명: _________________
+                작성자: {currentUser ? currentUser.name : '작성자'}
               </Typography>
             </Box>
           </Box>

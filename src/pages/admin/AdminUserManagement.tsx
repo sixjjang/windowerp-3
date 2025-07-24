@@ -114,7 +114,20 @@ const AdminUserManagement: React.FC = () => {
   const [registerMsg, setRegisterMsg] = useState('');
   
   // 백업 관련 상태
-  const [dataStatus, setDataStatus] = useState(getDataStatus());
+  const [dataStatus, setDataStatus] = useState<any>({
+    estimates: 0,
+    contracts: 0,
+    orders: 0,
+    deliveries: 0,
+    customers: 0,
+    products: 0,
+    options: 0,
+    vendors: 0,
+    schedules: 0,
+    measurements: 0,
+    companyInfo: 0,
+    users: 0
+  });
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -161,6 +174,13 @@ const AdminUserManagement: React.FC = () => {
     };
     
     window.addEventListener('refreshUserList', handleRefreshUserList);
+    
+    // 데이터 상태 초기화
+    const initDataStatus = async () => {
+      const status = await getDataStatus();
+      setDataStatus(status);
+    };
+    initDataStatus();
     
     // 클린업
     return () => {
@@ -223,34 +243,40 @@ const AdminUserManagement: React.FC = () => {
   };
 
   // 백업 관련 함수들
-  const handleIndividualDownload = (downloadFunction: () => boolean, dataName: string) => {
+  const handleIndividualDownload = async (downloadFunction: () => Promise<boolean>, dataName: string) => {
     setBackupLoading(true);
     setBackupMessage(null);
     
-    setTimeout(() => {
-      const success = downloadFunction();
+    try {
+      const success = await downloadFunction();
       setBackupLoading(false);
       if (success) {
         setBackupMessage({ type: 'success', text: `${dataName} 다운로드가 완료되었습니다.` });
       } else {
         setBackupMessage({ type: 'error', text: `${dataName} 다운로드에 실패했습니다.` });
       }
-    }, 100);
+    } catch (error) {
+      setBackupLoading(false);
+      setBackupMessage({ type: 'error', text: `${dataName} 다운로드 중 오류가 발생했습니다.` });
+    }
   };
 
-  const handleAllDataDownload = () => {
+  const handleAllDataDownload = async () => {
     setBackupLoading(true);
     setBackupMessage(null);
     
-    setTimeout(() => {
-      const success = downloadAllData();
+    try {
+      const success = await downloadAllData();
       setBackupLoading(false);
       if (success) {
         setBackupMessage({ type: 'success', text: '전체 데이터 백업이 완료되었습니다.' });
       } else {
         setBackupMessage({ type: 'error', text: '전체 데이터 백업에 실패했습니다.' });
       }
-    }, 100);
+    } catch (error) {
+      setBackupLoading(false);
+      setBackupMessage({ type: 'error', text: '전체 데이터 백업 중 오류가 발생했습니다.' });
+    }
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -280,7 +306,8 @@ const AdminUserManagement: React.FC = () => {
       
       if (result.success) {
         setBackupMessage({ type: 'success', text: result.message });
-        setDataStatus(getDataStatus()); // 상태 업데이트
+        const newStatus = await getDataStatus(); // 상태 업데이트
+        setDataStatus(newStatus);
         setSelectedFile(null);
         // 파일 입력 초기화
         const fileInput = document.getElementById('restore-file-input') as HTMLInputElement;
@@ -294,9 +321,12 @@ const AdminUserManagement: React.FC = () => {
     }
   };
 
-  const refreshDataStatus = () => {
-    setDataStatus(getDataStatus());
+  const refreshDataStatus = async () => {
+    const status = await getDataStatus();
+    setDataStatus(status);
   };
+
+
 
   return (
     <Box sx={{ width: '100%' }}>

@@ -29,12 +29,13 @@ import {
   Delete as DeleteIcon,
   Edit as EditIcon,
   Visibility as ViewIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { API_BASE, getAuthHeaders } from '../../utils/auth';
 
 interface CompanyInfo {
   id: number;
-  type: '우리회사' | '타회사';
+  type: '우리회사';
   businessNumber: string;
   name: string;
   ceo: string;
@@ -76,21 +77,25 @@ const CompanyInfoManagement = () => {
   );
 
   useEffect(() => {
+    console.log('CompanyInfoManagement 컴포넌트 마운트 - Firebase에서 회사 정보 로드');
     fetchCompanyInfo();
   }, []);
 
+  // 저장된 목록 상태 변경 감지
+  useEffect(() => {
+    console.log('savedCompanies 상태 변경:', savedCompanies.length, '개');
+  }, [savedCompanies]);
+
   // 자동 넘버링을 위한 회사명 생성 함수
-  const generateCompanyName = (type: '우리회사' | '타회사'): string => {
-    const existingNames = infos
-      .filter(info => info.type === type)
-      .map(info => info.name);
+  const generateCompanyName = (): string => {
+    const existingNames = infos.map(info => info.name);
 
     let counter = 1;
-    let newName = `${type}${counter}`;
+    let newName = `우리회사${counter}`;
 
     while (existingNames.includes(newName)) {
       counter++;
-      newName = `${type}${counter}`;
+      newName = `우리회사${counter}`;
     }
 
     return newName;
@@ -106,13 +111,20 @@ const CompanyInfoManagement = () => {
 
   const fetchCompanyInfo = async () => {
     try {
-      console.log('회사 정보 불러오기 시작');
+      console.log('=== Firebase에서 회사 정보 불러오기 시작 ===');
+      console.log('API URL:', `${API_BASE}/companyInfo`);
+      console.log('전체 URL:', `${API_BASE}/companyInfo`);
+      
       const response = await fetch(`${API_BASE}/companyInfo`);
       console.log('API 응답 상태:', response.status);
+      console.log('API 응답 헤더:', Object.fromEntries(response.headers.entries()));
 
       if (response.ok) {
         const data = await response.json();
-        console.log('API 응답 데이터:', data);
+        console.log('Firebase API 응답 데이터:', data);
+        console.log('데이터 타입:', typeof data);
+        console.log('배열 여부:', Array.isArray(data));
+        console.log('데이터 길이:', Array.isArray(data) ? data.length : 'N/A');
 
         if (Array.isArray(data) && data.length > 0) {
           // API에서 받은 데이터를 프론트엔드 형식에 맞게 변환
@@ -132,15 +144,16 @@ const CompanyInfoManagement = () => {
           console.log('변환된 데이터:', formattedData);
           setInfos(formattedData);
           setSavedCompanies(formattedData); // 저장된 목록도 업데이트
+          
           console.log(
-            '상태 업데이트 완료 - infos:',
+            'Firebase 데이터 로드 완료 - infos:',
             formattedData.length,
             '개, savedCompanies:',
             formattedData.length,
             '개'
           );
         } else {
-          console.log('데이터가 없음 - 기본값 설정');
+          console.log('Firebase에 데이터가 없음 - 기본값 설정');
           // 데이터가 없으면 기본값 설정
           setInfos([{ ...defaultCompanyInfo }]);
           setSavedCompanies([]); // 저장된 목록은 비움
@@ -227,9 +240,9 @@ const CompanyInfoManagement = () => {
           severity: 'success',
         });
 
-        // 저장 성공 후 즉시 목록 갱신
-        console.log('목록 갱신 시작');
-        await fetchCompanyInfo();
+        // 저장된 목록 상태 직접 업데이트
+        setSavedCompanies(infos);
+        console.log('저장된 목록 상태 업데이트 완료:', infos.length, '개');
 
         // 저장된 목록 탭으로 자동 이동
         setTabValue(1);
@@ -262,34 +275,14 @@ const CompanyInfoManagement = () => {
     );
   };
 
-  const handleTypeChange = (idx: number, value: '우리회사' | '타회사') => {
-    setInfos(prev =>
-      prev.map((info, i) => {
-        if (i === idx) {
-          // 타입 변경 시 회사명이 비어있거나 기본값이면 자동 생성
-          const shouldGenerateName =
-            !info.name ||
-            info.name.startsWith('우리회사') ||
-            info.name.startsWith('타회사');
-          return {
-            ...info,
-            type: value,
-            name: shouldGenerateName ? generateCompanyName(value) : info.name,
-          };
-        }
-        return info;
-      })
-    );
-  };
-
-  const handleAdd = (type: '우리회사' | '타회사') => {
-    const newCompanyName = generateCompanyName(type);
+  const handleAdd = () => {
+    const newCompanyName = generateCompanyName();
     setInfos(prev => [
       ...prev,
       {
         ...defaultCompanyInfo,
         id: Date.now(),
-        type,
+        type: '우리회사',
         name: newCompanyName,
       },
     ]);
@@ -301,6 +294,19 @@ const CompanyInfoManagement = () => {
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
+    
+    // 저장된 목록 탭으로 이동할 때 Firebase에서 최신 데이터 가져오기
+    if (newValue === 1) {
+      console.log('저장된 목록 탭 클릭 - Firebase에서 최신 데이터 로드');
+      // 즉시 로드 시도
+      fetchCompanyInfo();
+      
+      // 3초 후 다시 한 번 시도 (네트워크 지연 대응)
+      setTimeout(() => {
+        console.log('3초 후 재시도 - Firebase에서 데이터 로드');
+        fetchCompanyInfo();
+      }, 3000);
+    }
   };
 
   const handleViewCompany = (company: CompanyInfo) => {
@@ -376,16 +382,9 @@ const CompanyInfoManagement = () => {
             <Button
               variant="outlined"
               startIcon={<AddIcon />}
-              onClick={() => handleAdd('우리회사')}
+              onClick={handleAdd}
             >
               우리회사 추가
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<AddIcon />}
-              onClick={() => handleAdd('타회사')}
-            >
-              타회사 추가
             </Button>
           </Box>
           {infos.map((info, idx) => (
@@ -398,21 +397,18 @@ const CompanyInfoManagement = () => {
               <Grid container spacing={2}>
                 <Grid item xs={12} md={2}>
                   <TextField
-                    select
                     label="구분"
-                    value={info.type}
-                    onChange={e =>
-                      handleTypeChange(
-                        idx,
-                        e.target.value as '우리회사' | '타회사'
-                      )
-                    }
+                    value="우리회사"
                     fullWidth
                     size="small"
-                  >
-                    <MenuItem value="우리회사">우리회사</MenuItem>
-                    <MenuItem value="타회사">타회사</MenuItem>
-                  </TextField>
+                    disabled
+                    sx={{
+                      '& .MuiInputBase-input.Mui-disabled': {
+                        WebkitTextFillColor: '#FF6B9D',
+                        fontWeight: 600,
+                      },
+                    }}
+                  />
                 </Grid>
                 <Grid item xs={12} md={3}>
                   <TextField
@@ -524,9 +520,29 @@ const CompanyInfoManagement = () => {
       {/* 저장된 목록 탭 */}
       {tabValue === 1 && (
         <Box>
-          <Typography variant="h6" gutterBottom>
-            저장된 회사 정보 목록
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">
+              저장된 회사 정보 목록 ({savedCompanies.length}개)
+            </Typography>
+            <Button
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              onClick={() => {
+                console.log('수동 새로고침 버튼 클릭');
+                fetchCompanyInfo();
+              }}
+              sx={{
+                color: '#FF6B9D',
+                borderColor: '#FF6B9D',
+                '&:hover': {
+                  borderColor: '#FF4757',
+                  backgroundColor: 'rgba(255, 107, 157, 0.1)',
+                },
+              }}
+            >
+              새로고침
+            </Button>
+          </Box>
           {savedCompanies.length === 0 ? (
             <Paper sx={{ p: 3, textAlign: 'center' }}>
               <Typography color="text.secondary">

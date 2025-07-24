@@ -57,6 +57,24 @@ service firebase.storage {
                    isValidFileType();
     }
     
+    // 제품 데이터 파일
+    match /products/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+                   isValidFileSize() && 
+                   (request.resource.contentType.matches('application/json') ||
+                    request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') ||
+                    request.resource.contentType.matches('application/vnd.ms-excel'));
+    }
+    
+    // 채팅 이미지 파일
+    match /employeeChat/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+                   isValidFileSize() && 
+                   request.resource.contentType.matches('image/.*');
+    }
+    
     // 일반 업로드 파일
     match /uploads/{userId}/{fileName} {
       allow read: if isAuthenticated();

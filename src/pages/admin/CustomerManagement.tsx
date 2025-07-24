@@ -347,55 +347,93 @@ const CustomerManagement: React.FC = () => {
 
     if (editMode && editIndex !== null) {
       // 수정 모드
-      updatedCustomers = [...currentCustomers];
-      updatedCustomers[editIndex] = {
-        ...selectedCustomer,
-        updatedAt: new Date().toISOString(),
-      };
-      setCustomers(updatedCustomers);
-      setEditMode(false);
-      setEditIndex(null);
-      setSelectedCustomer(initialCustomer);
+      try {
+        const customerToUpdate = currentCustomers[editIndex];
+        const updatedCustomer = {
+          ...selectedCustomer,
+          updatedAt: new Date().toISOString(),
+        };
+        
+        // Firebase에서 고객 업데이트
+        await customerService.updateCustomer(customerToUpdate.id.toString(), updatedCustomer);
+        
+        // 로컬 상태 업데이트
+        updatedCustomers = [...currentCustomers];
+        updatedCustomers[editIndex] = updatedCustomer;
+        setCustomers(updatedCustomers);
+        setEditMode(false);
+        setEditIndex(null);
+        setSelectedCustomer(initialCustomer);
+        alert('고객 정보가 성공적으로 수정되었습니다.');
+      } catch (error) {
+        console.error('고객 수정 실패:', error);
+        alert('고객 정보 수정에 실패했습니다.');
+        return;
+      }
     } else if (existingCustomer) {
       // 기존 고객이 있는 경우 - 프로젝트 정보만 추가하거나 업데이트
-      updatedCustomers = currentCustomers.map(customer => {
-        if (customer.id === existingCustomer.id) {
-          return {
-            ...customer,
-            ...selectedCustomer,
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return customer;
-      });
-      setCustomers(updatedCustomers);
-      setSelectedCustomer(initialCustomer);
-      alert(
-        `기존 고객 정보가 업데이트되었습니다.\n고객명: ${existingCustomer.name}\n연락처: ${existingCustomer.tel}`
-      );
+      try {
+        const updatedCustomer = {
+          ...existingCustomer,
+          ...selectedCustomer,
+          updatedAt: new Date().toISOString(),
+        };
+        
+        // Firebase에서 고객 업데이트
+        await customerService.updateCustomer(existingCustomer.id.toString(), updatedCustomer);
+        
+        // 로컬 상태 업데이트
+        updatedCustomers = currentCustomers.map(customer => {
+          if (customer.id === existingCustomer.id) {
+            return updatedCustomer;
+          }
+          return customer;
+        });
+        setCustomers(updatedCustomers);
+        setSelectedCustomer(initialCustomer);
+        alert(
+          `기존 고객 정보가 업데이트되었습니다.\n고객명: ${existingCustomer.name}\n연락처: ${existingCustomer.tel}`
+        );
+      } catch (error) {
+        console.error('고객 업데이트 실패:', error);
+        alert('고객 정보 업데이트에 실패했습니다.');
+        return;
+      }
     } else {
       // 새 고객 추가
-      const newCustomer: Customer = {
-        ...selectedCustomer,
-        id: Date.now(), // 고유한 ID 생성 (타임스탬프 사용)
-        projects: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      updatedCustomers = [...currentCustomers, newCustomer];
-      setCustomers(updatedCustomers);
-      setSelectedCustomer(initialCustomer);
-      alert('새로운 고객이 추가되었습니다.');
+      try {
+        const newCustomer: Customer = {
+          ...selectedCustomer,
+          id: Date.now(), // 고유한 ID 생성 (타임스탬프 사용)
+          projects: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        
+        // Firebase에 새 고객 저장
+        await customerService.saveCustomer(newCustomer);
+        
+        // 로컬 상태 업데이트
+        updatedCustomers = [...currentCustomers, newCustomer];
+        setCustomers(updatedCustomers);
+        setSelectedCustomer(initialCustomer);
+        alert('새로운 고객이 추가되었습니다.');
+      } catch (error) {
+        console.error('고객 추가 실패:', error);
+        alert('새 고객 추가에 실패했습니다.');
+        return;
+      }
     }
 
-    // localStorage에 저장 (Firebase 저장은 별도로 처리)
+    // localStorage에 저장 (백업용)
     try {
       console.log('localStorage에 고객 데이터 저장 시작');
       await saveCustomers(updatedCustomers);
       console.log('localStorage에 고객 데이터 저장 완료');
     } catch (error) {
       console.error('localStorage 저장 실패:', error);
-      alert('고객 정보 저장에 실패했습니다.');
+      // localStorage 실패는 치명적이지 않으므로 경고만 표시
+      console.warn('localStorage 백업 저장에 실패했습니다.');
     }
   };
 
@@ -405,30 +443,60 @@ const CustomerManagement: React.FC = () => {
     setEditIndex(index);
   };
 
-  const handleDeleteCustomer = (index: number) => {
+  const handleDeleteCustomer = async (index: number) => {
     if (window.confirm('정말로 이 고객을 삭제하시겠습니까?')) {
-      const currentCustomers = customers || [];
-      const updatedCustomers = currentCustomers.filter((_, i) => i !== index);
-      setCustomers(updatedCustomers);
-      if (editMode && editIndex === index) {
-        setEditMode(false);
-        setEditIndex(null);
-        setSelectedCustomer(initialCustomer);
+      try {
+        const currentCustomers = customers || [];
+        const customerToDelete = currentCustomers[index];
+        
+        if (!customerToDelete) {
+          alert('삭제할 고객을 찾을 수 없습니다.');
+          return;
+        }
+
+        // Firebase에서 고객 삭제
+        await customerService.deleteCustomer(customerToDelete.id.toString());
+        
+        // 로컬 상태 업데이트
+        const updatedCustomers = currentCustomers.filter((_, i) => i !== index);
+        setCustomers(updatedCustomers);
+        
+        if (editMode && editIndex === index) {
+          setEditMode(false);
+          setEditIndex(null);
+          setSelectedCustomer(initialCustomer);
+        }
+        
+        alert('고객이 성공적으로 삭제되었습니다.');
+      } catch (error) {
+        console.error('고객 삭제 실패:', error);
+        alert('고객 삭제 중 오류가 발생했습니다.');
       }
     }
   };
 
-  const handleCopyCustomer = (customer: Customer) => {
-    const currentCustomers = customers || [];
-    const newCustomer: Customer = {
-      ...customer,
-      id: Date.now(), // 고유한 ID 생성 (타임스탬프 사용)
-      name: `${customer.name} (복사본)`,
-      projects: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setCustomers([...currentCustomers, newCustomer]);
+  const handleCopyCustomer = async (customer: Customer) => {
+    try {
+      const currentCustomers = customers || [];
+      const newCustomer: Customer = {
+        ...customer,
+        id: Date.now(), // 고유한 ID 생성 (타임스탬프 사용)
+        name: `${customer.name} (복사본)`,
+        projects: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      
+      // Firebase에 새 고객 저장
+      await customerService.saveCustomer(newCustomer);
+      
+      // 로컬 상태 업데이트
+      setCustomers([...currentCustomers, newCustomer]);
+      alert('고객이 성공적으로 복사되었습니다.');
+    } catch (error) {
+      console.error('고객 복사 실패:', error);
+      alert('고객 복사에 실패했습니다.');
+    }
   };
 
   const handleViewProjects = (customer: Customer) => {
@@ -441,64 +509,95 @@ const CustomerManagement: React.FC = () => {
     setAddressSelectionDialogOpen(true);
   };
 
-  const handleUpdateDefaultAddress = (newAddress: string) => {
+  const handleUpdateDefaultAddress = async (newAddress: string) => {
     if (!selectedCustomerForAddress) return;
 
-    const currentCustomers = customers || [];
-    const updatedCustomers = currentCustomers.map(customer => {
-      if (customer.id === selectedCustomerForAddress.id) {
-        return {
-          ...customer,
-          address: newAddress,
-          updatedAt: new Date().toISOString(),
-        };
-      }
-      return customer;
-    });
+    try {
+      const currentCustomers = customers || [];
+      const updatedCustomer = {
+        ...selectedCustomerForAddress,
+        address: newAddress,
+        updatedAt: new Date().toISOString(),
+      };
 
-    setCustomers(updatedCustomers);
-    setAddressSelectionDialogOpen(false);
-    setSelectedCustomerForAddress(null);
-    alert('기본주소가 업데이트되었습니다.');
+      // Firebase에서 고객 업데이트
+      await customerService.updateCustomer(selectedCustomerForAddress.id.toString(), updatedCustomer);
+
+      // 로컬 상태 업데이트
+      const updatedCustomers = currentCustomers.map(customer => {
+        if (customer.id === selectedCustomerForAddress.id) {
+          return updatedCustomer;
+        }
+        return customer;
+      });
+
+      setCustomers(updatedCustomers);
+      setAddressSelectionDialogOpen(false);
+      setSelectedCustomerForAddress(null);
+      alert('기본주소가 업데이트되었습니다.');
+    } catch (error) {
+      console.error('기본주소 업데이트 실패:', error);
+      alert('기본주소 업데이트에 실패했습니다.');
+    }
   };
 
   // Excel Upload
-  const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = evt => {
-      const data = evt.target?.result;
-      if (!data) return;
-      const workbook = XLSX.read(data, { type: 'binary' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const json: any[] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-      const [header, ...rows] = json;
-      const mapped = rows.map(row => {
-        const obj: any = {};
-        customerHeaders.forEach((h, i) => {
-          obj[h] = row[i] ?? '';
+    
+    try {
+      const reader = new FileReader();
+      reader.onload = async evt => {
+        const data = evt.target?.result;
+        if (!data) return;
+        
+        const workbook = XLSX.read(data, { type: 'binary' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json: any[] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        const [header, ...rows] = json;
+        const mapped = rows.map(row => {
+          const obj: any = {};
+          customerHeaders.forEach((h, i) => {
+            obj[h] = row[i] ?? '';
+          });
+          return obj;
         });
-        return obj;
-      });
-      // Convert to Customer type
-      const currentCustomers = customers || [];
-      const newCustomers: Customer[] = mapped.map((item, idx) => ({
-        id: currentCustomers.length + idx + 1,
-        name: item['고객명'] || '',
-        address: item['주소'] || '',
-        tel: item['연락처'] || '',
-        emergencyTel: item['비상연락처'] || '',
-        visitPath: item['방문경로'] || '',
-        note: item['비고'] || '',
-        projects: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }));
-      setCustomers(prev => [...(prev || []), ...newCustomers]);
-    };
-    reader.readAsBinaryString(file);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+        
+        // Convert to Customer type
+        const currentCustomers = customers || [];
+        const newCustomers: Customer[] = mapped.map((item, idx) => ({
+          id: currentCustomers.length + idx + 1,
+          name: item['고객명'] || '',
+          address: item['주소'] || '',
+          tel: item['연락처'] || '',
+          emergencyTel: item['비상연락처'] || '',
+          visitPath: item['방문경로'] || '',
+          note: item['비고'] || '',
+          projects: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }));
+        
+        // Firebase에 새 고객들 저장
+        for (const customer of newCustomers) {
+          try {
+            await customerService.saveCustomer(customer);
+          } catch (error) {
+            console.error(`고객 ${customer.name} 저장 실패:`, error);
+          }
+        }
+        
+        // 로컬 상태 업데이트
+        setCustomers(prev => [...(prev || []), ...newCustomers]);
+        alert(`${newCustomers.length}명의 고객이 성공적으로 업로드되었습니다.`);
+      };
+      reader.readAsBinaryString(file);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (error) {
+      console.error('Excel 업로드 실패:', error);
+      alert('Excel 파일 업로드에 실패했습니다.');
+    }
   };
 
   // Excel Download (Current Data)
@@ -528,15 +627,35 @@ const CustomerManagement: React.FC = () => {
   };
 
   // Reset
-  const handleReset = () => {
-    localStorage.removeItem(CUSTOMER_STORAGE_KEY);
-    setCustomers([]);
-    setSelectedCustomer(initialCustomer);
-    setEditMode(false);
-    setEditIndex(null);
-    setSearch('');
-    setSortBy(null);
-    setSortOrder('asc');
+  const handleReset = async () => {
+    if (window.confirm('정말로 모든 고객 데이터를 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+      try {
+        // Firebase에서 모든 고객 삭제
+        const currentCustomers = customers || [];
+        for (const customer of currentCustomers) {
+          try {
+            await customerService.deleteCustomer(customer.id.toString());
+          } catch (error) {
+            console.error(`고객 ${customer.name} 삭제 실패:`, error);
+          }
+        }
+        
+        // 로컬 상태 초기화
+        localStorage.removeItem(CUSTOMER_STORAGE_KEY);
+        setCustomers([]);
+        setSelectedCustomer(initialCustomer);
+        setEditMode(false);
+        setEditIndex(null);
+        setSearch('');
+        setSortBy(null);
+        setSortOrder('asc');
+        
+        alert('모든 고객 데이터가 초기화되었습니다.');
+      } catch (error) {
+        console.error('고객 데이터 초기화 실패:', error);
+        alert('고객 데이터 초기화 중 오류가 발생했습니다.');
+      }
+    }
   };
 
   // 견적관리에서 자동 저장된 고객들 새로고침

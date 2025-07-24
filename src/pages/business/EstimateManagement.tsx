@@ -1041,7 +1041,9 @@ async function getCustomerList() {
   try {
     console.log('Firebase에서 고객 데이터 로드 시작');
     const customers = await customerService.getCustomers();
-    console.log('Firebase에서 고객 데이터 로드 완료:', customers.length, '개');
+          if (process.env.NODE_ENV === 'development') {
+        console.log('Firebase에서 고객 데이터 로드 완료:', customers.length, '개');
+      }
     return customers;
   } catch (error) {
     console.error('Firebase에서 고객 데이터 로드 실패:', error);
@@ -1149,19 +1151,25 @@ const EstimateManagement: React.FC = () => {
     setEstimates,
   } = useEstimateStore();
 
-  // 견적서 스토어 상태 변화 추적
-  useEffect(() => {
-    console.log('견적서 스토어 상태 변화:', { 
-      estimatesCount: estimates.length, 
-      activeTab,
-      estimates: estimates.map(e => ({ id: e.id, name: e.name }))
-    });
-  }, [estimates, activeTab]);
+  // 견적서 스토어 상태 변화 추적 (개발 환경에서만)
+  // 주석 처리하여 반복 로그 방지
+  // useEffect(() => {
+  //   if (process.env.NODE_ENV === 'development') {
+  //     console.log('견적서 스토어 상태 변화:', { 
+  //       estimatesCount: estimates.length, 
+  //       activeTab,
+  //       estimates: estimates.map(e => ({ id: e.id, name: e.name }))
+  //     });
+  //   }
+  // }, [estimates, activeTab]);
 
-  // 디버깅: 견적서 스토어 상태 확인
-  console.log('견적서 스토어 상태:', { estimates, activeTab });
-  console.log('현재 견적서:', estimates[activeTab]);
-  console.log('현재 견적서 행 수:', estimates[activeTab]?.rows?.length);
+  // 디버깅: 견적서 스토어 상태 확인 (개발 환경에서만)
+  // 주석 처리하여 반복 로그 방지
+  // if (process.env.NODE_ENV === 'development') {
+  //   console.log('견적서 스토어 상태:', { estimates, activeTab });
+  //   console.log('현재 견적서:', estimates[activeTab]);
+  //   console.log('현재 견적서 행 수:', estimates[activeTab]?.rows?.length);
+  // }
 
   const formulas = useEstimateStore(s => s.formulas);
   const [productSearch, setProductSearch] = useState('');
@@ -1643,24 +1651,29 @@ const EstimateManagement: React.FC = () => {
     };
   });
 
-  // activeTab이 변경될 때 meta 상태 업데이트
+    // activeTab이 변경될 때 meta 상태 업데이트
   useEffect(() => {
-    console.log('=== meta 상태 업데이트 시작 ===');
-    console.log('activeTab:', activeTab);
-    console.log('estimates 길이:', estimates.length);
+    // 주석 처리하여 반복 로그 방지
+    // if (process.env.NODE_ENV === 'development') {
+    //   console.log('=== meta 상태 업데이트 시작 ===');
+    //   console.log('activeTab:', activeTab);
+    //   console.log('estimates 길이:', estimates.length);
+    // }
 
     if (estimates.length === 0) {
-      console.log('견적서 목록이 비어있어 meta 업데이트를 건너뜁니다.');
+      // console.log('견적서 목록이 비어있어 meta 업데이트를 건너뜁니다.');
       return;
     }
 
     if (activeTab < 0 || activeTab >= estimates.length) {
-      console.log('유효하지 않은 activeTab으로 meta 업데이트를 건너뜁니다.');
+      // if (process.env.NODE_ENV === 'development') {
+      //   console.log('유효하지 않은 activeTab으로 meta 업데이트를 건너뜁니다.');
+      // }
       return;
     }
 
     const est = estimates[activeTab];
-    console.log('현재 견적서:', est);
+    // console.log('현재 견적서:', est);
 
     if (est) {
       const newMeta = {
@@ -1673,10 +1686,10 @@ const EstimateManagement: React.FC = () => {
         type: est.type || '',
         address: est.address || '',
       };
-      console.log('새로운 meta 상태:', newMeta);
+      // console.log('새로운 meta 상태:', newMeta);
       setMeta(newMeta);
     } else {
-      console.log('견적서 정보가 없어 meta 업데이트를 건너뜁니다.');
+      // console.log('견적서 정보가 없어 meta 업데이트를 건너뜁니다.');
     }
   }, [activeTab, estimates.length]); // estimates.length만 의존성으로 추가
   const [customerOptions, setCustomerOptions] = useState<any[]>([]);
@@ -1792,7 +1805,9 @@ const EstimateManagement: React.FC = () => {
         const data = JSON.parse(applyToEstimateData);
         console.log('견적서에 적용할 데이터:', data);
         console.log('현재 견적서 상태:', estimates);
-        console.log('현재 활성 탭:', activeTab);
+        if (process.env.NODE_ENV === 'development') {
+      console.log('현재 활성 탭:', activeTab);
+    }
 
         // 현재 견적서에 행 데이터 추가
         const currentEstimate = estimates[activeTab];
@@ -1863,7 +1878,13 @@ const EstimateManagement: React.FC = () => {
     try {
       console.log('Firebase에서 견적서 로드 시작');
       const estimates = await estimateService.getEstimates();
-      console.log('Firebase에서 견적서 로드 완료:', estimates.length, '개');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Firebase에서 견적서 로드 완료:', estimates.length, '개');
+      }
+      
+      // Firebase에서 성공적으로 로드된 경우 localStorage도 동기화
+      localStorage.setItem('saved_estimates', JSON.stringify(estimates));
+      
       return estimates;
     } catch (error) {
       console.error('Firebase에서 견적서 로드 오류:', error);
@@ -1883,16 +1904,28 @@ const EstimateManagement: React.FC = () => {
   // 저장된 견적서 필터링
   const [savedEstimates, setSavedEstimates] = useState<any[]>([]);
   
-  // 견적서 로드
+  // 견적서와 옵션 데이터 순차 로드
   useEffect(() => {
-    console.log('=== 견적서 로드 useEffect 실행 ===');
-    const loadEstimates = async () => {
-      const estimates = await loadSavedEstimates();
-      console.log('로드된 견적서 개수:', estimates.length);
-      setSavedEstimates(estimates);
+    const loadDataSequentially = async () => {
+      try {
+        // 1. 먼저 견적서 로드
+        console.log('=== 데이터 로드 시작 ===');
+        const estimates = await loadSavedEstimates();
+        setSavedEstimates(estimates);
+        
+        // 2. 견적서 로드 완료 후 옵션 데이터 로드
+        console.log('견적서 로드 완료, 옵션 데이터 로드 시작');
+        const options = await loadOptionsFromFirebase();
+        setOptionData(options);
+        setOptionDataLoaded(true);
+        console.log('=== 모든 데이터 로드 완료 ===');
+      } catch (error) {
+        console.error('데이터 로드 중 오류:', error);
+      }
     };
-    loadEstimates();
-  }, []);
+    
+    loadDataSequentially();
+  }, []); // 컴포넌트 마운트 시 한 번만 실행
   const filteredSavedEstimates = savedEstimates.filter((estimate: any) => {
     const s = estimateSearch.trim().toLowerCase();
     if (!s) return true;
@@ -1978,10 +2011,13 @@ const EstimateManagement: React.FC = () => {
     }
   });
 
-  // 디버깅 정보 출력
-  console.log('저장된 견적서:', savedEstimates.length, '개');
-  console.log('필터링된 견적서:', filteredSavedEstimatesList.length, '개');
-  console.log('현재 기간 모드:', periodMode);
+  // 디버깅 정보 출력 (개발 환경에서만)
+  // 주석 처리하여 반복 로그 방지
+  // if (process.env.NODE_ENV === 'development') {
+  //   console.log('저장된 견적서:', savedEstimates.length, '개');
+  //   console.log('필터링된 견적서:', filteredSavedEstimatesList.length, '개');
+  //   console.log('현재 기간 모드:', periodMode);
+  // }
 
   // 저장된 견적서 불러오기 핸들러
   const handleLoadSavedEstimate = (savedEstimate: any) => {
@@ -2680,15 +2716,7 @@ const EstimateManagement: React.FC = () => {
   const [optionData, setOptionData] = useState<any[][]>([]);
   const [optionDataLoaded, setOptionDataLoaded] = useState(false);
 
-  // 컴포넌트 마운트 시 옵션 데이터 로드
-  useEffect(() => {
-    const loadOptionsData = async () => {
-      const options = await loadOptionsFromFirebase();
-      setOptionData(options);
-      setOptionDataLoaded(true);
-    };
-    loadOptionsData();
-  }, []);
+  // 옵션 로드 useEffect 제거 - 순차 로드로 통합됨
 
   function loadOptions() {
     return optionData;
@@ -4379,29 +4407,73 @@ const EstimateManagement: React.FC = () => {
     navigate('/business/contract-management');
   };
 
-  const handleProceedToContract = (savedEstimate: any) => {
-    // 계약 진행 시 알림 (WebSocket으로 실시간 전송)
-    createEstimateNotification(
-      savedEstimate.estimateNo,
-      '계약 진행',
-      nickname || '사용자',
-      savedEstimate.id.toString()
-    );
+  const handleProceedToContract = async (savedEstimate: any) => {
+    console.log('진행버튼 클릭됨:', savedEstimate);
+    
+    try {
+      // 계약 진행 시 알림 (WebSocket으로 실시간 전송)
+      createEstimateNotification(
+        savedEstimate.estimateNo,
+        '계약 진행',
+        nickname || '사용자',
+        savedEstimate.id.toString()
+      );
 
-    // 계약관리 페이지에서 사용할 데이터 준비
-    const totalAmount = getTotalConsumerAmount(savedEstimate.rows);
-    const estimateToProceed = {
-      ...savedEstimate,
-      totalAmount: totalAmount,
-      discountedAmount: savedEstimate.discountedAmount ?? totalAmount,
-      products: savedEstimate.rows.map((r: any) => r.productName).join(', '),
-    };
+      // 계약관리 페이지에서 사용할 데이터 준비
+      const totalAmount = getTotalConsumerAmount(savedEstimate.rows);
+      const estimateToProceed = {
+        ...savedEstimate,
+        totalAmount: totalAmount,
+        discountedAmount: savedEstimate.discountedAmount ?? totalAmount,
+        products: savedEstimate.rows.map((r: any) => r.productName).join(', '),
+        status: 'approved', // 승인 상태로 변경
+        approvedAt: new Date().toISOString(),
+        approvedBy: nickname || '사용자'
+      };
 
-    // localStorage에 승인된 견적서 데이터 저장
-    localStorage.setItem('approvedEstimate', JSON.stringify(estimateToProceed));
+      // Firebase 서버에 견적서 저장/업데이트
+      console.log('Firebase 서버에 견적서 저장 시작');
+      let firebaseId;
+      
+      if (savedEstimate.firebaseId) {
+        // 기존 견적서 업데이트
+        await estimateService.updateEstimate(savedEstimate.firebaseId, estimateToProceed);
+        firebaseId = savedEstimate.firebaseId;
+        console.log('기존 견적서 업데이트 완료:', firebaseId);
+      } else {
+        // 새 견적서 저장
+        firebaseId = await estimateService.saveEstimate(estimateToProceed);
+        console.log('새 견적서 저장 완료:', firebaseId);
+      }
 
-    // 계약관리 페이지로 이동
-    navigate('/business/contract-management');
+      // Firebase ID를 포함한 데이터로 업데이트
+      const finalEstimateData = {
+        ...estimateToProceed,
+        firebaseId: firebaseId
+      };
+
+      // localStorage에 승인된 견적서 데이터 저장
+      localStorage.setItem('approvedEstimate', JSON.stringify(finalEstimateData));
+
+      // 승인된 견적서 목록에 추가
+      const approvedEstimates = JSON.parse(localStorage.getItem('approvedEstimatesList') || '[]');
+      const existingIndex = approvedEstimates.findIndex((e: any) => e.estimateNo === savedEstimate.estimateNo);
+      
+      if (existingIndex >= 0) {
+        approvedEstimates[existingIndex] = finalEstimateData;
+      } else {
+        approvedEstimates.push(finalEstimateData);
+      }
+      
+      localStorage.setItem('approvedEstimatesList', JSON.stringify(approvedEstimates));
+
+      console.log('계약관리로 이동 시작');
+      // 계약관리 페이지로 이동
+      navigate('/business/contract-management');
+    } catch (error) {
+      console.error('진행버튼 처리 중 오류:', error);
+      alert('계약 진행 중 오류가 발생했습니다. 다시 시도해주세요.');
+    }
   };
 
   const handleCancelContract = (estimate: any) => {
@@ -6033,7 +6105,7 @@ const EstimateManagement: React.FC = () => {
                 <TableBody>
                   {filteredEstimates.map((estimate, idx) => (
                     <TableRow
-                      key={estimate.id}
+                      key={`estimate-${estimate.id || 'no-id'}-${idx}`}
                       hover
                       sx={{ cursor: 'pointer' }}
                     >
@@ -6087,9 +6159,9 @@ const EstimateManagement: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {filteredSavedEstimates.map((savedEstimate: any) => (
+                  {filteredSavedEstimates.map((savedEstimate: any, index: number) => (
                     <TableRow
-                      key={savedEstimate.id}
+                                              key={`saved-estimate-${savedEstimate.id || 'no-id'}-${savedEstimate.estimateNo || 'no-estimate-no'}-${index}`}
                       hover
                       sx={{
                         cursor: 'pointer',
@@ -7848,19 +7920,23 @@ const EstimateManagement: React.FC = () => {
               </Box>
             )}
             {(() => {
-              console.log(
-                '견적서 테이블 렌더링 - 현재 견적서:',
-                estimates[activeTab]
-              );
-              console.log(
-                '견적서 테이블 렌더링 - 행 수:',
-                estimates[activeTab]?.rows?.length
-              );
-              console.log(
-                '견적서 테이블 렌더링 - 필터링된 행 수:',
-                filteredRows?.length
-              );
-              console.log('견적서 테이블 렌더링 - 필터링된 행:', filteredRows);
+              // 개발 환경에서만 디버깅 로그 출력
+              // 주석 처리하여 반복 로그 방지
+              // if (process.env.NODE_ENV === 'development') {
+              //   console.log(
+              //     '견적서 테이블 렌더링 - 현재 견적서:',
+              //     estimates[activeTab]
+              //   );
+              //   console.log(
+              //     '견적서 테이블 렌더링 - 행 수:',
+              //     estimates[activeTab]?.rows?.length
+              //   );
+              //   console.log(
+              //     '견적서 테이블 렌더링 - 필터링된 행 수:',
+              //     filteredRows?.length
+              //   );
+              //   console.log('견적서 테이블 렌더링 - 필터링된 행:', filteredRows);
+              // }
 
               return estimates[activeTab]?.rows.length > 0 ? (
                 <TableContainer>
@@ -7920,7 +7996,7 @@ const EstimateManagement: React.FC = () => {
                         if (isProduct) {
                           return (
                             <TableRow
-                              key={`product-${row.id}-${idx}`}
+                              key={`product-${row.id || 'no-id'}-${idx}-${row.productName || 'unnamed'}-${row.space || 'no-space'}`}
                               sx={{
                                 backgroundColor:
                                   selectedProductIdx === idx
@@ -8015,7 +8091,7 @@ const EstimateManagement: React.FC = () => {
                           // 옵션행: 제품행보다 밝은 배경, 들여쓰기, 글씨 10.5pt
                           return (
                             <TableRow
-                              key={`${row.id}-${idx}-${Date.now()}`}
+                              key={`option-${row.id || 'no-id'}-${idx}-${row.optionLabel || 'no-label'}-${row.details || 'no-details'}`}
                               sx={{
                                 backgroundColor: getSpaceColor(row.space, 1.12),
                                 fontSize: '10.5pt',
@@ -8891,13 +8967,13 @@ const EstimateManagement: React.FC = () => {
                   </TableHead>
                   <TableBody>
                     {filteredSavedEstimatesList.length > 0 ? (
-                      filteredSavedEstimatesList.map((est: any) => {
+                      filteredSavedEstimatesList.map((est: any, index: number) => {
                         const discountedAmount =
                           est.discountedAmount ??
                           est.totalAmount - est.discountAmount;
                         const status = getEstimateStatus(est);
-                        // 견적서 ID만 사용하여 안정적인 키 생성
-                        const key = `estimate-${est.id}`;
+                        // 견적서 ID, estimateNo, 인덱스를 사용하여 안정적인 키 생성
+                        const key = `estimate-${est.id || 'no-id'}-${est.estimateNo || 'no-estimate-no'}-${index}`;
 
                         // 그룹 정보 가져오기
                         const { colorIndex, isLatest, isFinal } =
@@ -9174,16 +9250,33 @@ const EstimateManagement: React.FC = () => {
                                 {/* 상태에 따른 버튼 표시 */}
                                 {!isFinal && status === '견적완료' && (
                                   <Button
-                                    size="small"
+                                    size={isMobile ? "large" : "small"}
                                     variant="contained"
                                     color="primary"
                                     sx={{
                                       mr: 1,
                                       fontWeight: 'bold',
-                                      minWidth: 80,
+                                      minWidth: isMobile ? 100 : 80,
                                       color: '#fff',
+                                      fontSize: isMobile ? 16 : 12,
+                                      py: isMobile ? 1.5 : 0.5,
+                                      px: isMobile ? 3 : 1,
+                                      touchAction: 'manipulation',
+                                      WebkitTapHighlightColor: 'transparent',
+                                      '&:active': {
+                                        transform: 'scale(0.95)',
+                                      },
                                     }}
-                                    onClick={() => handleProceedToContract(est)}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      console.log('진행버튼 터치됨');
+                                      handleProceedToContract(est);
+                                    }}
+                                    onTouchStart={(e) => {
+                                      e.preventDefault();
+                                      console.log('진행버튼 터치 시작');
+                                    }}
                                   >
                                     진행
                                   </Button>
@@ -9192,25 +9285,52 @@ const EstimateManagement: React.FC = () => {
                                 {status === '계약진행중' && (
                                   <>
                                     <Button
-                                      size="small"
+                                      size={isMobile ? "large" : "small"}
                                       variant="contained"
                                       color="warning"
                                       sx={{
                                         mr: 1,
                                         fontWeight: 'bold',
-                                        minWidth: 80,
+                                        minWidth: isMobile ? 100 : 80,
                                         color: '#fff',
+                                        fontSize: isMobile ? 16 : 12,
+                                        py: isMobile ? 1.5 : 0.5,
+                                        px: isMobile ? 3 : 1,
+                                        touchAction: 'manipulation',
+                                        WebkitTapHighlightColor: 'transparent',
+                                        '&:active': {
+                                          transform: 'scale(0.95)',
+                                        },
                                       }}
-                                      onClick={() => handleViewContract(est)}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleViewContract(est);
+                                      }}
                                     >
                                       계약진행중
                                     </Button>
                                     <Button
-                                      size="small"
+                                      size={isMobile ? "large" : "small"}
                                       variant="outlined"
                                       color="error"
-                                      sx={{ mr: 1, minWidth: 60 }}
-                                      onClick={() => handleCancelContract(est)}
+                                      sx={{ 
+                                        mr: 1, 
+                                        minWidth: isMobile ? 80 : 60,
+                                        fontSize: isMobile ? 16 : 12,
+                                        py: isMobile ? 1.5 : 0.5,
+                                        px: isMobile ? 3 : 1,
+                                        touchAction: 'manipulation',
+                                        WebkitTapHighlightColor: 'transparent',
+                                        '&:active': {
+                                          transform: 'scale(0.95)',
+                                        },
+                                      }}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleCancelContract(est);
+                                      }}
                                     >
                                       취소
                                     </Button>
@@ -9219,16 +9339,28 @@ const EstimateManagement: React.FC = () => {
 
                                 {status === '계약완료' && (
                                   <Button
-                                    size="small"
+                                    size={isMobile ? "large" : "small"}
                                     variant="contained"
                                     color="success"
                                     sx={{
                                       mr: 1,
                                       fontWeight: 'bold',
-                                      minWidth: 80,
+                                      minWidth: isMobile ? 100 : 80,
                                       color: '#fff',
+                                      fontSize: isMobile ? 16 : 12,
+                                      py: isMobile ? 1.5 : 0.5,
+                                      px: isMobile ? 3 : 1,
+                                      touchAction: 'manipulation',
+                                      WebkitTapHighlightColor: 'transparent',
+                                      '&:active': {
+                                        transform: 'scale(0.95)',
+                                      },
                                     }}
-                                    onClick={() => handleViewContract(est)}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleViewContract(est);
+                                    }}
                                   >
                                     계약완료
                                   </Button>
@@ -9236,16 +9368,28 @@ const EstimateManagement: React.FC = () => {
 
                                 {status === '발주완료' && (
                                   <Button
-                                    size="small"
+                                    size={isMobile ? "large" : "small"}
                                     variant="contained"
                                     color="secondary"
                                     sx={{
                                       mr: 1,
                                       fontWeight: 'bold',
-                                      minWidth: 80,
+                                      minWidth: isMobile ? 100 : 80,
                                       color: '#fff',
+                                      fontSize: isMobile ? 16 : 12,
+                                      py: isMobile ? 1.5 : 0.5,
+                                      px: isMobile ? 3 : 1,
+                                      touchAction: 'manipulation',
+                                      WebkitTapHighlightColor: 'transparent',
+                                      '&:active': {
+                                        transform: 'scale(0.95)',
+                                      },
                                     }}
-                                    onClick={() => handleViewOrder(est)}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleViewOrder(est);
+                                    }}
                                   >
                                     발주완료
                                   </Button>
@@ -9253,17 +9397,29 @@ const EstimateManagement: React.FC = () => {
 
                                 {status === '납품완료' && (
                                   <Button
-                                    size="small"
+                                    size={isMobile ? "large" : "small"}
                                     variant="contained"
                                     sx={{
                                       mr: 1,
                                       backgroundColor: '#607d8b',
                                       '&:hover': { backgroundColor: '#455a64' },
                                       fontWeight: 'bold',
-                                      minWidth: 80,
+                                      minWidth: isMobile ? 100 : 80,
                                       color: '#fff',
+                                      fontSize: isMobile ? 16 : 12,
+                                      py: isMobile ? 1.5 : 0.5,
+                                      px: isMobile ? 3 : 1,
+                                      touchAction: 'manipulation',
+                                      WebkitTapHighlightColor: 'transparent',
+                                      '&:active': {
+                                        transform: 'scale(0.95)',
+                                      },
                                     }}
-                                    onClick={() => handleViewOrder(est)}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleViewOrder(est);
+                                    }}
                                   >
                                     납품완료
                                   </Button>
@@ -9310,9 +9466,48 @@ const EstimateManagement: React.FC = () => {
                                       try {
                                         console.log('=== 견적서 삭제 시작 ===');
                                         console.log('삭제할 견적서:', est);
+                                        console.log('견적서 ID 타입:', typeof est.id);
+                                        console.log('견적서 ID 값:', est.id);
+                                        console.log('견적서 전체 데이터:', JSON.stringify(est, null, 2));
 
-                                        // Firebase 서버에서 견적서 삭제
-                                        const response = await fetch(`${API_BASE}/estimates/${est.estimateNo}`, {
+                                        // Firestore 문서 ID 확인 (est.id가 숫자인 경우 실제 문서 ID를 찾아야 함)
+                                        let firestoreId = est.id;
+                                        
+                                        // est.id가 숫자인 경우, 실제 Firestore 문서 ID를 찾기 위해 견적번호로 검색
+                                        if (typeof est.id === 'number') {
+                                          console.log('숫자 ID 감지, 실제 Firestore 문서 ID를 찾는 중...');
+                                          console.log('견적번호로 검색:', est.estimateNo);
+                                          console.log('현재 저장된 견적서 목록:', savedEstimates.map(e => ({ id: e.id, estimateNo: e.estimateNo, idType: typeof e.id })));
+                                          
+                                          // 현재 저장된 견적서 목록에서 동일한 견적번호를 가진 견적서 찾기
+                                          const matchingEstimates = savedEstimates.filter(e => 
+                                            e.estimateNo === est.estimateNo
+                                          );
+                                          
+                                          console.log('동일한 견적번호를 가진 견적서들:', matchingEstimates);
+                                          
+                                          // Firestore 문서 ID를 가진 견적서 찾기
+                                          const matchingEstimate = matchingEstimates.find(e => 
+                                            typeof e.id === 'string' && 
+                                            e.id.length > 10 // Firestore 문서 ID는 보통 20자 이상
+                                          );
+                                          
+                                          if (matchingEstimate) {
+                                            firestoreId = matchingEstimate.id;
+                                            console.log('실제 Firestore 문서 ID 찾음:', firestoreId);
+                                          } else {
+                                            console.error('실제 Firestore 문서 ID를 찾을 수 없음');
+                                            console.log('동일한 견적번호를 가진 견적서들:', matchingEstimates);
+                                            console.log('모든 저장된 견적서:', savedEstimates);
+                                            
+                                            // 견적번호로 삭제 시도
+                                            console.log('견적번호로 삭제를 시도합니다:', est.estimateNo);
+                                            firestoreId = est.estimateNo;
+                                          }
+                                        }
+
+                                        // Firebase 서버에서 견적서 삭제 (실제 Firestore 문서 ID 사용)
+                                        const response = await fetch(`${API_BASE}/estimates/${encodeURIComponent(firestoreId)}`, {
                                           method: 'DELETE',
                                           headers: {
                                             'Content-Type': 'application/json',
@@ -9329,33 +9524,73 @@ const EstimateManagement: React.FC = () => {
                                           // Firebase 삭제 실패해도 localStorage는 삭제 진행
                                         }
 
-                                        // localStorage에서 견적서 삭제
+                                        console.log('삭제 전 견적서 개수:', savedEstimates.length);
+                                        console.log('삭제할 견적서 ID:', est.id);
+                                        console.log('삭제할 견적서 번호:', est.estimateNo);
+                                        console.log('사용할 Firestore ID:', firestoreId);
+                                        
+                                        // localStorage에서 견적서 삭제 (정확히 해당 견적서만)
                                         const updatedSavedEstimates =
                                           savedEstimates.filter(
-                                            (e: any) => e.id !== est.id
+                                            (e: any) => e.id !== firestoreId && e.estimateNo !== est.estimateNo
                                           );
+                                        
+                                        console.log('삭제 후 견적서 개수:', updatedSavedEstimates.length);
+                                        console.log('삭제된 견적서 목록:', updatedSavedEstimates.map(e => ({ id: e.id, estimateNo: e.estimateNo })));
+                                        
                                         localStorage.setItem(
                                           'saved_estimates',
                                           JSON.stringify(updatedSavedEstimates)
                                         );
 
+                                        // 상태 업데이트 (즉시 반영)
+                                        setSavedEstimates(updatedSavedEstimates);
+
+                                        // 성공 메시지 표시
                                         alert('견적서가 삭제되었습니다.');
-                                        window.location.reload();
                                       } catch (error) {
                                         console.error('견적서 삭제 중 오류:', error);
                                         
-                                        // 오류 발생 시에도 localStorage는 삭제
+                                        // 오류 발생 시에도 Firestore ID를 다시 계산
+                                        let errorFirestoreId = est.id;
+                                        if (typeof est.id === 'number') {
+                                          const matchingEstimates = savedEstimates.filter(e => 
+                                            e.estimateNo === est.estimateNo
+                                          );
+                                          const matchingEstimate = matchingEstimates.find(e => 
+                                            typeof e.id === 'string' && 
+                                            e.id.length > 10
+                                          );
+                                          if (matchingEstimate) {
+                                            errorFirestoreId = matchingEstimate.id;
+                                          } else {
+                                            errorFirestoreId = est.estimateNo; // 임시로 견적번호 사용
+                                          }
+                                        }
+                                        
+                                        console.log('오류 발생 - 삭제 전 견적서 개수:', savedEstimates.length);
+                                        console.log('오류 발생 - 삭제할 견적서 ID:', est.id);
+                                        console.log('오류 발생 - 삭제할 견적서 번호:', est.estimateNo);
+                                        console.log('오류 발생 - 사용할 Firestore ID:', errorFirestoreId);
+                                        
+                                        // 오류 발생 시에도 localStorage는 삭제 (정확히 해당 견적서만)
                                         const updatedSavedEstimates =
                                           savedEstimates.filter(
-                                            (e: any) => e.id !== est.id
+                                            (e: any) => e.id !== errorFirestoreId && e.estimateNo !== est.estimateNo
                                           );
+                                        
+                                        console.log('오류 발생 - 삭제 후 견적서 개수:', updatedSavedEstimates.length);
+                                        console.log('오류 발생 - 삭제된 견적서 목록:', updatedSavedEstimates.map(e => ({ id: e.id, estimateNo: e.estimateNo })));
+                                        
                                         localStorage.setItem(
                                           'saved_estimates',
                                           JSON.stringify(updatedSavedEstimates)
                                         );
                                         
+                                        // 상태 업데이트 (즉시 반영)
+                                        setSavedEstimates(updatedSavedEstimates);
+                                        
                                         alert('견적서가 삭제되었습니다. (서버 연결 오류가 있었지만 로컬에서는 삭제됨)');
-                                        window.location.reload();
                                       }
                                     }
                                   }}

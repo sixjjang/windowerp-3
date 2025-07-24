@@ -73,12 +73,13 @@ ChartJS.register(
 );
 
 interface FixedExpense {
-  id: number;
+  id: string; // Firestore 문서 ID (문자열)
   name: string;
   amount: number;
   month: string;
   note?: string;
-  isRecurring?: boolean; // 매달 반복 여부
+  isRecurring?: boolean; // 반복 여부
+  recurringType?: 'monthly' | 'yearly'; // 반복 타입: 매달, 매년
   recurringStartMonth?: string; // 반복 시작 월
   recurringEndMonth?: string; // 반복 종료 월 (선택사항)
   type: 'personal' | 'company'; // 개인/회사 구분
@@ -147,6 +148,7 @@ interface Account {
 interface Transaction {
   id: number;
   type: 'income' | 'expense'; // 'income': 수입, 'expense': 지출
+  category: 'personal' | 'company'; // 'personal': 개인, 'company': 회사
   vendor: string; // 거래처
   paymentMethod: string; // 입금방식: 'card', 'cash', 또는 계좌 ID
   amount: number;
@@ -224,6 +226,7 @@ const Accounting: React.FC = () => {
     month: getCurrentMonth(),
     note: '',
     isRecurring: false,
+    recurringType: 'monthly',
     recurringStartMonth: getCurrentMonth(),
     recurringEndMonth: '',
     type: 'personal',
@@ -278,6 +281,7 @@ const Accounting: React.FC = () => {
     Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>
   >({
     type: 'expense',
+    category: 'personal',
     vendor: '',
     paymentMethod: 'cash',
     amount: 0,
@@ -394,7 +398,7 @@ const Accounting: React.FC = () => {
     }
   };
 
-  const loadTransactions = async (month?: string) => {
+  const loadTransactions = async (month?: string, expenseData?: FixedExpense[]) => {
     setLoading(true);
     try {
       const url = month
@@ -408,7 +412,38 @@ const Accounting: React.FC = () => {
       if (!response.ok) throw new Error('데이터 로드 실패');
       const data = await response.json();
       console.log('거래내역 로드 성공, 데이터 개수:', data.length);
-      setTransactions(data);
+      
+      // 기존 데이터에 category 필드가 없는 경우 기본값 설정
+      const processedData = data.map((transaction: any) => {
+        let category = transaction.category;
+        
+        // 고정비에서 생성된 거래내역인 경우 (비고에 "고정비:" 포함)
+        if (!category && transaction.note && transaction.note.includes('고정비:')) {
+          // 해당 월의 고정비 데이터에서 매칭되는 항목 찾기
+          const expenseList = expenseData || expenses;
+          const matchingExpense = expenseList.find(expense => 
+            expense.name === transaction.vendor && 
+            expense.month === transaction.month
+          );
+          
+          if (matchingExpense) {
+            category = matchingExpense.type; // 고정비의 개인/회사 구분 사용
+            console.log(`고정비 매칭: ${transaction.vendor} -> ${category}`);
+          } else {
+            category = 'personal'; // 매칭되는 고정비가 없으면 기본값
+          }
+        } else if (!category) {
+          category = 'personal'; // 기본값
+        }
+        
+        return {
+          ...transaction,
+          category: category
+        };
+      });
+      
+      console.log('거래내역 처리 후 데이터:', processedData);
+      setTransactions(processedData);
     } catch (error) {
       console.error('거래내역 로드 오류:', error);
       setSnackbar({
@@ -460,8 +495,8 @@ const Accounting: React.FC = () => {
   }, [selectedYear]);
 
   useEffect(() => {
-    loadTransactions(selectedMonth);
-  }, [selectedMonth]);
+    loadTransactions(selectedMonth, expenses);
+  }, [selectedMonth, expenses]); // expenses가 변경될 때도 다시 로드
 
   useEffect(() => {
     loadAccounts();
@@ -511,6 +546,7 @@ const Accounting: React.FC = () => {
   const periodTransactions = transactions.filter(t => 
     isTransactionInPeriod(t, transactionPeriodType, selectedPeriod)
   );
+  // 전체 합계
   const periodIncome = periodTransactions
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + t.amount, 0);
@@ -518,6 +554,37 @@ const Accounting: React.FC = () => {
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + t.amount, 0);
   const periodNetIncome = periodIncome - periodExpense;
+
+  // 개인별 합계
+  const personalTransactions = periodTransactions.filter(t => t.category === 'personal');
+  const personalIncome = personalTransactions
+    .filter(t => t.type === 'income')
+    .reduce((sum, t) => sum + t.amount, 0);
+  const personalExpense = personalTransactions
+    .filter(t => t.type === 'expense')
+    .reduce((sum, t) => sum + t.amount, 0);
+  const personalNetIncome = personalIncome - personalExpense;
+
+  // 회사별 합계
+  const companyTransactions = periodTransactions.filter(t => t.category === 'company');
+  const companyIncome = companyTransactions
+    .filter(t => t.type === 'income')
+    .reduce((sum, t) => sum + t.amount, 0);
+  const companyExpense = companyTransactions
+    .filter(t => t.type === 'expense')
+    .reduce((sum, t) => sum + t.amount, 0);
+  const companyNetIncome = companyIncome - companyExpense;
+
+  // 디버깅용 로그
+  console.log('거래내역 계산:', {
+    totalTransactions: periodTransactions.length,
+    personalTransactions: personalTransactions.length,
+    companyTransactions: companyTransactions.length,
+    personalIncome,
+    personalExpense,
+    companyIncome,
+    companyExpense
+  });
 
   const yearBudgets = budgets.filter(b => b.year === selectedYear);
   const totalBudget = yearBudgets.reduce((sum, b) => sum + b.amount, 0);
@@ -607,6 +674,7 @@ const Accounting: React.FC = () => {
         month: expense.month,
         note: expense.note || '',
         isRecurring: expense.isRecurring || false,
+        recurringType: expense.recurringType || 'monthly',
         recurringStartMonth: expense.recurringStartMonth || expense.month,
         recurringEndMonth: expense.recurringEndMonth || '',
         type: expense.type || 'personal',
@@ -621,6 +689,7 @@ const Accounting: React.FC = () => {
         month: getCurrentMonth(),
         note: '',
         isRecurring: false,
+        recurringType: 'monthly',
         recurringStartMonth: getCurrentMonth(),
         recurringEndMonth: '',
         type: 'personal',
@@ -701,6 +770,7 @@ const Accounting: React.FC = () => {
       setEditTransaction(transaction);
       setTransactionForm({
         type: transaction.type,
+        category: transaction.category || 'personal',
         vendor: transaction.vendor,
         paymentMethod: transaction.paymentMethod,
         amount: transaction.amount,
@@ -712,6 +782,7 @@ const Accounting: React.FC = () => {
       setEditTransaction(null);
       setTransactionForm({
         type: 'expense',
+        category: 'personal',
         vendor: '',
         paymentMethod: 'cash',
         amount: 0,
@@ -723,14 +794,16 @@ const Accounting: React.FC = () => {
     setTransactionDialogOpen(true);
   };
 
-  // 매달 고정비 자동 생성 함수
+  // 반복 고정비 자동 생성 함수
   const generateMonthlyExpenses = async (baseExpense: any) => {
     if (!baseExpense.isRecurring) return;
 
     const startDate = new Date(baseExpense.recurringStartMonth + '-01');
     const endDate = baseExpense.recurringEndMonth 
       ? new Date(baseExpense.recurringEndMonth + '-01')
-      : new Date(new Date().getFullYear() + 2, 11, 1); // 2년 후까지
+      : baseExpense.recurringType === 'yearly' 
+        ? new Date(new Date().getFullYear() + 5, 11, 1) // 매년 반복: 5년 후까지
+        : new Date(new Date().getFullYear() + 2, 11, 1); // 매달 반복: 2년 후까지
 
     const expenses = [];
     const currentDate = new Date(startDate);
@@ -750,12 +823,21 @@ const Accounting: React.FC = () => {
           month: monthStr,
           note: baseExpense.note,
           isRecurring: false, // 생성된 항목은 반복 아님
+          recurringType: baseExpense.recurringType,
           recurringStartMonth: baseExpense.recurringStartMonth,
           recurringEndMonth: baseExpense.recurringEndMonth,
+          type: baseExpense.type,
+          paymentMethod: baseExpense.paymentMethod,
+          accountId: baseExpense.accountId,
         });
       }
       
-      currentDate.setMonth(currentDate.getMonth() + 1);
+      // 반복 타입에 따라 날짜 증가
+      if (baseExpense.recurringType === 'yearly') {
+        currentDate.setFullYear(currentDate.getFullYear() + 1);
+      } else {
+        currentDate.setMonth(currentDate.getMonth() + 1);
+      }
     }
 
     // 생성된 고정비들을 일괄 저장
@@ -767,7 +849,7 @@ const Accounting: React.FC = () => {
           body: JSON.stringify(expense),
         });
       } catch (error) {
-        console.error('월별 고정비 생성 오류:', error);
+        console.error('반복 고정비 생성 오류:', error);
       }
     }
 
@@ -802,6 +884,7 @@ const Accounting: React.FC = () => {
 
       const transactionData = {
         type: 'expense' as const,
+        category: expense.type, // 고정비의 개인/회사 구분을 그대로 사용
         vendor: expense.name,
         paymentMethod: paymentMethod,
         amount: expense.amount,
@@ -818,7 +901,7 @@ const Accounting: React.FC = () => {
 
       if (response.ok) {
         // 거래내역 목록 새로고침
-        loadTransactions(selectedMonth);
+        loadTransactions(selectedMonth, expenses);
       }
     } catch (error) {
       console.error('고정비 거래내역 생성 오류:', error);
@@ -828,6 +911,7 @@ const Accounting: React.FC = () => {
   const handleExpenseSave = async () => {
     try {
       if (editExpense) {
+        console.log('고정비 수정 요청:', { id: editExpense.id, data: expenseForm });
         const response = await fetch(
           `${API_BASE}/updateFixedExpense/${editExpense.id}`,
           {
@@ -836,7 +920,12 @@ const Accounting: React.FC = () => {
             body: JSON.stringify(expenseForm),
           }
         );
-        if (!response.ok) throw new Error('수정 실패');
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('고정비 수정 응답 오류:', response.status, errorText);
+          throw new Error(`수정 실패: ${response.status} - ${errorText}`);
+        }
       } else {
         const response = await fetch(`${API_BASE}/saveFixedExpense`, {
           method: 'POST',
@@ -996,7 +1085,7 @@ const Accounting: React.FC = () => {
     }
   };
 
-  const handleExpenseDelete = async (id: number) => {
+  const handleExpenseDelete = async (id: string) => {
     if (!window.confirm('정말 삭제하시겠습니까?')) return;
 
     try {
@@ -1023,7 +1112,7 @@ const Accounting: React.FC = () => {
 
   // 반복 고정비 수동 생성 함수
   const handleGenerateRecurringExpenses = async () => {
-    if (!window.confirm('반복 설정된 고정비를 다음 달부터 자동 생성하시겠습니까?')) return;
+    if (!window.confirm('반복 설정된 고정비를 다음 기간부터 자동 생성하시겠습니까?')) return;
 
     try {
       const recurringExpenses = expenses.filter(e => e.isRecurring);
@@ -1097,7 +1186,7 @@ const Accounting: React.FC = () => {
         severity: 'success',
       });
       setTransactionDialogOpen(false);
-      loadTransactions(selectedMonth);
+      loadTransactions(selectedMonth, expenses);
     } catch (error) {
       console.error('거래내역 저장 오류:', error);
       setSnackbar({
@@ -1122,7 +1211,7 @@ const Accounting: React.FC = () => {
         message: '거래내역이 삭제되었습니다.',
         severity: 'success',
       });
-      loadTransactions(selectedMonth);
+      loadTransactions(selectedMonth, expenses);
     } catch (error) {
       console.error('거래내역 삭제 오류:', error);
       setSnackbar({
@@ -1483,6 +1572,7 @@ const Accounting: React.FC = () => {
             <TableHead>
               <TableRow>
                 <TableCell>구분</TableCell>
+                <TableCell>개인/회사</TableCell>
                 <TableCell>거래처</TableCell>
                 <TableCell>입금방식</TableCell>
                 <TableCell>금액</TableCell>
@@ -1499,6 +1589,14 @@ const Accounting: React.FC = () => {
                       label={t.type === 'income' ? '수입' : '지출'} 
                       size="small" 
                       color={t.type === 'income' ? 'success' : 'error'} 
+                      variant="outlined"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Chip 
+                      label={t.category === 'personal' ? '개인' : '회사'} 
+                      size="small" 
+                      color={t.category === 'personal' ? 'info' : 'warning'} 
                       variant="outlined"
                     />
                   </TableCell>
@@ -1541,18 +1639,60 @@ const Accounting: React.FC = () => {
           </Table>
         </TableContainer>
 
-        <Box sx={{ mt: 2, display: 'flex', gap: 4, alignItems: 'center' }}>
-          <Typography>
-            총 수입: <b style={{ color: 'green' }}>{periodIncome.toLocaleString()}원</b>
-          </Typography>
-          <Typography>
-            총 지출: <b style={{ color: 'red' }}>{periodExpense.toLocaleString()}원</b>
-          </Typography>
-          <Typography>
-            순수익: <b style={{ color: periodNetIncome >= 0 ? 'green' : 'red' }}>
-              {periodNetIncome.toLocaleString()}원
-            </b>
-          </Typography>
+        <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {/* 개인별 합계 */}
+          <Box sx={{ display: 'flex', gap: 4, alignItems: 'center', p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'info.contrastText' }}>
+              개인
+            </Typography>
+            <Typography>
+              수입: <b style={{ color: 'green' }}>{personalIncome.toLocaleString()}원</b>
+            </Typography>
+            <Typography>
+              지출: <b style={{ color: 'red' }}>{personalExpense.toLocaleString()}원</b>
+            </Typography>
+            <Typography>
+              순수익: <b style={{ color: personalNetIncome >= 0 ? 'green' : 'red' }}>
+                {personalNetIncome.toLocaleString()}원
+              </b>
+            </Typography>
+          </Box>
+
+          {/* 회사별 합계 */}
+          <Box sx={{ display: 'flex', gap: 4, alignItems: 'center', p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'warning.contrastText' }}>
+              회사
+            </Typography>
+            <Typography>
+              수입: <b style={{ color: 'green' }}>{companyIncome.toLocaleString()}원</b>
+            </Typography>
+            <Typography>
+              지출: <b style={{ color: 'red' }}>{companyExpense.toLocaleString()}원</b>
+            </Typography>
+            <Typography>
+              순수익: <b style={{ color: companyNetIncome >= 0 ? 'green' : 'red' }}>
+                {companyNetIncome.toLocaleString()}원
+              </b>
+            </Typography>
+          </Box>
+
+          {/* 전체 합계 */}
+          <Box sx={{ display: 'flex', gap: 4, alignItems: 'center', p: 2, bgcolor: 'grey.500', borderRadius: 1, border: '2px solid #666' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'text.primary' }}>
+              전체 합계
+            </Typography>
+            <Typography sx={{ color: 'text.primary' }}>
+              총 수입: <b style={{ color: 'green' }}>{periodIncome.toLocaleString()}원</b>
+            </Typography>
+            <Typography sx={{ color: 'text.primary' }}>
+              총 지출: <b style={{ color: 'red' }}>{periodExpense.toLocaleString()}원</b>
+            </Typography>
+            <Typography sx={{ color: 'text.primary' }}>
+              순수익: <b style={{ color: periodNetIncome >= 0 ? 'green' : 'red' }}>
+                {periodNetIncome.toLocaleString()}원
+              </b>
+            </Typography>
+          </Box>
         </Box>
       </TabPanel>
 
@@ -1641,7 +1781,7 @@ const Accounting: React.FC = () => {
                   <TableCell>
                     {e.isRecurring ? (
                       <Chip 
-                        label="매달 반복" 
+                        label={e.recurringType === 'yearly' ? '매년 반복' : '매달 반복'} 
                         size="small" 
                         color="primary" 
                         variant="outlined"
@@ -2206,6 +2346,22 @@ const Accounting: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>개인/회사</InputLabel>
+                <Select
+                  value={transactionForm.category}
+                  onChange={(e) => setTransactionForm({ 
+                    ...transactionForm, 
+                    category: e.target.value as 'personal' | 'company'
+                  })}
+                  label="개인/회사"
+                >
+                  <MenuItem value="personal">개인</MenuItem>
+                  <MenuItem value="company">회사</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
               <TextField
                 fullWidth
                 label="거래처"
@@ -2514,7 +2670,7 @@ const Accounting: React.FC = () => {
             }}
           />
           
-          {/* 매달 반복 설정 */}
+          {/* 반복 설정 */}
           <Box sx={{ mt: 2, p: 2, border: '1px solid #ddd', borderRadius: 1 }}>
             <FormControlLabel
               control={
@@ -2526,12 +2682,28 @@ const Accounting: React.FC = () => {
                   })}
                 />
               }
-              label="매달 반복 적용"
+              label="반복 적용"
             />
             
             {expenseForm.isRecurring && (
               <Box sx={{ mt: 2 }}>
                 <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth size="small" margin="dense">
+                      <InputLabel>반복 타입</InputLabel>
+                      <Select
+                        value={expenseForm.recurringType}
+                        onChange={(e) => setExpenseForm({ 
+                          ...expenseForm, 
+                          recurringType: e.target.value as 'monthly' | 'yearly' 
+                        })}
+                        label="반복 타입"
+                      >
+                        <MenuItem value="monthly">매달 반복</MenuItem>
+                        <MenuItem value="yearly">매년 반복</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
                   <Grid item xs={12} sm={6}>
                     <TextField
                       margin="dense"
@@ -2564,7 +2736,10 @@ const Accounting: React.FC = () => {
                       }
                       fullWidth
                       size="small"
-                      helperText="비워두면 2년 후까지 자동 생성"
+                      helperText={expenseForm.recurringType === 'monthly' ? 
+                        "비워두면 2년 후까지 자동 생성" : 
+                        "비워두면 5년 후까지 자동 생성"
+                      }
                     />
                   </Grid>
                 </Grid>

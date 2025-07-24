@@ -70,23 +70,11 @@ export const estimateService = {
   // 견적서 목록 가져오기
   async getEstimates() {
     try {
-      // Firebase Auth 상태 확인
-      const user = checkFirebaseAuth();
-      
-      const estimatesRef = collection(db, 'estimates');
-      const q = query(estimatesRef, orderBy('savedAt', 'desc'));
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      // Firebase Functions를 통해 견적서 목록 조회
+      const result = await callFirebaseFunction('getEstimates', {}, 'GET');
+      return result;
     } catch (error) {
       console.error('견적서 목록 가져오기 실패:', error);
-      console.error('에러 상세 정보:', {
-        code: (error as any).code,
-        message: (error as any).message,
-        stack: (error as any).stack
-      });
       throw error;
     }
   },
@@ -120,27 +108,53 @@ export const estimateService = {
     }
   },
 
-  // 견적서 업데이트
+  // 견적서 수정 (Firebase Functions를 통한 수정)
   async updateEstimate(estimateId: string, estimateData: any) {
     try {
-      const estimateRef = doc(db, 'estimates', estimateId);
-      await updateDoc(estimateRef, {
-        ...estimateData,
-        updatedAt: serverTimestamp()
-      });
+      console.log('Firebase Functions를 통한 견적서 수정 시작:', estimateId, estimateData);
+      
+      // Firebase Functions를 통해 수정
+      const result = await callFirebaseFunction(`updateEstimate/${estimateId}`, estimateData, 'PUT');
+      
+      console.log('Firebase Functions를 통한 견적서 수정 성공:', result);
+      return result;
     } catch (error) {
-      console.error('견적서 업데이트 실패:', error);
+      console.error('Firebase Functions를 통한 견적서 수정 실패:', error);
       throw error;
     }
   },
 
-  // 견적서 삭제
+
+
+  // 견적서 삭제 (Firebase Functions를 통한 삭제)
   async deleteEstimate(estimateId: string) {
     try {
-      const estimateRef = doc(db, 'estimates', estimateId);
-      await deleteDoc(estimateRef);
+      console.log('Firebase Functions를 통한 견적서 삭제 시작:', estimateId);
+      
+      // JWT 토큰 가져오기
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('JWT 토큰이 없습니다. 다시 로그인해주세요.');
+      }
+
+      const response = await fetch(`https://us-central1-windowerp-3.cloudfunctions.net/deleteEstimate/${encodeURIComponent(estimateId)}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Firebase Function 호출 실패: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('Firebase Functions를 통한 견적서 삭제 성공:', result);
+      return result;
     } catch (error) {
-      console.error('견적서 삭제 실패:', error);
+      console.error('Firebase Functions를 통한 견적서 삭제 실패:', error);
       throw error;
     }
   },
@@ -394,7 +408,7 @@ export const productService = {
       if (useStorage) {
         // 가벼운 파일 방식으로 Storage에서 조회
         console.log('가벼운 파일 방식으로 제품 조회');
-        const result = await callFirebaseFunction('products', { useStorage: 'true' }, 'GET');
+        const result = await callFirebaseFunction('products', { useStorage: true }, 'GET');
         return result;
       } else {
         // 기존 Firestore 방식 (하위 호환성)
