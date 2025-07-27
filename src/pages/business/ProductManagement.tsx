@@ -38,10 +38,13 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import BusinessIcon from '@mui/icons-material/Business';
 import CategoryIcon from '@mui/icons-material/Category';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import * as XLSX from 'xlsx';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import type { DropResult } from 'react-beautiful-dnd';
 import { useLocation } from 'react-router-dom';
+import { productService } from '../../utils/firebaseDataService';
 
 interface Product {
   id: number;
@@ -107,15 +110,80 @@ const VENDOR_STORAGE_KEY = 'vendorList';
 
 function loadProducts() {
   try {
+    console.log('localStorage에서 제품 데이터 로드 시작');
     const data = localStorage.getItem(PRODUCT_STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch {
+    if (data) {
+      const products = JSON.parse(data);
+      console.log('localStorage에서 제품 데이터 로드 완료:', products.length, '개');
+      return products;
+    } else {
+      // 제품 개수만 있는 경우
+      const count = localStorage.getItem(PRODUCT_STORAGE_KEY + '_count');
+      if (count) {
+        console.log('localStorage에 제품 개수만 저장되어 있습니다:', count, '개');
+      }
+      return [];
+    }
+  } catch (storageError) {
+    console.error('localStorage 로드 실패:', storageError);
     return [];
   }
 }
 
-function saveProducts(products: Product[]) {
-  localStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(products));
+// localStorage에만 저장 (개별 수정/삭제용)
+function saveProductsToLocal(products: Product[]) {
+  try {
+    const productsJson = JSON.stringify(products);
+    if (productsJson.length > 5 * 1024 * 1024) { // 5MB 이상이면
+      console.warn('제품 데이터가 너무 큽니다. localStorage 백업을 건너뜁니다.');
+      localStorage.setItem(PRODUCT_STORAGE_KEY + '_count', products.length.toString());
+    } else {
+      localStorage.setItem(PRODUCT_STORAGE_KEY, productsJson);
+    }
+    console.log('localStorage에 제품 데이터 저장 완료:', products.length, '개');
+  } catch (storageError) {
+    console.warn('localStorage 저장 실패:', storageError);
+    localStorage.setItem(PRODUCT_STORAGE_KEY + '_count', products.length.toString());
+  }
+}
+
+// Firebase에 저장 (엑셀 업로드용)
+async function saveProductsToFirebase(products: Product[]) {
+  try {
+    console.log('Firebase에 제품 데이터 저장 시작:', products.length, '개');
+    await productService.saveProductsBatch(products);
+    console.log('Firebase에 제품 데이터 저장 완료');
+    return true;
+  } catch (error) {
+    console.error('Firebase에 제품 데이터 저장 실패:', error);
+    return false;
+  }
+}
+
+// Firebase에서 제품 데이터 다운로드
+async function downloadProductsFromFirebase() {
+  try {
+    console.log('Firebase에서 제품 데이터 다운로드 시작');
+    const firebaseProducts = await productService.getProducts(true); // useStorage = true로 설정
+    console.log('Firebase에서 제품 데이터 다운로드 완료:', firebaseProducts.length, '개');
+    
+    if (firebaseProducts && firebaseProducts.length > 0) {
+      // localStorage에 저장
+      saveProductsToLocal(firebaseProducts);
+      return firebaseProducts;
+    } else {
+      console.log('Firebase에 저장된 제품 데이터가 없습니다.');
+      return null;
+    }
+  } catch (error) {
+    console.error('Firebase에서 제품 데이터 다운로드 실패:', error);
+    return null;
+  }
+}
+
+// 기존 함수는 localStorage 저장용으로 변경
+async function saveProducts(products: Product[]) {
+  saveProductsToLocal(products);
 }
 
 function loadVendors() {
@@ -133,9 +201,12 @@ function saveVendors(vendors: any[]) {
 
 const ProductManagement: React.FC = () => {
   const location = useLocation();
-  const [products, setProducts] = useState<Product[]>(() => loadProducts());
+  const [products, setProducts] = useState<Product[]>([]);
   const [vendors, setVendors] = useState<any[]>(() => loadVendors());
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState<Product>(initialProduct);
+
+
   const [editMode, setEditMode] = useState(false);
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [search, setSearch] = useState('');
@@ -295,14 +366,27 @@ const ProductManagement: React.FC = () => {
     selectedProduct.processingFee,
   ]);
 
-  // products가 바뀔 때마다 localStorage에 저장
+  // products가 바뀔 때마다 localStorage에 저장 (빈 배열일 때는 저장하지 않음)
   useEffect(() => {
-    saveProducts(products);
+    if (products.length > 0) {
+      saveProducts(products);
+    }
   }, [products]);
 
-  // 페이지 진입/메뉴 이동/새로고침 시 localStorage에서 불러오기
+  // 메뉴 이동/진입 시 localStorage에서 불러오기 (빈 배열일 때만)
   useEffect(() => {
-    setProducts(loadProducts());
+    if (products.length === 0) {
+      try {
+        setIsLoading(true);
+        const loadedProducts = loadProducts();
+        setProducts(loadedProducts);
+      } catch (error) {
+        console.error('제품 데이터 로드 실패:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    // eslint-disable-next-line
   }, [location.pathname]);
 
   // 업체 탭 변경 핸들러
@@ -376,7 +460,7 @@ const ProductManagement: React.FC = () => {
     setSelectedProduct(initialProduct);
   };
 
-  const handleAddProduct = () => {
+  const handleAddProduct = async () => {
     // 선택된 업체와 제품종류로 자동 설정
     const productToSave = {
       ...selectedProduct,
@@ -385,23 +469,19 @@ const ProductManagement: React.FC = () => {
     };
 
     if (editMode && editIndex !== null) {
-      setProducts(prev => {
-        const updated = prev.map((p, idx) =>
-          idx === editIndex ? { ...productToSave, id: p.id } : p
-        );
-        saveProducts(updated);
-        return updated;
-      });
+      const updated = products.map((p, idx) =>
+        idx === editIndex ? { ...productToSave, id: p.id } : p
+      );
+      setProducts(updated);
+      saveProductsToLocal(updated);
     } else {
-      setProducts(prev => {
-        const newProduct = {
-          ...productToSave,
-          id: prev.length ? prev[prev.length - 1].id + 1 : 1,
-        };
-        const updated = [...prev, newProduct];
-        saveProducts(updated);
-        return updated;
-      });
+      const newProduct = {
+        ...productToSave,
+        id: products.length ? products[products.length - 1].id + 1 : 1,
+      };
+      const updated = [...products, newProduct];
+      setProducts(updated);
+      saveProductsToLocal(updated);
     }
     handleCloseModal();
   };
@@ -424,32 +504,28 @@ const ProductManagement: React.FC = () => {
     handleOpenModal();
   };
 
-  const handleCopy = (idx: number) => {
-    setProducts(prev => {
-      const copy = {
-        ...prev[idx],
-        id: prev.length ? prev[prev.length - 1].id + 1 : 1,
-      };
-      const updated = [...prev, copy];
-      saveProducts(updated);
-      return updated;
-    });
+  const handleCopy = async (idx: number) => {
+    const copy = {
+      ...products[idx],
+      id: products.length ? products[products.length - 1].id + 1 : 1,
+    };
+    const updated = [...products, copy];
+    setProducts(updated);
+    saveProductsToLocal(updated);
   };
 
-  const handleDelete = (idx: number) => {
-    setProducts(prev => {
-      const updated = prev.filter((_, i) => i !== idx);
-      saveProducts(updated);
-      return updated;
-    });
+  const handleDelete = async (idx: number) => {
+    const updated = products.filter((_, i) => i !== idx);
+    setProducts(updated);
+    saveProductsToLocal(updated);
   };
 
   // Excel Upload - 모든 시트 처리
-  const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = evt => {
+    reader.onload = async evt => {
       const data = evt.target?.result;
       if (!data) return;
       const workbook = XLSX.read(data, { type: 'binary' });
@@ -519,14 +595,21 @@ const ProductManagement: React.FC = () => {
       });
       
       if (allNewProducts.length > 0) {
-        setProducts(prev => {
-          const updated = [...prev, ...allNewProducts];
-          saveProducts(updated);
-          return updated;
-        });
+        const updated = [...products, ...allNewProducts];
+        setProducts(updated);
+        
+        // Firebase에 저장 (엑셀 업로드 시)
+        const firebaseSuccess = await saveProductsToFirebase(updated);
+        
+        // localStorage에도 저장
+        saveProductsToLocal(updated);
         
         // 성공 메시지 표시
-        alert(`엑셀 업로드 완료!\n총 ${vendorCount}개 거래처에서 ${totalProcessed}개 제품이 등록되었습니다.`);
+        if (firebaseSuccess) {
+          alert(`엑셀 업로드 완료!\n총 ${vendorCount}개 거래처에서 ${totalProcessed}개 제품이 등록되었습니다.\nFirebase와 로컬에 모두 저장되었습니다.`);
+        } else {
+          alert(`엑셀 업로드 완료!\n총 ${vendorCount}개 거래처에서 ${totalProcessed}개 제품이 등록되었습니다.\nFirebase 저장에 실패했지만 로컬에 저장되었습니다.`);
+        }
       } else {
         alert('업로드할 수 있는 제품 데이터가 없습니다.');
       }
@@ -611,15 +694,122 @@ const ProductManagement: React.FC = () => {
   };
 
   // 드래그 앤 드롭
-  const onDragEnd = (result: DropResult) => {
+  const onDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
-    setProducts(prev => {
-      const reordered = Array.from(prev);
-      const [removed] = reordered.splice(result.source.index, 1);
-      reordered.splice(result.destination!.index, 0, removed);
-      saveProducts(reordered);
-      return reordered;
-    });
+    const reordered = Array.from(products);
+    const [removed] = reordered.splice(result.source.index, 1);
+    reordered.splice(result.destination!.index, 0, removed);
+    setProducts(reordered);
+    saveProductsToLocal(reordered);
+  };
+
+  // 제품업데이트 버튼 핸들러
+  const handleUpdateToFirebase = async () => {
+    if (products.length === 0) {
+      alert('업로드할 제품 데이터가 없습니다.');
+      return;
+    }
+
+    if (!window.confirm(`현재 ${products.length}개의 제품을 Firebase에 업로드하시겠습니까?`)) {
+      return;
+    }
+
+    try {
+      const success = await saveProductsToFirebase(products);
+      if (success) {
+        alert(`성공적으로 ${products.length}개의 제품이 Firebase에 업로드되었습니다.`);
+      } else {
+        alert('Firebase 업로드에 실패했습니다. 다시 시도해주세요.');
+      }
+    } catch (error) {
+      console.error('Firebase 업로드 오류:', error);
+      alert('Firebase 업로드 중 오류가 발생했습니다.');
+    }
+  };
+
+  // Firebase 다운로드 버튼 핸들러
+  const handleDownloadFromFirebase = async () => {
+    if (!window.confirm('Firebase에서 제품 데이터를 다운로드하시겠습니까?\n현재 로컬 데이터는 백업됩니다.')) {
+      return;
+    }
+
+    try {
+      // 현재 데이터 백업
+      const currentProducts = [...products];
+      const backupKey = `productList_backup_${Date.now()}`;
+      localStorage.setItem(backupKey, JSON.stringify(currentProducts));
+      console.log('현재 데이터 백업 완료:', backupKey);
+
+      // Firebase에서 다운로드
+      const firebaseProducts = await downloadProductsFromFirebase();
+      
+      if (firebaseProducts) {
+        setProducts(firebaseProducts);
+        alert(`Firebase에서 ${firebaseProducts.length}개의 제품을 성공적으로 다운로드했습니다.\n현재 데이터는 ${backupKey}로 백업되었습니다.`);
+      } else {
+        alert('Firebase에 저장된 제품 데이터가 없습니다.');
+      }
+    } catch (error) {
+      console.error('Firebase 다운로드 오류:', error);
+      alert('Firebase 다운로드 중 오류가 발생했습니다.');
+    }
+  };
+
+  // 백업 복원 핸들러
+  const handleRestoreBackup = () => {
+    // localStorage에서 백업 키들 찾기
+    const backupKeys = Object.keys(localStorage).filter(key => key.startsWith('productList_backup_'));
+    
+    if (backupKeys.length === 0) {
+      alert('복원할 백업 데이터가 없습니다.');
+      return;
+    }
+
+    // 백업 목록 생성
+    const backupList = backupKeys.map(key => {
+      const timestamp = key.replace('productList_backup_', '');
+      const date = new Date(parseInt(timestamp));
+      return {
+        key,
+        date: date.toLocaleString(),
+        timestamp: parseInt(timestamp)
+      };
+    }).sort((a, b) => b.timestamp - a.timestamp); // 최신순 정렬
+
+    // 백업 선택 대화상자
+    const backupOptions = backupList.map((backup, index) => 
+      `${index + 1}. ${backup.date} (${backup.key})`
+    ).join('\n');
+
+    const selection = prompt(
+      `복원할 백업을 선택하세요:\n\n${backupOptions}\n\n번호를 입력하세요 (1-${backupList.length}):`
+    );
+
+    if (selection && !isNaN(parseInt(selection))) {
+      const selectedIndex = parseInt(selection) - 1;
+      if (selectedIndex >= 0 && selectedIndex < backupList.length) {
+        const selectedBackup = backupList[selectedIndex];
+        
+        if (window.confirm(`정말로 ${selectedBackup.date}의 백업으로 복원하시겠습니까?\n현재 데이터는 덮어써집니다.`)) {
+          try {
+            const backupData = localStorage.getItem(selectedBackup.key);
+            if (backupData) {
+              const restoredProducts = JSON.parse(backupData);
+              setProducts(restoredProducts);
+              saveProductsToLocal(restoredProducts);
+              alert(`백업이 성공적으로 복원되었습니다.\n${restoredProducts.length}개의 제품이 복원되었습니다.`);
+            } else {
+              alert('백업 데이터를 읽을 수 없습니다.');
+            }
+          } catch (error) {
+            console.error('백업 복원 오류:', error);
+            alert('백업 복원 중 오류가 발생했습니다.');
+          }
+        }
+      } else {
+        alert('잘못된 번호를 입력했습니다.');
+      }
+    }
   };
 
   // 공간 드롭다운 옵션
@@ -650,7 +840,12 @@ const ProductManagement: React.FC = () => {
               <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}>
                 📦 제품 관리
               </Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                {isLoading && (
+                  <Alert severity="info" sx={{ mr: 1 }}>
+                    Firebase에서 데이터 로딩 중...
+                  </Alert>
+                )}
                 <Chip label={`총 제품: ${totalProducts}개`} color="primary" />
                 <Chip label={`업체: ${totalVendors}개`} color="secondary" />
                 <Chip label={`제품종류: ${totalCategories}개`} color="info" />
@@ -710,6 +905,31 @@ const ProductManagement: React.FC = () => {
                 onClick={handleResetLocalStorage}
               >
                 로컬스토리지 초기화
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<CloudUploadIcon />}
+                onClick={handleUpdateToFirebase}
+                disabled={products.length === 0}
+              >
+                제품업데이트 (Firebase)
+              </Button>
+              <Button
+                variant="contained"
+                color="secondary"
+                startIcon={<CloudDownloadIcon />}
+                onClick={handleDownloadFromFirebase}
+              >
+                Firebase 다운로드
+              </Button>
+              <Button
+                variant="outlined"
+                color="info"
+                startIcon={<RefreshIcon />}
+                onClick={handleRestoreBackup}
+              >
+                백업 복원
               </Button>
             </Box>
           </CardContent>

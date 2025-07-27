@@ -28,6 +28,9 @@ import {
   TextField,
   Alert,
   Button,
+  Slider,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -67,12 +70,19 @@ import {
 import { styled } from '@mui/material/styles';
 import NotificationPanel from './NotificationPanel';
 import ThemeSettings from './ThemeSettings';
+import ImageCropper from './ImageCropper';
 import {
   useNotificationStore,
   initializeNotificationStore,
   requestNotificationPermission,
 } from '../utils/notificationStore';
 import { API_BASE } from '../utils/auth';
+import {
+  validateImageFile,
+  autoOptimizeImage,
+  formatFileSize,
+  getImageMetadata,
+} from '../utils/imageOptimizer';
 
 // 커스텀 스타일드 컴포넌트
 const StyledDrawer = styled(Drawer)(({ theme }) => ({
@@ -364,6 +374,15 @@ function toBase64Unicode(str: string) {
   return window.btoa(unescape(encodeURIComponent(str)));
 }
 
+// 프로필 이미지 URL 검증 함수
+const isValidProfileImageUrl = (url: string): boolean => {
+  return Boolean(url && (
+    url.startsWith('data:') ||
+    url.startsWith('https://storage.googleapis.com/') ||
+    url.startsWith('https://firebasestorage.googleapis.com/')
+  ));
+};
+
 const Layout: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -396,6 +415,22 @@ const Layout: React.FC = () => {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [refreshUserListFn, setRefreshUserListFn] = useState<(() => void) | null>(null);
   const [themeSettingsOpen, setThemeSettingsOpen] = useState(false);
+  
+  // 이미지 크롭 관련 상태
+  const [cropperOpen, setCropperOpen] = useState(false);
+  const [optimizationSettings, setOptimizationSettings] = useState({
+    autoOptimize: true,
+    maxWidth: 800,
+    maxHeight: 800,
+    quality: 0.8,
+    enableCrop: true,
+  });
+  const [imageMetadata, setImageMetadata] = useState<{
+    width: number;
+    height: number;
+    size: number;
+    type: string;
+  } | null>(null);
 
   // 기본 아바타 15종 정의
   const defaultAvatars = [
@@ -469,20 +504,65 @@ const Layout: React.FC = () => {
   };
 
   // 프로필 사진 선택 핸들러
-  const handleProfileImageChange = (
+  const handleProfileImageChange = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file = event.target.files?.[0];
-    if (file) {
-      setProfileImageFile(file);
-      const reader = new FileReader();
-      reader.onload = e => {
-        setProfileImagePreview(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-      // 프로필 모달 닫기
-      setProfileModalOpen(false);
+    if (!file) return;
+
+    // 파일 유효성 검사
+    const validation = validateImageFile(file);
+    if (!validation.isValid) {
+      alert(validation.error);
+      return;
     }
+
+    try {
+      // 이미지 메타데이터 추출
+      const metadata = await getImageMetadata(file);
+      setImageMetadata(metadata);
+
+      // 자동 최적화가 활성화되어 있으면 최적화 실행
+      if (optimizationSettings.autoOptimize) {
+        const optimizedResult = await autoOptimizeImage(file);
+        const optimizedFile = new File([optimizedResult.blob], file.name, {
+          type: 'image/jpeg',
+          lastModified: Date.now(),
+        });
+        
+        setProfileImageFile(optimizedFile);
+        setProfileImagePreview(URL.createObjectURL(optimizedResult.blob));
+        
+        console.log(`이미지 최적화 완료: ${formatFileSize(metadata.size)} → ${formatFileSize(optimizedResult.optimizedSize)} (${optimizedResult.compressionRatio.toFixed(1)}% 압축)`);
+      } else {
+        setProfileImageFile(file);
+        setProfileImagePreview(URL.createObjectURL(file));
+      }
+
+      // 크롭 기능이 활성화되어 있으면 크롭 모달 열기
+      if (optimizationSettings.enableCrop) {
+        setCropperOpen(true);
+      } else {
+        // 프로필 모달 닫기
+        setProfileModalOpen(false);
+      }
+    } catch (error) {
+      console.error('이미지 처리 오류:', error);
+      alert('이미지 처리 중 오류가 발생했습니다.');
+    }
+  };
+
+  // 크롭 완료 핸들러
+  const handleCropComplete = (croppedBlob: Blob) => {
+    const croppedFile = new File([croppedBlob], profileImageFile?.name || 'cropped.jpg', {
+      type: 'image/jpeg',
+      lastModified: Date.now(),
+    });
+    
+    setProfileImageFile(croppedFile);
+    setProfileImagePreview(URL.createObjectURL(croppedBlob));
+    setCropperOpen(false);
+    setProfileModalOpen(false);
   };
 
   // 프로필 사진 업로드 핸들러
@@ -627,13 +707,11 @@ const Layout: React.FC = () => {
         // 프로필 사진 정보 설정
         if (userData.profileImage) {
           console.log('사용자 프로필 이미지:', userData.profileImage);
-          // 프로필 이미지 URL이 완전한 URL이고 유효한 경우에만 사용
-          if (userData.profileImage.startsWith('http') && 
-              (userData.profileImage.includes('storage.googleapis.com') || 
-               userData.profileImage.startsWith('data:'))) {
+          // 프로필 이미지 URL 검증 및 설정
+          if (isValidProfileImageUrl(userData.profileImage)) {
             setProfileImage(userData.profileImage);
           } else {
-            // 상대 경로이거나 잘못된 URL인 경우 기본 아바타 사용
+            // 잘못된 URL 형식인 경우 기본 아바타 사용
             console.log('잘못된 프로필 이미지 URL 무시:', userData.profileImage);
             setProfileImage('');
           }
@@ -1155,22 +1233,18 @@ const Layout: React.FC = () => {
                     }}
                   >
                     <Avatar
-                      src={profileImage && profileImage.startsWith('http') && 
-                           (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:')) 
-                           ? profileImage : undefined}
+                      src={isValidProfileImageUrl(profileImage) ? profileImage : undefined}
                       sx={{
                         width: 32,
                         height: 32,
-                        background: profileImage && profileImage.startsWith('http') && 
-                                   (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:'))
+                        background: isValidProfileImageUrl(profileImage)
                           ? 'transparent'
                           : 'var(--gradient-primary)',
                         fontSize: '0.875rem',
                         fontWeight: 600,
                       }}
                     >
-                      {(!profileImage || !profileImage.startsWith('http') || 
-                        (!profileImage.includes('storage.googleapis.com') && !profileImage.startsWith('data:'))) && (
+                      {!isValidProfileImageUrl(profileImage) && (
                         <FavoriteIcon sx={{ fontSize: '1rem' }} />
                       )}
                     </Avatar>
@@ -1243,15 +1317,12 @@ const Layout: React.FC = () => {
                     }}
                   >
                     <Avatar
-                      src={profileImage && profileImage.startsWith('http') && 
-                           (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:')) 
-                           ? profileImage : undefined}
+                      src={isValidProfileImageUrl(profileImage) ? profileImage : undefined}
                       sx={{
                         width: 100,
                         height: 100,
                         margin: 'auto',
-                        background: profileImage && profileImage.startsWith('http') && 
-                                   (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:'))
+                        background: isValidProfileImageUrl(profileImage)
                           ? 'transparent'
                           : 'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)',
                         fontSize: '2rem',
@@ -1342,6 +1413,85 @@ const Layout: React.FC = () => {
                   
 
                   
+                  {/* 이미지 최적화 설정 */}
+                  <Box sx={{ mb: 2, p: 2, border: '1px solid rgba(255, 107, 157, 0.2)', borderRadius: 2 }}>
+                    <Typography variant="subtitle2" sx={{ color: 'white', mb: 2 }}>
+                      이미지 최적화 설정
+                    </Typography>
+                    
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={optimizationSettings.autoOptimize}
+                          onChange={(e) => setOptimizationSettings(prev => ({
+                            ...prev,
+                            autoOptimize: e.target.checked
+                          }))}
+                          sx={{
+                            '& .MuiSwitch-switchBase.Mui-checked': {
+                              color: '#FF6B9D',
+                            },
+                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                              backgroundColor: '#FF6B9D',
+                            },
+                          }}
+                        />
+                      }
+                      label={
+                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                          자동 최적화
+                        </Typography>
+                      }
+                    />
+                    
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={optimizationSettings.enableCrop}
+                          onChange={(e) => setOptimizationSettings(prev => ({
+                            ...prev,
+                            enableCrop: e.target.checked
+                          }))}
+                          sx={{
+                            '& .MuiSwitch-switchBase.Mui-checked': {
+                              color: '#FF6B9D',
+                            },
+                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                              backgroundColor: '#FF6B9D',
+                            },
+                          }}
+                        />
+                      }
+                      label={
+                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                          이미지 영역 설정
+                        </Typography>
+                      }
+                    />
+                    
+                    {optimizationSettings.autoOptimize && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 1 }}>
+                          품질: {Math.round(optimizationSettings.quality * 100)}%
+                        </Typography>
+                        <Slider
+                          value={optimizationSettings.quality}
+                          onChange={(e, value) => setOptimizationSettings(prev => ({
+                            ...prev,
+                            quality: value as number
+                          }))}
+                          min={0.1}
+                          max={1}
+                          step={0.1}
+                          sx={{
+                            '& .MuiSlider-track': { backgroundColor: '#FF6B9D' },
+                            '& .MuiSlider-thumb': { backgroundColor: '#FF6B9D' },
+                          }}
+                        />
+                      </Box>
+                    )}
+                  </Box>
+
                   <Button
                     fullWidth
                     variant="outlined"
@@ -1366,8 +1516,11 @@ const Layout: React.FC = () => {
                     />
                   </Button>
                   
-                  {profileImage && profileImage.startsWith('http') && 
-                   (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:')) && (
+                  {profileImage && (
+                    profileImage.startsWith('data:') ||
+                    profileImage.startsWith('https://storage.googleapis.com/') ||
+                    profileImage.startsWith('https://firebasestorage.googleapis.com/')
+                  ) && (
                     <Button
                       fullWidth
                       variant="outlined"
@@ -1776,17 +1929,18 @@ const Layout: React.FC = () => {
             </DialogTitle>
             <DialogContent sx={{ color: 'white', pt: 3 }}>
               {/* 업로드된 프로필 사진 섹션 */}
-              {profileImage && profileImage.startsWith('http') && 
-               (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:')) && (
+              {isValidProfileImageUrl(profileImage) && (
                 <Box sx={{ mb: 4 }}>
                   <Typography variant="h6" sx={{ mb: 2, color: 'white' }}>
                     현재 프로필 사진
                   </Typography>
                   <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                     <Avatar
-                      src={profileImage && profileImage.startsWith('http') && 
-                           (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:')) 
-                           ? profileImage : undefined}
+                      src={profileImage && (
+                        profileImage.startsWith('data:') ||
+                        profileImage.startsWith('https://storage.googleapis.com/') ||
+                        profileImage.startsWith('https://firebasestorage.googleapis.com/')
+                      ) ? profileImage : undefined}
                       sx={{ 
                         width: 80, 
                         height: 80, 
@@ -1855,17 +2009,14 @@ const Layout: React.FC = () => {
               </Box>
 
               {/* 업로드한 사진 선택 섹션 */}
-              {profileImage && profileImage.startsWith('http') && 
-               (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:')) && (
+                                {isValidProfileImageUrl(profileImage) && (
                 <Box sx={{ mt: 3, textAlign: 'center' }}>
                   <Typography variant="h6" sx={{ mb: 2, color: 'white' }}>
                     업로드한 사진 선택
                   </Typography>
                   <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                     <Avatar
-                      src={profileImage && profileImage.startsWith('http') && 
-                           (profileImage.includes('storage.googleapis.com') || profileImage.startsWith('data:')) 
-                           ? profileImage : undefined}
+                      src={isValidProfileImageUrl(profileImage) ? profileImage : undefined}
                       sx={{
                         width: 60,
                         height: 60,
@@ -1920,7 +2071,17 @@ const Layout: React.FC = () => {
             onClose={handleThemeSettingsClose}
           />
 
-
+          {/* 이미지 크롭 다이얼로그 */}
+          <ImageCropper
+            open={cropperOpen}
+            onClose={() => setCropperOpen(false)}
+            imageFile={profileImageFile}
+            onCropComplete={handleCropComplete}
+            aspectRatio={1}
+            maxWidth={800}
+            maxHeight={800}
+            quality={optimizationSettings.quality}
+          />
 
           {/* 프로필 사진 업로드 다이얼로그 */}
           <Dialog
@@ -1969,9 +2130,32 @@ const Layout: React.FC = () => {
                   />
                 </Box>
               )}
-              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', textAlign: 'center' }}>
+              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', textAlign: 'center', mb: 2 }}>
                 선택한 이미지가 프로필 사진으로 설정됩니다.
               </Typography>
+              
+              {/* 이미지 메타데이터 표시 */}
+              {imageMetadata && (
+                <Box sx={{ 
+                  p: 2, 
+                  backgroundColor: 'rgba(255, 107, 157, 0.1)', 
+                  borderRadius: 2,
+                  border: '1px solid rgba(255, 107, 157, 0.2)'
+                }}>
+                  <Typography variant="subtitle2" sx={{ color: 'white', mb: 1 }}>
+                    이미지 정보
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '0.875rem' }}>
+                    크기: {imageMetadata.width} × {imageMetadata.height}px
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '0.875rem' }}>
+                    용량: {formatFileSize(imageMetadata.size)}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '0.875rem' }}>
+                    형식: {imageMetadata.type}
+                  </Typography>
+                </Box>
+              )}
             </DialogContent>
             <DialogActions sx={{ 
               borderTop: '1px solid rgba(255, 107, 157, 0.2)', 

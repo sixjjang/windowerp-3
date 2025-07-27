@@ -784,6 +784,10 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
       case 'brand':
         return row.brand || '-';
       case 'space':
+        // 직접입력 시 커스텀 값 우선 표시
+        if (row.space === '직접입력' && row.spaceCustom) {
+          return row.spaceCustom;
+        }
         return row.space || '-';
       case 'productCode':
         return row.productCode || '-';

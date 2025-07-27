@@ -26,6 +26,7 @@ import MeasurementData from './pages/business/MeasurementData';
 import HistoricalDataManagement from './pages/business/HistoricalDataManagement';
 import TimeTreeCallback from './pages/TimeTreeCallback';
 import CurtainSimulatorIframe from './pages/business/CurtainSimulatorIframe';
+import { initializeAudioOnUserInteraction, getNotificationSoundPlayer } from './utils/soundUtils';
 import './styles/global.css';
 
 function AppContent() {
@@ -60,6 +61,34 @@ function AppContent() {
     
     return () => {
       window.removeEventListener('themeChanged', handleThemeChange as EventListener);
+    };
+  }, []);
+
+  // 오디오 컨텍스트 초기화 (사용자 상호작용 후)
+  useEffect(() => {
+    initializeAudioOnUserInteraction();
+  }, []);
+
+  // 페이지 언로드 시 메모리 정리
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // 모든 사용자의 알림 소리 플레이어 정리
+      const userIds = ['current_user', 'admin', 'staff']; // 예시 사용자 ID들
+      userIds.forEach(userId => {
+        try {
+          const player = getNotificationSoundPlayer(userId);
+          player.cleanup();
+        } catch (error) {
+          // 플레이어가 존재하지 않을 수 있음
+        }
+      });
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      handleBeforeUnload(); // 컴포넌트 언마운트 시에도 정리
     };
   }, []);
 

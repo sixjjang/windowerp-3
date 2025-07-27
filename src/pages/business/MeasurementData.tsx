@@ -47,6 +47,7 @@ import { useNavigate } from 'react-router-dom';
 import { MeasurementRowData } from '../../components/MeasurementForm';
 import { API_BASE } from '../../utils/auth';
 import { measurementService } from '../../utils/firebaseDataService';
+import EventChatPanel from '../../components/EventChatPanel';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -2495,13 +2496,15 @@ const MeasurementData: React.FC = () => {
       <Dialog
         open={detailDialogOpen}
         onClose={() => setDetailDialogOpen(false)}
-        maxWidth="md"
+        maxWidth="sm"
         fullWidth
         fullScreen={isMobile}
         PaperProps={{
           sx: {
             backgroundColor: '#1e2633',
             color: '#e0e6ed',
+            width: 480,
+            maxWidth: '95vw',
             ...(isMobile && {
               margin: 0,
               borderRadius: 0,

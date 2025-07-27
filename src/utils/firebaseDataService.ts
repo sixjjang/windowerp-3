@@ -17,7 +17,7 @@ import { auth } from '../firebase/config';
 import { ensureFirebaseAuth } from './auth';
 
 // Firebase Functions 호출을 위한 유틸리티 함수
-const callFirebaseFunction = async (functionName: string, data: any, method: string = 'POST') => {
+export const callFirebaseFunction = async (functionName: string, data: any, method: string = 'POST') => {
   try {
     // JWT 토큰 가져오기 (기존 로그인 시스템에서)
     const token = localStorage.getItem('token');
@@ -33,12 +33,25 @@ const callFirebaseFunction = async (functionName: string, data: any, method: str
       }
     };
 
-    // GET, DELETE 메서드가 아닌 경우에만 body 추가
-    if (method !== 'GET' && method !== 'DELETE') {
+    let url = `https://us-central1-windowerp-3.cloudfunctions.net/${functionName}`;
+
+    // GET, DELETE 메서드인 경우 query parameter로 변환
+    if (method === 'GET' || method === 'DELETE') {
+      if (data && Object.keys(data).length > 0) {
+        const params = new URLSearchParams();
+        Object.entries(data).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            params.append(key, String(value));
+          }
+        });
+        url += `?${params.toString()}`;
+      }
+    } else {
+      // POST, PUT 등인 경우 body에 추가
       requestOptions.body = JSON.stringify(data);
     }
 
-    const response = await fetch(`https://us-central1-windowerp-3.cloudfunctions.net/${functionName}`, requestOptions);
+    const response = await fetch(url, requestOptions);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -1144,6 +1157,173 @@ export const deliveryService = {
       await deleteDoc(deliveryRef);
     } catch (error) {
       console.error('납품 삭제 실패:', error);
+      throw error;
+    }
+  }
+}; 
+
+// FCM 토큰 관리 및 푸시 알림 서비스
+export const fcmService = {
+  // FCM 토큰 저장
+  async saveFCMToken(userId: string, fcmToken: string, deviceType: string = 'web') {
+    try {
+      console.log('FCM 토큰 저장 시작:', { userId, deviceType });
+      
+      const result = await callFirebaseFunction('saveFCMToken', { 
+        userId, 
+        fcmToken, 
+        deviceType 
+      });
+      
+      console.log('FCM 토큰 저장 성공:', result);
+      return result;
+    } catch (error) {
+      console.error('FCM 토큰 저장 실패:', error);
+      throw error;
+    }
+  },
+
+  // FCM 토큰 삭제
+  async deleteFCMToken(userId: string) {
+    try {
+      console.log('FCM 토큰 삭제 시작:', userId);
+      
+      const result = await callFirebaseFunction('deleteFCMToken', { userId });
+      
+      console.log('FCM 토큰 삭제 성공:', result);
+      return result;
+    } catch (error) {
+      console.error('FCM 토큰 삭제 실패:', error);
+      throw error;
+    }
+  },
+
+  // 채팅 메시지 전송 (푸시 알림 포함)
+  async sendChatMessageWithNotification(user: string, text: string, userId: string) {
+    try {
+      console.log('채팅 메시지 전송 시작 (푸시 알림 포함):', { user, text, userId });
+      
+      const result = await callFirebaseFunction('saveEmployeeChatWithNotification', { 
+        user, 
+        text, 
+        userId 
+      });
+      
+      console.log('채팅 메시지 전송 성공 (푸시 알림 포함):', result);
+      return result;
+    } catch (error) {
+      console.error('채팅 메시지 전송 실패 (푸시 알림 포함):', error);
+      throw error;
+    }
+  },
+
+  // 스케줄 채팅 메시지 전송 (푸시 알림 포함)
+  async sendScheduleChatMessageWithNotification(
+    user: string, 
+    text: string, 
+    userId: string, 
+    scheduleId: string, 
+    eventTitle?: string
+  ) {
+    try {
+      console.log('스케줄 채팅 메시지 전송 시작 (푸시 알림 포함):', { 
+        user, 
+        text, 
+        userId, 
+        scheduleId, 
+        eventTitle 
+      });
+      
+      const result = await callFirebaseFunction('saveScheduleChatWithNotification', { 
+        user, 
+        text, 
+        userId, 
+        scheduleId, 
+        eventTitle 
+      });
+      
+      console.log('스케줄 채팅 메시지 전송 성공 (푸시 알림 포함):', result);
+      return result;
+    } catch (error) {
+      console.error('스케줄 채팅 메시지 전송 실패 (푸시 알림 포함):', error);
+      throw error;
+    }
+  }
+}; 
+
+// 시공자 관리 데이터 서비스
+export const workerService = {
+  // 시공자 목록 가져오기
+  async getWorkers() {
+    try {
+      console.log('Firebase Functions를 통한 시공자 목록 조회 시작');
+      
+      // Firebase Functions를 통해 조회
+      const result = await callFirebaseFunction('getWorkers', {}, 'GET');
+      
+      console.log('Firebase Functions를 통한 시공자 목록 조회 완료:', result.workers?.length || 0, '명');
+      return result.workers || [];
+    } catch (error) {
+      console.error('Firebase Functions를 통한 시공자 목록 조회 실패:', error);
+      throw error;
+    }
+  },
+
+  // 실시간 시공자 목록 구독
+  subscribeToWorkers(callback: (workers: any[]) => void) {
+    const workersRef = collection(db, 'workers');
+    const q = query(workersRef, orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+      const workers = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      callback(workers);
+    });
+  },
+
+  // 시공자 저장
+  async saveWorker(workerData: any) {
+    try {
+      console.log('Firebase Functions를 통한 시공자 저장 시작:', workerData);
+      
+      // Firebase Functions를 통해 저장
+      const result = await callFirebaseFunction('saveWorker', workerData);
+      
+      console.log('Firebase Functions를 통한 시공자 저장 완료:', result);
+      return result.id;
+    } catch (error) {
+      console.error('Firebase Functions를 통한 시공자 저장 실패:', error);
+      throw error;
+    }
+  },
+
+  // 시공자 업데이트
+  async updateWorker(workerId: string, workerData: any) {
+    try {
+      console.log('Firebase Functions를 통한 시공자 업데이트 시작:', { workerId, workerData });
+      
+      // Firebase Functions를 통해 업데이트
+      const result = await callFirebaseFunction('updateWorker', { workerId, ...workerData }, 'PUT');
+      
+      console.log('Firebase Functions를 통한 시공자 업데이트 완료:', result);
+    } catch (error) {
+      console.error('Firebase Functions를 통한 시공자 업데이트 실패:', error);
+      throw error;
+    }
+  },
+
+  // 시공자 삭제
+  async deleteWorker(workerId: string) {
+    try {
+      console.log('Firebase Functions를 통한 시공자 삭제 시작:', workerId);
+      
+      // Firebase Functions를 통해 삭제
+      const result = await callFirebaseFunction('deleteWorker', { workerId }, 'DELETE');
+      
+      console.log('Firebase Functions를 통한 시공자 삭제 완료:', result);
+    } catch (error) {
+      console.error('Firebase Functions를 통한 시공자 삭제 실패:', error);
       throw error;
     }
   }

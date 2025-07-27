@@ -137,6 +137,13 @@ import Popover from '@mui/material/Popover';
 import InsertEmoticonIcon from '@mui/icons-material/InsertEmoticon';
 import TimeTreeIntegration from '../../components/TimeTreeIntegration';
 import { getTimeTreeSettings, syncWithTimeTree } from '../../utils/timetreeUtils';
+import { playScheduleNotification, playChatNotification, initializeAudioOnUserInteraction } from '../../utils/soundUtils';
+import { 
+  setCurrentUser as setChatCurrentUser, 
+  registerActiveChat, 
+  unregisterActiveChat, 
+  shouldPlayScheduleChatNotification 
+} from '../../utils/chatNotificationUtils';
 
 // Firestore 실시간 채팅을 위한 import 추가
 import { db } from '../../firebase/config';
@@ -151,10 +158,20 @@ import {
   deleteDoc,
   updateDoc
 } from 'firebase/firestore';
+import { fcmService } from '../../utils/firebaseDataService';
 
 // 메모 인터페이스 추가
 
 // 카테고리 관리 인터페이스 추가
+
+// 프로필 이미지 URL 검증 함수
+const isValidProfileImageUrl = (url: string): boolean => {
+  return Boolean(url && (
+    url.startsWith('data:') ||
+    url.startsWith('https://storage.googleapis.com/') ||
+    url.startsWith('https://firebasestorage.googleapis.com/')
+  ));
+};
 
 const Schedule: React.FC = () => {
   const { deliveries } = useDeliveryStore();
@@ -418,6 +435,13 @@ const Schedule: React.FC = () => {
         setCurrentUser(userResponse.data);
         // 채팅 권한은 항상 허용
         setHasChatPermission(true);
+        
+        // chatNotificationUtils에 현재 사용자 정보 설정
+        const userId = userResponse.data.id.toString();
+        const userName = userResponse.data.username || userResponse.data.nickname || '사용자';
+        setChatCurrentUser(userId, userName);
+        console.log(`👤 스케줄 페이지 사용자 설정: ${userName} (${userId})`);
+        console.log(`👤 chatNotificationUtils 사용자 설정 완료`);
       }
     } catch (error) {
       console.error('사용자 정보 조회 실패:', error);
@@ -456,11 +480,93 @@ const Schedule: React.FC = () => {
     }
   };
 
+
+
+  // 스케줄 페이지 활성화/비활성화 관리
+  useEffect(() => {
+    registerActiveChat('schedule-page');
+    console.log('📱 스케줄 페이지 활성화');
+    
+    return () => {
+      unregisterActiveChat('schedule-page');
+      console.log('📱 스케줄 페이지 비활성화');
+    };
+  }, []);
+
   // 컴포넌트 마운트 시 사용자 정보 조회
   useEffect(() => {
     fetchCurrentUserAndPermissions();
     loadNickname();
   }, []);
+
+  // 사용자 상호작용 시 AudioContext 초기화
+  useEffect(() => {
+    const handleUserInteraction = () => {
+      console.log('👆 사용자 상호작용 감지 - AudioContext 초기화');
+      initializeAudioOnUserInteraction(currentUser?.id?.toString());
+    };
+
+    // 사용자 상호작용 이벤트 리스너 추가
+    document.addEventListener('click', handleUserInteraction, { once: true });
+    document.addEventListener('keydown', handleUserInteraction, { once: true });
+    document.addEventListener('touchstart', handleUserInteraction, { once: true });
+
+    return () => {
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+      document.removeEventListener('touchstart', handleUserInteraction);
+    };
+  }, [currentUser?.id]);
+
+  // 알림소리 테스트 (개발용) - 사용자 상호작용 후에만 실행
+  useEffect(() => {
+    const testSound = () => {
+      console.log('🔊 알림소리 테스트 시작...');
+      try {
+        playChatNotification(currentUser?.id?.toString() || 'current_user');
+        console.log('✅ 알림소리 테스트 성공');
+      } catch (error) {
+        console.error('❌ 알림소리 테스트 실패:', error);
+      }
+    };
+
+    // 5초 후에 테스트 실행 (사용자 상호작용 후)
+    const timer = setTimeout(testSound, 5000);
+    
+    return () => clearTimeout(timer);
+  }, [currentUser?.id]);
+
+  // 스케줄 상세 모달 채팅창 활성/비활성 관리 (모든 일정 타입)
+  useEffect(() => {
+    if (chatDialogOpen && selectedEventForChat) {
+      registerActiveChat(`schedule-${selectedEventForChat.id}`);
+      console.log(`📱 스케줄 채팅창 활성화: schedule-${selectedEventForChat.id}`);
+    } else if (selectedEventForChat) {
+      unregisterActiveChat(`schedule-${selectedEventForChat.id}`);
+      console.log(`📱 스케줄 채팅창 비활성화: schedule-${selectedEventForChat.id}`);
+    }
+    return () => {
+      if (selectedEventForChat) {
+        unregisterActiveChat(`schedule-${selectedEventForChat.id}`);
+      }
+    };
+  }, [chatDialogOpen, selectedEventForChat]);
+
+  // 통합 모달 채팅창 활성/비활성 관리 (모든 일정 타입)
+  useEffect(() => {
+    if (integratedEventDialogOpen && selectedEventForEdit) {
+      registerActiveChat(`schedule-${selectedEventForEdit.id}`);
+      console.log(`📱 통합 모달 채팅창 활성화: schedule-${selectedEventForEdit.id}`);
+    } else if (selectedEventForEdit) {
+      unregisterActiveChat(`schedule-${selectedEventForEdit.id}`);
+      console.log(`📱 통합 모달 채팅창 비활성화: schedule-${selectedEventForEdit.id}`);
+    }
+    return () => {
+      if (selectedEventForEdit) {
+        unregisterActiveChat(`schedule-${selectedEventForEdit.id}`);
+      }
+    };
+  }, [integratedEventDialogOpen, selectedEventForEdit]);
 
   // 실시간 댓글 구독 함수 (개선됨)
   const subscribeToComments = (eventId: string) => {
@@ -498,22 +604,49 @@ const Schedule: React.FC = () => {
       
       console.log(`채팅 데이터 업데이트: ${eventId}`, comments.length);
       
+      // 새로운 댓글이 있는지 확인하고 알림 소리 재생
+      const previousComments = realTimeComments[eventId] || [];
+      if (comments.length > previousComments.length && previousComments.length > 0) {
+        // 새로운 댓글들 확인
+        const newComments = comments.slice(previousComments.length);
+        
+        newComments.forEach((newComment: ScheduleComment) => {
+          console.log(`🔍 새 메시지 확인: ${newComment.userName} (${newComment.userId}) -> 이벤트: ${eventId}`);
+          console.log(`🔍 현재 사용자: ${currentUser?.username} (${currentUser?.id})`);
+          
+          // 발신자가 아니고, 알림이 필요한 경우에만 알림 소리 재생
+          if (shouldPlayScheduleChatNotification(
+            newComment.userId || newComment.userName, 
+            newComment.userName || '알 수 없는 사용자',
+            eventId
+          )) {
+            try {
+              const userId = currentUser?.id?.toString();
+              console.log(`🔔 알림소리 재생 시도: userId=${userId}`);
+              playChatNotification(userId || 'current_user');
+              console.log(`🔔 스케줄 채팅 알림 재생: ${newComment.userName}의 메시지 (이벤트: ${eventId})`);
+            } catch (error) {
+              console.error('스케줄 채팅 알림 소리 재생 실패:', error);
+            }
+          } else {
+            console.log(`🔇 알림소리 재생 제외: ${newComment.userName}의 메시지`);
+          }
+        });
+      }
+      
       setRealTimeComments(prev => ({
         ...prev,
         [eventId]: comments
       }));
 
-      // Firebase에 데이터가 제대로 저장되었는지 확인
-      console.log(`Firebase에서 채팅 데이터 로드 완료: ${eventId}`, {
-        commentCount: comments.length,
-        comments: comments.map(c => ({ id: c.id, message: c.message.substring(0, 50) }))
+      // 로드 완료 표시 (한 번만 실행되도록 최적화)
+      setChatDataLoaded(prev => {
+        if (prev[eventId]) return prev; // 이미 로드된 경우 스킵
+        return {
+          ...prev,
+          [eventId]: true
+        };
       });
-
-      // 로드 완료 표시
-      setChatDataLoaded(prev => ({
-        ...prev,
-        [eventId]: true
-      }));
     }, (error) => {
       console.error('댓글 구독 오류:', error);
       console.error('Firebase 인증 상태 확인 필요');
@@ -538,21 +671,21 @@ const Schedule: React.FC = () => {
         }
       });
     }
-  }, [events, chatDataLoaded]);
+  }, [events]); // chatDataLoaded 의존성 제거 - 무한 루프 방지
 
   // 채팅 다이얼로그가 열릴 때 실시간 구독 시작 (기존 로직 유지)
   useEffect(() => {
     if (selectedEventForChat && !chatDataLoaded[selectedEventForChat.id]) {
       subscribeToComments(selectedEventForChat.id);
     }
-  }, [selectedEventForChat]);
+  }, [selectedEventForChat?.id]); // chatDataLoaded 의존성 제거
 
   // 통합 모달이 열릴 때도 실시간 댓글 구독 시작 (기존 로직 유지)
   useEffect(() => {
     if (selectedEventForEdit && integratedEventDialogOpen && !chatDataLoaded[selectedEventForEdit.id]) {
       subscribeToComments(selectedEventForEdit.id);
     }
-  }, [selectedEventForEdit, integratedEventDialogOpen]);
+  }, [selectedEventForEdit?.id, integratedEventDialogOpen]); // chatDataLoaded 의존성 제거
 
   // 컴포넌트 언마운트 시 모든 구독 해제
   useEffect(() => {
@@ -654,7 +787,7 @@ const Schedule: React.FC = () => {
         }
       }
     }
-  }, [measurementDialogOpen, currentMeasurementEvent]);
+  }, [measurementDialogOpen, currentMeasurementEvent?.id]); // chatDataLoaded 의존성 제거
 
   // 사용자 이름 입력 관련 함수들 제거 - UserContext 사용
 
@@ -782,6 +915,15 @@ const Schedule: React.FC = () => {
     
     // localStorage 업데이트
     localStorage.setItem('schedules', JSON.stringify(updatedEvents));
+    
+    // 연간 일정 등록 알림 소리 재생
+    try {
+      playScheduleNotification(currentUser?.id?.toString() || 'current_user');
+      console.log(`🔔 연간 일정 등록 알림 재생: ${eventsToAdd.length}개 일정 (${yearlyEvent.title})`);
+    } catch (error) {
+      console.error('연간 일정 등록 알림 소리 재생 실패:', error);
+    }
+    
     setSnackbar({
       open: true,
       message: `${eventsToAdd.length}개의 일정이 등록되었습니다.`,
@@ -1525,6 +1667,14 @@ const Schedule: React.FC = () => {
             result.id
           );
 
+          // 실측 일정 등록 알림 소리 재생
+          try {
+            playScheduleNotification(currentUser?.id?.toString() || 'current_user');
+            console.log(`🔔 실측 일정 등록 알림 재생: ${eventData.title} (${eventData.type})`);
+          } catch (error) {
+            console.error('실측 일정 등록 알림 소리 재생 실패:', error);
+          }
+
           setSnackbar({
             open: true,
             message: '실측 일정이 추가되었습니다.',
@@ -1966,6 +2116,13 @@ const Schedule: React.FC = () => {
           // localStorage에도 저장
           localStorage.setItem('schedules', JSON.stringify(updatedEvents));
           
+          // 일정 등록 알림 소리 재생
+          try {
+            playScheduleNotification(currentUser?.id?.toString() || 'current_user');
+          } catch (error) {
+            console.error('일정 등록 알림 소리 재생 실패:', error);
+          }
+
           setSnackbar({
             open: true,
             message: '기간 일정이 추가되었습니다.',
@@ -2053,6 +2210,13 @@ const Schedule: React.FC = () => {
               setCurrentDate(newDate);
             }
 
+            // 일정 수정 알림 소리 재생
+            try {
+              playScheduleNotification(currentUser?.id?.toString() || 'current_user');
+            } catch (error) {
+              console.error('일정 수정 알림 소리 재생 실패:', error);
+            }
+
             setSnackbar({
               open: true,
               message: '일정이 수정되었습니다.',
@@ -2070,6 +2234,13 @@ const Schedule: React.FC = () => {
             // localStorage에도 저장
             localStorage.setItem('schedules', JSON.stringify(updatedEvents));
             
+            // 일정 등록 알림 소리 재생
+            try {
+              playScheduleNotification(currentUser?.id?.toString() || 'current_user');
+            } catch (error) {
+              console.error('일정 등록 알림 소리 재생 실패:', error);
+            }
+
             setSnackbar({
               open: true,
               message: '새 일정이 추가되었습니다.',
@@ -2284,6 +2455,14 @@ const Schedule: React.FC = () => {
           event.id === selectedEventForEdit.id ? updatedEvent : event
         );
         localStorage.setItem('schedules', JSON.stringify(updatedEvents));
+
+        // 일정 수정 알림 소리 재생
+        try {
+          playScheduleNotification(currentUser?.id?.toString() || 'current_user');
+          console.log(`🔔 일정 수정 알림 재생: ${updatedEvent.title} (${updatedEvent.type})`);
+        } catch (error) {
+          console.error('일정 수정 알림 소리 재생 실패:', error);
+        }
 
         setSnackbar({
           open: true,
@@ -3686,35 +3865,20 @@ const Schedule: React.FC = () => {
     }
 
     try {
-      console.log('Firebase에 댓글 저장 시작:', {
+      console.log('스케줄 채팅 메시지 전송 시작 (푸시 알림 포함):', {
         eventId: selectedEventForChat.id,
         message: newComment.trim(),
         userName: nickname || '사용자'
       });
 
-      // Firestore에 댓글 저장 (실시간 동기화)
-      const commentsRef = collection(db, 'schedules', selectedEventForChat.id, 'comments');
-      
-      // emoji 필드 처리 (undefined 제거)
-      const emojiMatch = newComment.match(/[😊👍❤️🎉🔥💯👏🙏😍🤔😅😢]/);
-      const commentData: any = {
-        eventId: selectedEventForChat.id,
-        userId: currentUser?.id?.toString() || 'current_user',
-        userName: nickname || '사용자',
-        userAvatar: currentUser?.username || '',
-        message: newComment.trim(),
-        timestamp: serverTimestamp(),
-        attachments: commentAttachments.map(file => URL.createObjectURL(file)),
-      };
-      
-      // emoji가 있을 때만 필드 추가
-      if (emojiMatch && emojiMatch[0]) {
-        commentData.emoji = emojiMatch[0];
-      }
-      
-      const docRef = await addDoc(commentsRef, commentData);
-
-      console.log('Firebase에 댓글 저장 완료:', docRef.id);
+      // 푸시 알림이 포함된 스케줄 채팅 메시지 전송
+      await fcmService.sendScheduleChatMessageWithNotification(
+        nickname || '사용자',
+        newComment.trim(),
+        currentUser?.id?.toString() || 'current_user',
+        selectedEventForChat.id,
+        selectedEventForChat.title
+      );
 
       // 입력 필드 초기화
       setNewComment('');
@@ -3722,7 +3886,7 @@ const Schedule: React.FC = () => {
       
       setSnackbar({
         open: true,
-        message: '댓글이 실시간으로 전송되었습니다.',
+        message: '댓글이 실시간으로 전송되었습니다. (푸시 알림 포함)',
         severity: 'success',
       });
     } catch (error) {
@@ -6258,7 +6422,7 @@ const Schedule: React.FC = () => {
                                       }}>
                                         {/* 아바타 */}
                                         <Avatar
-                                          src={isMine ? profileImage : undefined}
+                                          src={isMine && isValidProfileImageUrl(profileImage) ? profileImage : undefined}
                                           sx={{
                                             width: 32,
                                             height: 32,
@@ -6267,7 +6431,7 @@ const Schedule: React.FC = () => {
                                             color: '#fff',
                                           }}
                                         >
-                                          {isMine ? (profileImage ? '' : nickname?.charAt(0)?.toUpperCase()) : comment.userName?.charAt(0)?.toUpperCase()}
+                                          {isMine ? (isValidProfileImageUrl(profileImage) ? '' : nickname?.charAt(0)?.toUpperCase()) : comment.userName?.charAt(0)?.toUpperCase()}
                                         </Avatar>
                                         
                                         {/* 메시지 컨테이너 */}
@@ -6829,7 +6993,8 @@ const Schedule: React.FC = () => {
                   estimateRows = matchedEstimate.rows
                     .filter((row: any) => row.space && row.productName)
                     .map((row: any) => ({
-                      space: row.space,
+                      // 직접입력인 경우 spaceCustom 값 사용, 아니면 space 값 사용
+                      space: row.space === '직접입력' && row.spaceCustom ? row.spaceCustom : row.space,
                       productName: row.productName,
                       widthMM: row.widthMM,
                       heightMM: row.heightMM,
@@ -6952,15 +7117,16 @@ const Schedule: React.FC = () => {
                     onDataChange={handleMeasurementDataChange}
                     estimateInfo={estimateInfo}
                   />
-                  {/* 실측 채팅창 추가 */}
+                  {/* 실측 채팅창 추가 - MeasurementForm 버튼들 위에 배치 */}
                   <Box
                     sx={{
-                      mt: 3,
+                      mt: 2,
+                      mb: 2,
                       p: 2,
                       backgroundColor: '#1e2634',
                       borderRadius: 2,
                       border: '1px solid #2e3a4a',
-                      maxHeight: 400,
+                      maxHeight: 300,
                       overflowY: 'auto',
                     }}
                   >
@@ -7160,9 +7326,9 @@ const Schedule: React.FC = () => {
                           onChange={e => setNewComment(e.target.value)}
                           InputProps={{
                             sx: {
-                              py: 0.5, // 높이 더 낮게
-                              fontSize: { xs: '0.92rem', sm: '1rem' },
-                              minHeight: 32,
+                              py: 0.3, // 높이 더 낮게
+                              fontSize: { xs: '0.85rem', sm: '0.9rem' },
+                              minHeight: 28,
                             },
                             endAdornment: commentAttachments.length > 0 && (
                               <Box
@@ -7376,6 +7542,51 @@ const Schedule: React.FC = () => {
                         </IconButton>
                       </Box>
                     </Box>
+                  </Box>
+                  
+                  {/* 실측 데이터 모달 버튼들 */}
+                  <Box
+                    sx={{ 
+                      mt: 2, 
+                      display: 'flex', 
+                      justifyContent: 'flex-end', 
+                      gap: 1,
+                      pt: 2,
+                      borderTop: '1px solid #2e3a4a'
+                    }}
+                  >
+                    <Button 
+                      onClick={() => {
+                        console.log('실측 데이터 모달 닫기');
+                        setMeasurementDialogOpen(false);
+                      }} 
+                      variant="outlined" 
+                      color="inherit"
+                      sx={{ color: '#e0e6ed', borderColor: '#2e3a4a' }}
+                    >
+                      취소
+                    </Button>
+                    <Button 
+                      onClick={() => handleMeasurementSave([])} 
+                      variant="contained" 
+                      color="primary"
+                      sx={{ backgroundColor: '#FF6B9D' }}
+                    >
+                      저장
+                    </Button>
+                    {estimateInfo && (
+                      <Button 
+                        onClick={() => handleCreateFinalEstimate([])}
+                        variant="contained" 
+                        color="secondary"
+                        sx={{ 
+                          backgroundColor: '#ff9800',
+                          '&:hover': { backgroundColor: '#f57c00' }
+                        }}
+                      >
+                        Final견적서 만들기
+                      </Button>
+                    )}
                   </Box>
                 </>
               );
@@ -8367,90 +8578,7 @@ const Schedule: React.FC = () => {
           )}
         </Dialog>
 
-        {/* 실측 데이터 입력 다이얼로그 */}
-        <Dialog
-          open={measurementDialogOpen}
-          onClose={() => setMeasurementDialogOpen(false)}
-          maxWidth="xl"
-          fullWidth
-          PaperProps={{
-            sx: {
-              backgroundColor: '#1e2633',
-              color: '#e0e6ed',
-              maxHeight: '90vh',
-            },
-          }}
-        >
-          <DialogTitle sx={{ 
-            backgroundColor: '#2e3a4a', 
-            borderBottom: '1px solid #3e4a5a',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <Typography variant="h6" sx={{ color: '#40c4ff', fontWeight: 'bold' }}>
-              실측 데이터 입력
-            </Typography>
-            <IconButton
-              onClick={() => setMeasurementDialogOpen(false)}
-              sx={{ color: '#b0b8c1' }}
-            >
-              <CloseIcon />
-            </IconButton>
-          </DialogTitle>
-          <DialogContent sx={{ p: 0 }}>
-            {currentMeasurementEvent && (
-              <MeasurementForm
-                estimateRows={
-                  // 견적번호가 있으면 localStorage에서 견적서 정보 가져오기
-                  currentMeasurementEvent.estimateNo
-                    ? (() => {
-                        try {
-                          const savedEstimates = JSON.parse(
-                            localStorage.getItem('saved_estimates') || '[]'
-                          );
-                          const estimate = savedEstimates.find(
-                            (est: any) => est.estimateNo === currentMeasurementEvent.estimateNo
-                          );
-                          return estimate?.rows?.map((row: any) => ({
-                            space: row.space || '',
-                            productName: row.productName || '',
-                            widthMM: row.widthMM || 0,
-                            heightMM: row.heightMM || 0,
-                          })) || [];
-                        } catch (error) {
-                          console.warn('견적서 정보 로드 실패:', error);
-                          return [];
-                        }
-                      })()
-                    : []
-                }
-                initialData={currentMeasurementEvent.measurementData}
-                onSave={handleMeasurementSave}
-                onCancel={() => setMeasurementDialogOpen(false)}
-                onCreateFinalEstimate={handleCreateFinalEstimate}
-                onAutoSave={handleAutoSave}
-                onDataChange={handleMeasurementDataChange}
-                estimateInfo={
-                  currentMeasurementEvent.estimateNo
-                    ? {
-                        estimateNo: currentMeasurementEvent.estimateNo,
-                        customerName: currentMeasurementEvent.customerName || '',
-                        customerContact: currentMeasurementEvent.contact || '',
-                        customerAddress: currentMeasurementEvent.address || '',
-                        appointmentDate: currentMeasurementEvent.date || '',
-                        appointmentTime: currentMeasurementEvent.time || '',
-                        totalAmount: 0,
-                        discountAmount: 0,
-                        finalAmount: 0,
-                        contractAmount: 0,
-                      }
-                    : undefined
-                }
-              />
-            )}
-          </DialogContent>
-        </Dialog>
+
 
         {/* 타임트리 연동 다이얼로그 */}
         <TimeTreeIntegration

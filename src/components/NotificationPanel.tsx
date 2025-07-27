@@ -30,10 +30,12 @@ import {
   Delete as DeleteIcon,
   ClearAll as ClearAllIcon,
   Settings as SettingsIcon,
+  VolumeUp as VolumeIcon,
 } from '@mui/icons-material';
 import { useNotificationStore, Notification } from '../utils/notificationStore';
 import { UserContext } from './Layout';
 import { useNavigate } from 'react-router-dom';
+import SoundSettingsModal from './SoundSettingsModal';
 
 interface NotificationPanelProps {
   open: boolean;
@@ -59,6 +61,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
   } = useNotificationStore();
 
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [soundSettingsOpen, setSoundSettingsOpen] = useState(false);
 
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {
@@ -195,7 +198,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
             />
           </Box>
 
-          <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button
               size="small"
               startIcon={<CheckCircleIcon />}
@@ -227,6 +230,24 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
               variant="outlined"
             >
               모두 삭제
+            </Button>
+            <Button
+              size="small"
+              startIcon={<VolumeIcon />}
+              onClick={() => setSoundSettingsOpen(true)}
+              sx={{
+                color: 'rgba(255, 255, 255, 0.8)',
+                borderColor: 'rgba(255, 107, 157, 0.3)',
+                background: 'rgba(255, 107, 157, 0.1)',
+                '&:hover': {
+                  borderColor: 'rgba(255, 107, 157, 0.5)',
+                  background: 'rgba(255, 107, 157, 0.2)',
+                  color: '#FF6B9D',
+                },
+              }}
+              variant="outlined"
+            >
+              소리 설정
             </Button>
           </Box>
         </Box>
@@ -399,6 +420,12 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
           )}
         </Box>
       </Box>
+      
+      {/* 알림 소리 설정 모달 */}
+      <SoundSettingsModal
+        open={soundSettingsOpen}
+        onClose={() => setSoundSettingsOpen(false)}
+      />
     </Drawer>
   );
 };

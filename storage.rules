@@ -89,5 +89,11 @@ service firebase.storage {
       allow read: if isAuthenticated() && isStaff();
       allow write: if isAuthenticated() && isAdmin();
     }
+    
+    // 알림 소리 파일 (공개 읽기 허용)
+    match /notification-sounds/{fileName} {
+      allow read: if true; // 모든 사용자가 읽기 가능
+      allow write: if isAuthenticated() && isAdmin(); // 관리자만 업로드 가능
+    }
   }
 } 

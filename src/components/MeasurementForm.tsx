@@ -199,8 +199,7 @@ const MeasurementForm: React.FC<MeasurementFormProps> = ({
         overflowX: 'auto',
       }}
     >
-      <form onSubmit={handleSave}>
-        {/* 견적서 정보 표시 */}
+      {/* 견적서 정보 표시 */}
         {estimateInfo && (
           <Box
             sx={{
@@ -718,33 +717,8 @@ const MeasurementForm: React.FC<MeasurementFormProps> = ({
             </TableBody>
           </Table>
         </TableContainer>
-        <Box
-          sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}
-        >
-          {onCancel && (
-            <Button onClick={onCancel} variant="outlined" color="inherit">
-              취소
-            </Button>
-          )}
-          <Button type="submit" variant="contained" color="primary">
-            저장
-          </Button>
-          {onCreateFinalEstimate && estimateInfo && (
-            <Button 
-              onClick={() => onCreateFinalEstimate(rows)}
-              variant="contained" 
-              color="secondary"
-              sx={{ 
-                backgroundColor: '#ff9800',
-                '&:hover': { backgroundColor: '#f57c00' }
-              }}
-            >
-              Final견적서 만들기
-            </Button>
-          )}
-        </Box>
-      </form>
-    </Paper>
+                {/* 버튼들은 Schedule.tsx에서 처리하므로 여기서는 제거 */}
+      </Paper>
   );
 };
 

@@ -163,6 +163,13 @@ export const useDeliveryStore = create(
           console.log('납품 Firebase 업데이트 성공:', deliveryId);
         } catch (error) {
           console.error('납품 Firebase 업데이트 실패:', error);
+          
+          // 문서가 없는 경우 로컬 상태만 업데이트 (Firebase 동기화 안함)
+          if (error instanceof Error && error.message && error.message.includes('404')) {
+            console.warn('Firebase 문서가 없어 로컬 상태만 업데이트:', deliveryId);
+            // 로컬 상태는 이미 업데이트되었으므로 성공으로 처리
+            return;
+          }
         }
       },
       updateDeliveryStatus: (deliveryId, status) => {

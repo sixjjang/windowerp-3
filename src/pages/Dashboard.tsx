@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useContext, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Grid,
   Paper,
@@ -66,8 +66,16 @@ import { db } from '../firebase/config';
 import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, updateDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { storage } from '../firebase/config';
 import { ref, uploadBytes, getDownloadURL, listAll } from 'firebase/storage';
-import { userService } from '../utils/firebaseDataService';
+import { userService, fcmService } from '../utils/firebaseDataService';
 import { ensureFirebaseAuth } from '../utils/auth';
+import FCMTokenManager from '../components/FCMTokenManager';
+import { playChatNotification } from '../utils/soundUtils';
+import { 
+  setCurrentUser, 
+  registerActiveChat, 
+  unregisterActiveChat, 
+  shouldPlayGlobalChatNotification 
+} from '../utils/chatNotificationUtils';
 
 // ScheduleEvent 타입 정의 (Schedule.tsx와 동일하게 최소 필드만)
 interface ScheduleEvent {
@@ -201,6 +209,7 @@ const defaultQuickLinks = {
 const Dashboard: React.FC = () => {
   const { nickname, userId } = useContext(UserContext);
   const navigate = useNavigate();
+  const location = useLocation(); // 현재 페이지 위치 추적
   const [todayEvents, setTodayEvents] = useState<ScheduleEvent[]>([]);
   const [callMemo, setCallMemo] = useState('');
   const [callMemos, setCallMemos] = useState<CallMemo[]>([]);
@@ -403,6 +412,259 @@ const Dashboard: React.FC = () => {
     loadQuickLinks();
   }, []);
 
+  // 현재 사용자 정보 설정 및 채팅창 활성화 상태 관리
+  useEffect(() => {
+    if (userId && nickname) {
+      setCurrentUser(userId, nickname);
+      console.log(`👤 현재 사용자 설정: ${nickname} (${userId})`);
+    }
+  }, [userId, nickname]);
+
+  // 대시보드 페이지 활성화/비활성화 관리
+  useEffect(() => {
+    if (location.pathname === '/') {
+      registerActiveChat('global-chat');
+      console.log('📱 대시보드 전체 채팅창 활성화');
+    } else {
+      unregisterActiveChat('global-chat');
+      console.log('📱 대시보드 전체 채팅창 비활성화');
+    }
+
+    return () => {
+      unregisterActiveChat('global-chat');
+    };
+  }, [location.pathname]);
+
+  // 스케줄 채팅 동기화 (대시보드 페이지에서만 실행)
+  useEffect(() => {
+    // 대시보드 페이지가 아니면 동기화하지 않음
+    if (location.pathname !== '/') {
+      return;
+    }
+
+    const syncScheduleChats = () => {
+      try {
+        // localStorage에서 스케줄 데이터 가져오기
+        const schedulesData = localStorage.getItem('schedules');
+        if (!schedulesData) return;
+
+        const schedules = JSON.parse(schedulesData);
+        
+        // 날짜 계산
+        const today = new Date();
+        const threeDaysAgo = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000);
+        
+        // 채팅이 있는 스케줄만 필터링
+        const schedulesWithChats = schedules.filter((schedule: any) =>
+          schedule.comments && schedule.comments.length > 0
+        );
+        
+        // 채팅이 없으면 동기화 중단
+        if (schedulesWithChats.length === 0) {
+          return;
+        }
+
+        // 최근 댓글 시간순으로 정렬 (최신순)
+        const recentSchedules = schedulesWithChats.sort((a: any, b: any) => {
+          const aLatestComment = a.comments[a.comments.length - 1];
+          const bLatestComment = b.comments[b.comments.length - 1];
+          const aTime = new Date(aLatestComment.timestamp).getTime();
+          const bTime = new Date(bLatestComment.timestamp).getTime();
+          return bTime - aTime;
+        });
+
+        // 3일 내의 채팅만 활성채팅 알림에 표시
+        const activeSchedules = recentSchedules.filter((schedule: any) => {
+          const latestComment = schedule.comments[schedule.comments.length - 1];
+          return new Date(latestComment.timestamp) > threeDaysAgo;
+        });
+
+        // 활성 스케줄이 없으면 동기화 중단
+        if (activeSchedules.length === 0) {
+          return;
+        }
+
+        // 현재 활성채팅 상태를 한 번에 업데이트
+        setActiveChats(prevActiveChats => {
+          const newActiveChats = { ...prevActiveChats };
+          
+          // 3일이 지난 채팅 알림 제거
+          Object.keys(prevActiveChats).forEach(key => {
+            if (!key.startsWith('스케줄-')) return;
+            const scheduleTitle = key.replace('스케줄-', '');
+            const schedule = schedules.find((s: any) => s.title === scheduleTitle);
+            if (!schedule || !schedule.comments || schedule.comments.length === 0) {
+              delete newActiveChats[key];
+              return;
+            }
+
+            const latestComment = schedule.comments[schedule.comments.length - 1];
+            if (new Date(latestComment.timestamp) <= threeDaysAgo) {
+              delete newActiveChats[key];
+            }
+          });
+
+          // 새로운 활성 스케줄 추가
+          activeSchedules.forEach((schedule: any) => {
+            const chatKey = `스케줄-${schedule.title}`;
+            if (!newActiveChats[chatKey]) {
+              newActiveChats[chatKey] = true;
+            }
+          });
+
+          return newActiveChats;
+        });
+
+        // 읽지 않은 상태 업데이트
+        setUnreadChats(prevUnreadChats => {
+          const newUnreadChats = { ...prevUnreadChats };
+          
+          // 3일이 지난 채팅 알림 제거
+          Object.keys(prevUnreadChats).forEach(key => {
+            if (!key.startsWith('스케줄-')) return;
+            const scheduleTitle = key.replace('스케줄-', '');
+            const schedule = schedules.find((s: any) => s.title === scheduleTitle);
+            if (!schedule || !schedule.comments || schedule.comments.length === 0) {
+              delete newUnreadChats[key];
+              return;
+            }
+
+            const latestComment = schedule.comments[schedule.comments.length - 1];
+            if (new Date(latestComment.timestamp) <= threeDaysAgo) {
+              delete newUnreadChats[key];
+            }
+          });
+
+          return newUnreadChats;
+        });
+
+        // 채팅 메시지 업데이트
+        setChatTargetMessages(prevChatTargetMessages => {
+          const newChatTargetMessages = { ...prevChatTargetMessages };
+          const newUnreadChats: { [key: string]: boolean } = {};
+          
+          // 3일이 지난 채팅 메시지 캐시 제거
+          Object.keys(prevChatTargetMessages).forEach(key => {
+            if (!key.startsWith('스케줄-')) return;
+            const scheduleTitle = key.replace('스케줄-', '');
+            const schedule = schedules.find((s: any) => s.title === scheduleTitle);
+            if (!schedule || !schedule.comments || schedule.comments.length === 0) {
+              delete newChatTargetMessages[key];
+              return;
+            }
+
+            const latestComment = schedule.comments[schedule.comments.length - 1];
+            if (new Date(latestComment.timestamp) <= threeDaysAgo) {
+              delete newChatTargetMessages[key];
+            }
+          });
+
+          // 새로운 메시지 추가
+          activeSchedules.forEach((schedule: any) => {
+            const chatKey = `스케줄-${schedule.title}`;
+            const existingMessages = prevChatTargetMessages[chatKey] || [];
+            
+            // 스케줄의 댓글을 활성채팅 메시지로 변환
+            const chatMessages = schedule.comments.map((comment: any) => ({
+              id: comment.id,
+              user: comment.userName || '사용자',
+              text: comment.message,
+              time: new Date(comment.timestamp).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+            }));
+
+            // 기존 메시지와 비교하여 새로운 메시지만 추가
+            const newMessages = chatMessages.filter((msg: any) =>
+              !existingMessages.some((existing: any) => existing.id === msg.id)
+            );
+
+            if (newMessages.length > 0) {
+              newChatTargetMessages[chatKey] = [...existingMessages, ...newMessages];
+              newUnreadChats[chatKey] = true;
+            } else {
+              newChatTargetMessages[chatKey] = existingMessages;
+            }
+          });
+
+          // 읽지 않은 상태를 별도로 업데이트
+          if (Object.keys(newUnreadChats).length > 0) {
+            setTimeout(() => {
+              setUnreadChats(prev => ({ ...prev, ...newUnreadChats }));
+            }, 0);
+          }
+
+          return newChatTargetMessages;
+        });
+
+      } catch (error) {
+        console.error('스케줄 채팅 동기화 오류:', error);
+      }
+    };
+
+    // 초기 동기화
+    syncScheduleChats();
+
+    // 주기적으로 동기화 (30초마다)
+    const interval = setInterval(syncScheduleChats, 30000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [location.pathname]); // 페이지 경로가 변경될 때마다 useEffect 재실행
+
+  // 스케줄 채팅 업데이트 이벤트 리스너 (모든 페이지에서 실행)
+  useEffect(() => {
+    const handleScheduleChatUpdate = (event: CustomEvent) => {
+      const { scheduleTitle, comment } = event.detail;
+      const chatKey = `스케줄-${scheduleTitle}`;
+
+      // 해당 스케줄이 활성채팅에 없으면 추가
+      setActiveChats(prev => {
+        if (!prev[chatKey]) {
+          return { ...prev, [chatKey]: true };
+        }
+        return prev;
+      });
+
+      // 새로운 메시지를 활성채팅에 추가
+      const newMessage = {
+        id: comment.id,
+        user: comment.userName || '사용자',
+        text: comment.message,
+        time: new Date(comment.timestamp).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      };
+
+      setChatTargetMessages(prev => {
+        const existingMessages = prev[chatKey] || [];
+        // 중복 메시지 방지
+        if (!existingMessages.some((msg: any) => msg.id === newMessage.id)) {
+          // 읽지 않은 상태 업데이트를 별도로 처리
+          setTimeout(() => {
+            setUnreadChats(prev => ({ ...prev, [chatKey]: true }));
+          }, 0);
+          
+          return {
+            ...prev,
+            [chatKey]: [...existingMessages, newMessage],
+          };
+        }
+        return prev;
+      });
+    };
+
+    // 커스텀 이벤트 리스너 등록
+    window.addEventListener('scheduleChatUpdated', handleScheduleChatUpdate as EventListener);
+
+    return () => {
+      window.removeEventListener('scheduleChatUpdated', handleScheduleChatUpdate as EventListener);
+    };
+  }, []); // 한 번만 등록
+
   // Firebase 전체 사용자 채팅 실시간 구독
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -421,6 +683,29 @@ const Dashboard: React.FC = () => {
                 minute: '2-digit',
               })
         }));
+        
+        // 새로운 메시지가 있는지 확인하고 알림 소리 재생
+        const previousMessageCount = chatMessages.length;
+        if (messages.length > previousMessageCount && previousMessageCount > 0) {
+          // 새로운 메시지들 확인
+          const newMessages = messages.slice(previousMessageCount);
+          
+          newMessages.forEach((newMessage: any) => {
+            // 발신자가 아니고, 알림이 필요한 경우에만 알림 소리 재생
+            if (shouldPlayGlobalChatNotification(
+              newMessage.userId || newMessage.user, 
+              newMessage.user || '알 수 없는 사용자'
+            )) {
+              try {
+                playChatNotification(userId || 'current_user');
+                console.log(`🔔 전체 채팅 알림 재생: ${newMessage.user}의 메시지`);
+              } catch (error) {
+                console.error('채팅 알림 소리 재생 실패:', error);
+              }
+            }
+          });
+        }
+        
         setChatMessages(messages);
         
         // 온라인 사용자 목록 업데이트 (최근 5분 내 메시지 보낸 사용자)
@@ -441,7 +726,7 @@ const Dashboard: React.FC = () => {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [chatMessages.length]);
 
   // 채팅 메시지가 변경될 때 자동 스크롤
   useEffect(() => {
@@ -471,205 +756,6 @@ const Dashboard: React.FC = () => {
     };
     fetchTodayEvents();
   }, []);
-
-  // 스케줄 채팅 메시지와 활성채팅 동기화
-  useEffect(() => {
-    const syncScheduleChats = () => {
-      try {
-        // localStorage에서 스케줄 데이터 가져오기
-        const schedulesData = localStorage.getItem('schedules');
-        console.log('Dashboard: localStorage schedules 데이터 확인:', schedulesData ? '있음' : '없음');
-        console.log('Dashboard: 현재 activeChats 상태:', activeChats);
-
-        if (schedulesData) {
-          const schedules = JSON.parse(schedulesData);
-          console.log('Dashboard: 파싱된 스케줄 데이터:', schedules.length, '개');
-
-          // 최근 3일 내의 스케줄 중 채팅이 있는 것들을 필터링
-          const today = new Date();
-          const threeDaysAgo = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000);
-
-          console.log('Dashboard: 오늘 날짜:', today.toISOString().split('T')[0]);
-          console.log('Dashboard: 3일 전 날짜:', threeDaysAgo.toISOString().split('T')[0]);
-
-          // 모든 스케줄의 날짜와 댓글 정보 확인
-          console.log('Dashboard: 모든 스케줄 정보:');
-          schedules.forEach((schedule: any, index: number) => {
-            console.log(`  ${index + 1}. ${schedule.title} - 날짜: ${schedule.date}, 댓글: ${schedule.comments?.length || 0}개`);
-          });
-
-          // 채팅이 있는 모든 스케줄을 최근 댓글 시간순으로 정렬
-          const schedulesWithChats = schedules.filter((schedule: any) =>
-            schedule.comments && schedule.comments.length > 0
-          );
-
-          // 최근 댓글 시간순으로 정렬 (최신순)
-          const recentSchedules = schedulesWithChats.sort((a: any, b: any) => {
-            const aLatestComment = a.comments[a.comments.length - 1];
-            const bLatestComment = b.comments[b.comments.length - 1];
-            const aTime = new Date(aLatestComment.timestamp).getTime();
-            const bTime = new Date(bLatestComment.timestamp).getTime();
-            return bTime - aTime; // 최신순 정렬
-          });
-
-          // 3일 내의 채팅만 활성채팅 알림에 표시 (실제 채팅 데이터는 영구 보존)
-          const activeSchedules = recentSchedules.filter((schedule: any) => {
-            const latestComment = schedule.comments[schedule.comments.length - 1];
-            return new Date(latestComment.timestamp) > threeDaysAgo;
-          });
-
-          // 3일이 지난 채팅 알림만 활성채팅에서 제거 (실제 채팅 데이터는 보존)
-          const oldChatKeys = Object.keys(activeChats).filter(key => {
-            if (!key.startsWith('스케줄-')) return false;
-            const scheduleTitle = key.replace('스케줄-', '');
-            const schedule = schedules.find((s: any) => s.title === scheduleTitle);
-            if (!schedule || !schedule.comments || schedule.comments.length === 0) return false;
-
-            const latestComment = schedule.comments[schedule.comments.length - 1];
-            return new Date(latestComment.timestamp) <= threeDaysAgo;
-          });
-
-          if (oldChatKeys.length > 0) {
-            console.log('Dashboard: 3일이 지난 채팅 알림 비활성화 (채팅 데이터는 보존):', oldChatKeys);
-
-            // 활성채팅 알림만 제거 (실제 채팅 데이터는 localStorage에 영구 보존)
-            setActiveChats(prev => {
-              const newState = { ...prev };
-              oldChatKeys.forEach(key => {
-                delete newState[key];
-              });
-              return newState;
-            });
-
-            // 읽지 않은 상태도 함께 제거
-            setUnreadChats(prev => {
-              const newState = { ...prev };
-              oldChatKeys.forEach(key => {
-                delete newState[key];
-              });
-              return newState;
-            });
-
-            // 대시보드의 채팅 메시지 캐시만 제거 (실제 데이터는 localStorage에 보존)
-            setChatTargetMessages(prev => {
-              const newState = { ...prev };
-              oldChatKeys.forEach(key => {
-                delete newState[key];
-              });
-              return newState;
-            });
-          }
-
-          console.log('Dashboard: 채팅이 있는 스케줄 (최신순):', recentSchedules.length, '개');
-          console.log('Dashboard: 3일 내 활성채팅 알림 대상:', activeSchedules.length, '개');
-
-          // 각 활성 스케줄의 채팅을 활성채팅에 반영
-          activeSchedules.forEach((schedule: any) => {
-            const chatKey = `스케줄-${schedule.title}`;
-            console.log('Dashboard: 스케줄 채팅 키:', chatKey, '채팅 개수:', schedule.comments.length);
-            console.log('Dashboard: 현재 activeChats에 해당 키가 있는지:', !!activeChats[chatKey]);
-
-            // 해당 스케줄이 활성채팅에 없으면 추가
-            if (!activeChats[chatKey]) {
-              console.log('Dashboard: 새로운 스케줄 채팅 활성화:', chatKey);
-              setActiveChats(prev => {
-                const newState = { ...prev };
-                console.log('Dashboard: activeChats 상태 업데이트:', newState);
-                return newState;
-              });
-            }
-
-            // 스케줄의 댓글을 활성채팅 메시지로 변환
-            const chatMessages = schedule.comments.map((comment: any) => ({
-              id: comment.id,
-              user: comment.userName || '사용자',
-              text: comment.message,
-              time: new Date(comment.timestamp).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              }),
-            }));
-
-            // 기존 메시지와 비교하여 새로운 메시지만 추가
-            setChatTargetMessages(prev => {
-              const existingMessages = prev[chatKey] || [];
-              const newMessages = chatMessages.filter((msg: any) =>
-                !existingMessages.some((existing: any) => existing.id === msg.id)
-              );
-
-              if (newMessages.length > 0) {
-                console.log('Dashboard: 새로운 메시지 추가:', chatKey, newMessages.length, '개');
-                // 새로운 메시지가 있으면 읽지 않은 상태로 표시
-                setUnreadChats(prev => ({ ...prev, [chatKey]: true }));
-                return {
-                  ...prev,
-                  [chatKey]: [...existingMessages, ...newMessages],
-                };
-              }
-              return prev;
-            });
-          });
-        }
-      } catch (error) {
-        console.error('스케줄 채팅 동기화 오류:', error);
-      }
-    };
-
-    // 스케줄 채팅 업데이트 이벤트 리스너
-    const handleScheduleChatUpdate = (event: CustomEvent) => {
-      console.log('Dashboard: 스케줄 채팅 업데이트 이벤트 수신:', event.detail);
-      const { scheduleId, scheduleTitle, comment, updatedEvents } = event.detail;
-      const chatKey = `스케줄-${scheduleTitle}`;
-
-      console.log('Dashboard: 이벤트에서 받은 채팅 키:', chatKey);
-
-      // 해당 스케줄이 활성채팅에 없으면 추가
-      if (!activeChats[chatKey]) {
-        console.log('Dashboard: 이벤트로 새로운 스케줄 채팅 활성화:', chatKey);
-        setActiveChats(prev => ({ ...prev, [chatKey]: true }));
-      }
-
-      // 새로운 메시지를 활성채팅에 추가
-      const newMessage = {
-        id: comment.id,
-        user: comment.userName || '사용자',
-        text: comment.message,
-        time: new Date(comment.timestamp).toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      };
-
-      setChatTargetMessages(prev => {
-        const existingMessages = prev[chatKey] || [];
-        // 중복 메시지 방지
-        if (!existingMessages.some((msg: any) => msg.id === newMessage.id)) {
-          console.log('Dashboard: 이벤트로 새로운 메시지 추가:', chatKey, newMessage.text);
-          // 새로운 메시지가 추가되면 읽지 않은 상태로 표시
-          setUnreadChats(prev => ({ ...prev, [chatKey]: true }));
-          return {
-            ...prev,
-            [chatKey]: [...existingMessages, newMessage],
-          };
-        }
-        return prev;
-      });
-    };
-
-    // 초기 동기화
-    syncScheduleChats();
-
-    // 커스텀 이벤트 리스너 등록
-    window.addEventListener('scheduleChatUpdated', handleScheduleChatUpdate as EventListener);
-
-    // 주기적으로 동기화 (5초마다)
-    const interval = setInterval(syncScheduleChats, 5000);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('scheduleChatUpdated', handleScheduleChatUpdate as EventListener);
-    };
-  }, []); // 의존성 배열을 비워서 무한 루프 방지
 
   // 모달이 열릴 때 채팅 스크롤을 맨 아래로 이동
   useEffect(() => {
@@ -892,13 +978,23 @@ const Dashboard: React.FC = () => {
     if (!chatInput.trim()) return;
 
     try {
-      // Firebase에 메시지 저장
-      await addDoc(collection(db, 'employeeChat'), {
-        user: nickname || '사용자',
-        text: chatInput.trim(),
-        timestamp: serverTimestamp(),
-        userId: userId || 'current_user',
-      });
+      // 채팅 메시지 전송
+      await fcmService.sendChatMessageWithNotification(
+        nickname || '사용자',
+        chatInput.trim(),
+        userId || 'current_user'
+      );
+
+      // 브라우저 알림 표시 (다른 사용자들에게)
+      if (Notification.permission === 'granted') {
+        new Notification('새로운 채팅 메시지', {
+          body: `${nickname || '사용자'}: ${chatInput.trim()}`,
+          icon: '/logo192.png',
+          badge: '/logo192.png',
+          requireInteraction: true,
+          tag: 'chat-notification'
+        });
+      }
 
       // 입력 필드 초기화
       setChatInput('');
@@ -1044,32 +1140,18 @@ const Dashboard: React.FC = () => {
   };
 
   const handleViewSchedule = (scheduleTitle: string) => {
-    console.log('Dashboard: handleViewSchedule 호출됨, scheduleTitle:', scheduleTitle);
-
     // localStorage에 스케줄 정보 저장 (스케줄 페이지에서 사용)
     const schedulesData = localStorage.getItem('schedules');
-    console.log('Dashboard: localStorage schedules 데이터:', schedulesData ? '있음' : '없음');
 
     if (schedulesData) {
       const schedules = JSON.parse(schedulesData);
-      console.log('Dashboard: 파싱된 스케줄 개수:', schedules.length);
-
       const schedule = schedules.find((s: any) => s.title === scheduleTitle);
-      console.log('Dashboard: 찾은 스케줄:', schedule);
 
       if (schedule) {
         localStorage.setItem('selectedScheduleForView', JSON.stringify(schedule));
-        console.log('Dashboard: localStorage에 선택된 스케줄 저장됨');
-        console.log('Dashboard: 스케줄 페이지로 이동 시도:', schedule.title);
-
         // React Router를 사용하여 스케줄 페이지로 이동
         navigate('/schedule');
-        console.log('Dashboard: navigate 호출 완료');
-      } else {
-        console.log('Dashboard: 해당 제목의 스케줄을 찾을 수 없음:', scheduleTitle);
       }
-    } else {
-      console.log('Dashboard: localStorage에 schedules 데이터가 없음');
     }
     handleContextMenuClose();
   };
@@ -2423,12 +2505,20 @@ const Dashboard: React.FC = () => {
                 <GroupIcon sx={{ fontSize: 18, mr: 0.5 }} />
                 <span>전체 사용자 채팅 ({users.length}명)</span>
               </Box>
-              <IconButton
-                onClick={() => setChatOpen(false)}
-                sx={{ color: '#fff', p: 0.5 }}
-              >
-                <CloseIcon fontSize="small" />
-              </IconButton>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {/* FCM 토큰 관리자 */}
+                <FCMTokenManager 
+                  userId={userId || 'current_user'}
+                  onTokenSaved={(token) => console.log('FCM 토큰 저장됨:', token)}
+                  onTokenError={(error) => console.error('FCM 토큰 오류:', error)}
+                />
+                <IconButton
+                  onClick={() => setChatOpen(false)}
+                  sx={{ color: '#fff', p: 0.5 }}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Box>
             </Box>
             {/* 참여자 표시 */}
             <Box

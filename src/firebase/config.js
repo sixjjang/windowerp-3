@@ -26,6 +26,8 @@ export const storage = getStorage(app);
 export const realtimeDb = getDatabase(app);
 export const functions = getFunctions(app);
 
+
+
 // 개발 환경에서도 실제 Firebase 서버 사용 (에뮬레이터 비활성화)
 // if (process.env.NODE_ENV === 'development') {
 //   // Firestore 에뮬레이터

@@ -68,7 +68,7 @@ import { UserContext } from '../../components/Layout';
 import { v4 as uuidv4 } from 'uuid';
 import CuteASApplicationModal from '../../components/CuteASApplicationModal';
 import { Order } from './OrderManagement';
-import { deliveryService } from '../../utils/firebaseDataService';
+import { deliveryService, workerService } from '../../utils/firebaseDataService';
 
 // OrderDetailModal 컴포넌트 정의
 type OrderDetailModalProps = {
@@ -285,7 +285,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                         }}
                       >
                         <td style={{ border: '1px solid #2e3a4a', padding: 6 }}>
-                          {item.space || '-'}
+                          {item.space === '직접입력' && item.spaceCustom ? item.spaceCustom : (item.space || '-')}
                         </td>
                         <td style={{ border: '1px solid #2e3a4a', padding: 6 }}>
                           {item.productCode || '-'}
@@ -589,8 +589,11 @@ const DeliveryManagement: React.FC = () => {
     addPaymentRecord,
     updateDelivery,
     removeASRecord,
+    setDeliveries,
   } = useDeliveryStore();
   const { workers, addWorker } = useWorkerStore();
+  const [firebaseWorkers, setFirebaseWorkers] = useState<any[]>([]);
+  const [isLoadingWorkers, setIsLoadingWorkers] = useState(false);
   const { createDeliveryNotification } = useNotificationStore();
   const { nickname } = useContext(UserContext);
 
@@ -648,6 +651,7 @@ const DeliveryManagement: React.FC = () => {
   // AS 출력 관련 상태 추가
   const [asPrintDialogOpen, setAsPrintDialogOpen] = useState(false);
   const [selectedASForPrint, setSelectedASForPrint] = useState<any>(null);
+  const [autoScheduleUpdate, setAutoScheduleUpdate] = useState(false); // 자동 스케줄 업데이트 비활성화 (문제 해결을 위해)
 
   // AS 출력 관련 상태 추가
   const [asApplicationDialogOpen, setAsApplicationDialogOpen] = useState(false);
@@ -689,7 +693,7 @@ const DeliveryManagement: React.FC = () => {
     setEditingMemoId(null);
   };
 
-  // Firebase 데이터 로딩
+  // Firebase 데이터 로딩 및 실시간 구독
   useEffect(() => {
     const loadDeliveryData = async () => {
       try {
@@ -699,8 +703,40 @@ const DeliveryManagement: React.FC = () => {
         
         // Firebase 데이터가 있으면 Zustand store에 설정
         if (data.length > 0) {
-          // 기존 데이터와 병합하거나 교체
-          console.log('Firebase 납품 데이터 적용');
+          console.log('Firebase 납품 데이터를 Zustand store에 적용:', data);
+          // Firebase 데이터를 DeliverySite 타입으로 변환
+          const convertedData = data.map((item: any) => ({
+            id: item.id,
+            customerName: item.customerName || '',
+            projectName: item.projectName || '',
+            projectType: item.projectType,
+            contact: item.contact || '',
+            address: item.address || '',
+            constructionType: item.constructionType || '제품만',
+            constructionDate: item.constructionDate || '',
+            constructionTime: item.constructionTime || '',
+            constructionWorker: item.constructionWorker,
+            vehicleNumber: item.vehicleNumber,
+            constructionWorkerPhone: item.constructionWorkerPhone,
+            deliveryStatus: item.deliveryStatus || '제품준비중',
+            paymentStatus: item.paymentStatus || '미수금',
+            totalAmount: item.totalAmount || 0,
+            discountAmount: item.discountAmount || 0,
+            finalAmount: item.finalAmount || 0,
+            paidAmount: item.paidAmount || 0,
+            remainingAmount: item.remainingAmount || 0,
+            paymentRecords: item.paymentRecords || [],
+            asRecords: item.asRecords || [],
+            memo: item.memo,
+            memoCreatedAt: item.memoCreatedAt,
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
+            items: item.items || [],
+            railItems: item.railItems || [],
+          }));
+          setDeliveries(convertedData);
+        } else {
+          console.log('Firebase에 납품 데이터가 없습니다.');
         }
       } catch (error) {
         console.error('Firebase 납품 데이터 로드 실패:', error);
@@ -708,9 +744,110 @@ const DeliveryManagement: React.FC = () => {
     };
     
     loadDeliveryData();
+    
+    // 실시간 구독 설정
+    const unsubscribe = deliveryService.subscribeToDeliveries((data) => {
+      console.log('Firebase 실시간 납품 데이터 업데이트:', data.length, '개');
+      console.log('📋 현재 납품 ID 목록:', data.map((item: any) => item.id));
+      if (data.length > 0) {
+        // Firebase 데이터를 DeliverySite 타입으로 변환
+        const convertedData = data.map((item: any) => ({
+          id: item.id,
+          customerName: item.customerName || '',
+          projectName: item.projectName || '',
+          projectType: item.projectType,
+          contact: item.contact || '',
+          address: item.address || '',
+          constructionType: item.constructionType || '제품만',
+          constructionDate: item.constructionDate || '',
+          constructionTime: item.constructionTime || '',
+          constructionWorker: item.constructionWorker,
+          vehicleNumber: item.vehicleNumber,
+          constructionWorkerPhone: item.constructionWorkerPhone,
+          deliveryStatus: item.deliveryStatus || '제품준비중',
+          paymentStatus: item.paymentStatus || '미수금',
+          totalAmount: item.totalAmount || 0,
+          discountAmount: item.discountAmount || 0,
+          finalAmount: item.finalAmount || 0,
+          paidAmount: item.paidAmount || 0,
+          remainingAmount: item.remainingAmount || 0,
+          paymentRecords: item.paymentRecords || [],
+          asRecords: item.asRecords || [],
+          memo: item.memo,
+          memoCreatedAt: item.memoCreatedAt,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+          items: item.items || [],
+          railItems: item.railItems || [],
+        }));
+        
+        // 중복 데이터 필터링 (같은 ID가 여러 개 있는 경우 최신 것만 유지)
+        const uniqueData = convertedData.reduce((acc: any[], current: any) => {
+          const existingIndex = acc.findIndex(item => item.id === current.id);
+          if (existingIndex === -1) {
+            acc.push(current);
+          } else {
+            // 기존 데이터가 있으면 더 최신 데이터로 교체
+            const existing = acc[existingIndex];
+            const existingUpdatedAt = existing.updatedAt || existing.createdAt || '';
+            const currentUpdatedAt = current.updatedAt || current.createdAt || '';
+            
+            if (currentUpdatedAt > existingUpdatedAt) {
+              acc[existingIndex] = current;
+              console.log('🔄 중복 데이터 교체:', current.id, '최신 데이터로 업데이트');
+            }
+          }
+          return acc;
+        }, []);
+        
+        console.log('중복 제거 후 납품 데이터:', uniqueData.length, '개');
+        setDeliveries(uniqueData);
+      }
+    });
+    
+    // 컴포넌트 언마운트 시 구독 해제
+    return () => {
+      unsubscribe();
+    };
+  }, [setDeliveries]);
+
+  // Firebase에서 시공자 데이터 로드
+  useEffect(() => {
+    const loadFirebaseWorkers = async () => {
+      setIsLoadingWorkers(true);
+      try {
+        console.log('🔥 Firebase에서 시공자 데이터 로드 시작...');
+        const data = await workerService.getWorkers();
+        console.log('🔥 Firebase 시공자 데이터 로드 완료:', data.length, '개');
+        
+        if (data.length > 0) {
+          setFirebaseWorkers(data);
+        } else {
+          console.log('🔥 Firebase에 시공자 데이터가 없습니다.');
+        }
+      } catch (error) {
+        console.error('🔥 Firebase 시공자 데이터 로드 실패:', error);
+      } finally {
+        setIsLoadingWorkers(false);
+      }
+    };
+
+    loadFirebaseWorkers();
   }, []);
 
+  // Firebase 실시간 시공자 구독 설정
+  useEffect(() => {
+    console.log('🔥 Firebase 시공자 실시간 구독 설정...');
+    const unsubscribe = workerService.subscribeToWorkers((data) => {
+      console.log('🔥 Firebase 실시간 시공자 데이터 업데이트:', data.length, '개');
+      setFirebaseWorkers(data);
+    });
 
+    // 컴포넌트 언마운트 시 구독 해제
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   // 계약 생성 시 배송관리 스케줄 생성 이벤트 리스너
   useEffect(() => {
@@ -763,6 +900,61 @@ const DeliveryManagement: React.FC = () => {
 
   const handleConsolidateProjects = () => {
     consolidateProjectDeliveries();
+  };
+
+  // 납품 데이터 초기화 (Firebase 동기화 문제 해결용)
+  const handleResetDeliveries = async () => {
+    try {
+      console.log('🔄 납품 데이터 초기화 시작...');
+      
+      // Firebase에서 최신 데이터 다시 로드
+      const freshData = await deliveryService.getDeliveries();
+      console.log('📥 Firebase에서 새로 로드된 납품 데이터:', freshData.length, '개');
+      
+      // 로컬 상태 업데이트
+      setDeliveries(freshData.map((item: any) => ({
+        id: item.id,
+        customerName: item.customerName || '',
+        projectName: item.projectName || '',
+        projectType: item.projectType,
+        contact: item.contact || '',
+        address: item.address || '',
+        constructionType: item.constructionType || '제품만',
+        constructionDate: item.constructionDate || '',
+        constructionTime: item.constructionTime || '',
+        constructionWorker: item.constructionWorker,
+        vehicleNumber: item.vehicleNumber,
+        constructionWorkerPhone: item.constructionWorkerPhone,
+        deliveryStatus: item.deliveryStatus || '제품준비중',
+        paymentStatus: item.paymentStatus || '미수금',
+        totalAmount: item.totalAmount || 0,
+        discountAmount: item.discountAmount || 0,
+        finalAmount: item.finalAmount || 0,
+        paidAmount: item.paidAmount || 0,
+        remainingAmount: item.remainingAmount || 0,
+        paymentRecords: item.paymentRecords || [],
+        asRecords: item.asRecords || [],
+        memo: item.memo,
+        memoCreatedAt: item.memoCreatedAt,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        items: item.items || [],
+        railItems: item.railItems || [],
+      })));
+      
+      setSnackbar({
+        open: true,
+        message: `납품 데이터가 초기화되었습니다. (${freshData.length}개)`,
+        severity: 'success',
+      });
+    } catch (error) {
+      console.error('❌ 납품 데이터 초기화 실패:', error);
+      setSnackbar({
+        open: true,
+        message: '납품 데이터 초기화에 실패했습니다.',
+        severity: 'error',
+      });
+    }
   };
 
   // 검색 필터링된 납품 목록
@@ -1139,6 +1331,32 @@ const DeliveryManagement: React.FC = () => {
       // 프로젝트 단위 스케줄 ID 생성 (고객명 + 주소 기반, 시공일시 무관)
       const addressKey = delivery.address?.replace(/[^가-힣a-zA-Z0-9]/g, '').substring(0, 10) || '';
       const projectId = `delivery-${delivery.customerName}_${addressKey}`;
+      
+      console.log('🔍 스케줄 중복 확인:', projectId);
+      
+      // 기존 스케줄이 있는지 확인 (Firebase에서 조회)
+      try {
+        const scheduleResponse = await fetch(
+          `https://us-central1-windowerp-3.cloudfunctions.net/schedules?id=${projectId}`,
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        
+        if (scheduleResponse.ok) {
+          const existingSchedules = await scheduleResponse.json();
+          if (existingSchedules.length > 0) {
+            console.log('✅ 기존 스케줄 발견 - 업데이트 모드:', projectId);
+          } else {
+            console.log('🆕 새 스케줄 생성 모드:', projectId);
+          }
+        }
+      } catch (error) {
+        console.warn('스케줄 중복 확인 실패 (계속 진행):', error);
+      }
 
       // 카테고리 색상 가져오기 함수
       const getCategoryColor = (categoryId: string) => {
@@ -1277,9 +1495,11 @@ const DeliveryManagement: React.FC = () => {
         if (response.status === 500) {
           console.error('서버 내부 오류 - 전송된 데이터:', scheduleData);
         }
+        throw new Error(`스케줄 등록 실패: ${response.status} ${response.statusText}`);
       } else {
         const result = await response.json();
         console.log(`✅ 상세 스케줄 등록 성공: ${projectId}`, result);
+        return result; // 응답 결과 반환
       }
     } catch (error) {
       console.error(`스케줄 등록 중 오류 (${delivery.id}):`, error);
@@ -2050,6 +2270,35 @@ const DeliveryManagement: React.FC = () => {
                   height: '24px',
                 }}
               />
+              <Chip
+                label={autoScheduleUpdate ? '자동업데이트 ON' : '자동업데이트 OFF'}
+                color={autoScheduleUpdate ? 'success' : 'default'}
+                variant="outlined"
+                size="small"
+                sx={{
+                  fontSize: '0.7rem',
+                  height: '20px',
+                  ml: 1,
+                }}
+              />
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={handleResetDeliveries}
+                sx={{
+                  fontSize: '0.7rem',
+                  height: '20px',
+                  ml: 1,
+                  color: 'orange',
+                  borderColor: 'orange',
+                  '&:hover': {
+                    borderColor: 'darkorange',
+                    color: 'darkorange',
+                  },
+                }}
+              >
+                데이터초기화
+              </Button>
             </Box>
           </Grid>
 
@@ -2232,9 +2481,6 @@ const DeliveryManagement: React.FC = () => {
             <Accordion
               key={delivery.id}
               expanded={expandedDelivery === delivery.id}
-              onChange={(e, isExpanded) =>
-                setExpandedDelivery(isExpanded ? delivery.id : null)
-              }
               sx={{
                 mb: 3,
                 backgroundColor: '#2d2d2d',
@@ -2253,8 +2499,61 @@ const DeliveryManagement: React.FC = () => {
                 },
               }}
             >
-              <AccordionSummary
-                expandIcon={<ExpandMoreIcon sx={{ color: '#e0e6ed' }} />}
+                            <AccordionSummary
+                expandIcon={
+                  <ExpandMoreIcon 
+                    sx={{ 
+                      color: '#e0e6ed',
+                      cursor: 'pointer',
+                      '&:hover': {
+                        color: '#40c4ff',
+                        transform: 'scale(1.1)',
+                      },
+                      transition: 'all 0.2s ease-in-out',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedDelivery(expandedDelivery === delivery.id ? null : delivery.id);
+                    }}
+                  />
+                }
+                disableRipple
+                disableTouchRipple
+                onClick={(e) => {
+                  // 클릭된 요소가 실제 입력 요소나 버튼인 경우에만 아코디언 토글 방지
+                  const target = e.target as HTMLElement;
+                  
+                  // expandIcon 영역 클릭은 무시 (expandIcon에서 별도 처리)
+                  if (target.closest('.MuiAccordionSummary-expandIconWrapper')) {
+                    return;
+                  }
+                  
+                  // 실제 입력 요소나 버튼인 경우에만 클릭 방지
+                  const isInteractiveElement = target.closest('button') ||
+                                             target.closest('input') ||
+                                             target.closest('textarea') ||
+                                             target.closest('select') ||
+                                             target.closest('.MuiIconButton-root') ||
+                                             target.closest('[role="button"]') ||
+                                             target.closest('[data-clickable="true"]') ||
+                                             target.closest('.MuiFormControl-root') ||
+                                             target.closest('.MuiTextField-root') ||
+                                             target.closest('.MuiSelect-root') ||
+                                             target.closest('.MuiInputBase-root') ||
+                                             target.closest('.MuiInput-root') ||
+                                             target.closest('.MuiOutlinedInput-root') ||
+                                             target.closest('.MuiInputLabel-root') ||
+                                             target.closest('.MuiSelect-select') ||
+                                             target.closest('.MuiInputBase-input');
+                  
+                  // 입력 요소가 아닌 경우 아코디언 토글
+                  if (!isInteractiveElement) {
+                    console.log('메인카드 클릭 - 아코디언 토글:', delivery.id);
+                    setExpandedDelivery(expandedDelivery === delivery.id ? null : delivery.id);
+                  } else {
+                    console.log('입력 요소 클릭 - 아코디언 토글 방지:', target.tagName, target.className);
+                  }
+                }}
                 sx={{
                   '&:hover': {
                     backgroundColor: 'rgba(255,255,255,0.05)',
@@ -2273,7 +2572,11 @@ const DeliveryManagement: React.FC = () => {
                   },
                 }}
               >
-                <Grid container spacing={2} alignItems="center">
+                <Grid 
+                  container 
+                  spacing={2} 
+                  alignItems="center"
+                >
                   {/* 좌측: 고객정보 */}
                   <Grid item xs={12} md={2.5}>
                     <Typography
@@ -2310,6 +2613,29 @@ const DeliveryManagement: React.FC = () => {
                     <Typography variant="h6" sx={{ color: '#e0e6ed', mb: 1 }}>
                       시공정보
                     </Typography>
+                    {/* Firebase 시공자 데이터 상태 표시 */}
+                    <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+                      <Chip
+                        label={`🔥 Firebase 시공자: ${firebaseWorkers.length}명`}
+                        color={firebaseWorkers.length > 0 ? 'success' : 'default'}
+                        variant="outlined"
+                        size="small"
+                      />
+                      <Chip
+                        label={`💾 Local 시공자: ${workers.length}명`}
+                        color="primary"
+                        variant="outlined"
+                        size="small"
+                      />
+                      {isLoadingWorkers && (
+                        <Chip
+                          label="🔥 Firebase 데이터 로딩 중..."
+                          color="warning"
+                          variant="outlined"
+                          size="small"
+                        />
+                      )}
+                    </Box>
                     <Box
                       sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}
                     >
@@ -2319,6 +2645,7 @@ const DeliveryManagement: React.FC = () => {
                             size="small"
                             label="시공일시"
                             type="datetime-local"
+                            data-clickable="true"
                             value={(() => {
                               if (delivery.constructionDate && delivery.constructionTime) {
                                 return delivery.constructionDate + 'T' + delivery.constructionTime;
@@ -2346,8 +2673,16 @@ const DeliveryManagement: React.FC = () => {
                                 };
                                 updateDelivery(delivery.id, updatedDelivery);
                                 
-                                // 자동 저장 비활성화 - 수동 저장 버튼으로 변경
-                                console.log('시공일시 변경 감지:', dateStr, timeStr);
+                                // 시공일시 변경 시 기존 스케줄 자동 업데이트
+                                console.log('🔄 시공일시 변경 감지 - 스케줄 자동 업데이트:', {
+                                  oldDate: delivery.constructionDate,
+                                  oldTime: delivery.constructionTime,
+                                  newDate: dateStr,
+                                  newTime: timeStr
+                                });
+                                
+                                // 자동 스케줄 업데이트 완전 비활성화 (납품 데이터 보호)
+                                console.log('✅ 시공일시 변경 완료 - 자동 스케줄 업데이트 비활성화됨');
                               }
                             }}
                             fullWidth
@@ -2360,29 +2695,54 @@ const DeliveryManagement: React.FC = () => {
                               labelId={`worker-select-label-${delivery.id}`}
                               value={delivery.constructionWorker || ''}
                               label="시공자명"
+                              data-clickable="true"
                               onChange={e => {
-                                const selected = workers.find((w: any) => w.name === e.target.value);
+                                // Firebase 시공자 데이터에서 먼저 찾기
+                                let selected = firebaseWorkers.find((w: any) => w.name === e.target.value);
+                                
+                                // Firebase에 없으면 localStorage에서 찾기
+                                if (!selected) {
+                                  selected = workers.find((w: any) => w.name === e.target.value);
+                                }
+                                
                                 if (selected) {
-                                  updateDelivery(delivery.id, {
+                                  const updatedData = {
                                     constructionWorker: selected.name,
                                     constructionWorkerPhone: selected.phone,
                                     vehicleNumber: selected.vehicleNumber,
-                                  });
+                                  };
+                                  updateDelivery(delivery.id, updatedData);
+                                  
+                                  // 자동 스케줄 업데이트 완전 비활성화 (납품 데이터 보호)
+                                  console.log('✅ 시공자 변경 완료 - 자동 스케줄 업데이트 비활성화됨');
                                 } else {
-                                  updateDelivery(delivery.id, {
+                                  const updatedData = {
                                     constructionWorker: '',
                                     constructionWorkerPhone: '',
                                     vehicleNumber: '',
-                                  });
+                                  };
+                                  updateDelivery(delivery.id, updatedData);
+                                  
+                                  // 자동 스케줄 업데이트 완전 비활성화 (납품 데이터 보호)
+                                  console.log('✅ 시공자 제거 완료 - 자동 스케줄 업데이트 비활성화됨');
                                 }
                               }}
                             >
                               <MenuItem value="">
                                 <em>선택없음</em>
                               </MenuItem>
-                              {workers.map((w: any) => (
+                              {/* Firebase 시공자 데이터 우선 표시 */}
+                              {firebaseWorkers.map((w: any) => (
                                 <MenuItem key={w.id} value={w.name}>
-                                  {w.name}
+                                  {w.name} 🔥
+                                </MenuItem>
+                              ))}
+                              {/* localStorage 시공자 데이터 (Firebase에 없는 것들만) */}
+                              {workers.filter((w: any) => 
+                                !firebaseWorkers.some((fw: any) => fw.name === w.name && fw.phone === w.phone)
+                              ).map((w: any) => (
+                                <MenuItem key={w.id} value={w.name}>
+                                  {w.name} 💾
                                 </MenuItem>
                               ))}
                             </Select>
@@ -2392,9 +2752,14 @@ const DeliveryManagement: React.FC = () => {
                           <TextField
                             size="small"
                             label="전화번호"
+                            data-clickable="true"
                             value={delivery.constructionWorkerPhone || ''}
-                            onChange={e => {
-                              updateDelivery(delivery.id, { constructionWorkerPhone: e.target.value });
+                            onChange={async (e) => {
+                              const newPhone = e.target.value;
+                              await updateDelivery(delivery.id, { constructionWorkerPhone: newPhone });
+                              
+                              // 자동 스케줄 업데이트 완전 비활성화 (납품 데이터 보호)
+                              console.log('✅ 전화번호 변경 완료 - 자동 스케줄 업데이트 비활성화됨');
                             }}
                             placeholder="전화번호"
                             fullWidth
@@ -2404,16 +2769,27 @@ const DeliveryManagement: React.FC = () => {
                           <TextField
                             size="small"
                             label="차량번호"
+                            data-clickable="true"
                             value={delivery.vehicleNumber || ''}
-                            onChange={e => {
-                              updateDelivery(delivery.id, { vehicleNumber: e.target.value });
+                            onChange={async (e) => {
+                              const newVehicleNumber = e.target.value;
+                              await updateDelivery(delivery.id, { vehicleNumber: newVehicleNumber });
+                              
+                              // 자동 스케줄 업데이트 완전 비활성화 (납품 데이터 보호)
+                              console.log('✅ 차량번호 변경 완료 - 자동 스케줄 업데이트 비활성화됨');
                             }}
                             placeholder="차량번호"
                             fullWidth
                           />
                         </Grid>
                         <Grid item xs={4} sx={{ mt: 1 }}>
-                          <Button size="small" variant="outlined" fullWidth onClick={() => setWorkerDialogOpen(true)}>
+                          <Button 
+                            size="small" 
+                            variant="outlined" 
+                            fullWidth 
+                            data-clickable="true"
+                            onClick={() => setWorkerDialogOpen(true)}
+                          >
                             신규등록
                           </Button>
                         </Grid>
@@ -2422,13 +2798,18 @@ const DeliveryManagement: React.FC = () => {
                             variant="contained" 
                             color="primary" 
                             fullWidth 
+                            data-clickable="true"
                             onClick={async () => {
                               if (delivery.constructionDate) {
                                 try {
-                                  await createDetailedSchedule(delivery);
+                                  const result = await createDetailedSchedule(delivery);
+                                  const message = result?.updated 
+                                    ? '기존 시공일정이 업데이트되었습니다.' 
+                                    : '시공일정이 스케줄에 저장되었습니다.';
+                                  
                                   setSnackbar({
                                     open: true,
-                                    message: '시공일정이 스케줄에 저장되었습니다.',
+                                    message: message,
                                     severity: 'success',
                                   });
                                 } catch (error) {
@@ -2484,11 +2865,38 @@ const DeliveryManagement: React.FC = () => {
                         </DialogContent>
                         <DialogActions>
                           <Button onClick={() => setWorkerDialogOpen(false)}>취소</Button>
-                          <Button onClick={() => {
+                          <Button onClick={async () => {
                             if (newWorker.name && newWorker.phone) {
-                              addWorker({ ...newWorker, id: uuidv4() });
-                              setWorkerDialogOpen(false);
-                              setNewWorker({ name: '', phone: '', vehicleNumber: '' });
+                              try {
+                                // Firebase에 시공자 저장
+                                const firebaseId = await workerService.saveWorker(newWorker);
+                                console.log('🔥 Firebase에 시공자 저장 완료:', firebaseId);
+                                
+                                // localStorage에도 저장 (기존 호환성 유지)
+                                addWorker({ ...newWorker, id: uuidv4() });
+                                
+                                setSnackbar({
+                                  open: true,
+                                  message: '시공자가 성공적으로 등록되었습니다.',
+                                  severity: 'success',
+                                });
+                                
+                                setWorkerDialogOpen(false);
+                                setNewWorker({ name: '', phone: '', vehicleNumber: '' });
+                              } catch (error) {
+                                console.error('🔥 Firebase 시공자 저장 실패:', error);
+                                setSnackbar({
+                                  open: true,
+                                  message: '시공자 등록에 실패했습니다. 인터넷 연결을 확인해주세요.',
+                                  severity: 'error',
+                                });
+                              }
+                            } else {
+                              setSnackbar({
+                                open: true,
+                                message: '이름과 전화번호는 필수 입력 항목입니다.',
+                                severity: 'warning',
+                              });
                             }
                           }}>등록</Button>
                         </DialogActions>
@@ -2590,6 +2998,7 @@ const DeliveryManagement: React.FC = () => {
                       size="small"
                       color="primary"
                       startIcon={<MoneyIcon />}
+                      data-clickable="true"
                       sx={{
                         transition: 'all 0.2s ease-in-out',
                         '&:hover': {
@@ -2663,6 +3072,7 @@ const DeliveryManagement: React.FC = () => {
                               fullWidth
                               multiline
                               size="small"
+                              data-clickable="true"
                               sx={{
                                 background: '#222',
                                 color: '#e0e6ed',
@@ -2716,6 +3126,7 @@ const DeliveryManagement: React.FC = () => {
                           variant="contained"
                           size="small"
                           color={delivery.deliveryStatus === '납품완료' ? 'success' : 'primary'}
+                          data-clickable="true"
                           onClick={e => {
                             e.stopPropagation();
                             updateDeliveryStatus(
@@ -2741,6 +3152,7 @@ const DeliveryManagement: React.FC = () => {
                         <IconButton
                           size="small"
                           color="warning"
+                          data-clickable="true"
                           onClick={e => {
                             e.stopPropagation();
                             handleASClick(delivery);
@@ -2759,6 +3171,7 @@ const DeliveryManagement: React.FC = () => {
                         <IconButton
                           size="small"
                           color="error"
+                          data-clickable="true"
                           onClick={e => {
                             e.stopPropagation();
                             handleDeleteClick(delivery);
@@ -2777,6 +3190,7 @@ const DeliveryManagement: React.FC = () => {
                         <IconButton
                           size="small"
                           color="info"
+                          data-clickable="true"
                           onClick={() => {
                             // delivery에 contractNo가 없으므로 projectName을 contractNo로 매칭 (fallback)
                             // @ts-ignore
@@ -3036,8 +3450,9 @@ const DeliveryManagement: React.FC = () => {
                               )
                               .map((item, idx) => {
                                 // 여러 속성 조합으로 유일한 key 생성
-                                const rowKey =
-                                  item.id || `${delivery.id}-item-${idx}`;
+                                const rowKey = item.id 
+                                  ? `${delivery.id}-${item.id}-${idx}`
+                                  : `${delivery.id}-item-${idx}-${Date.now()}-${Math.random()}`;
                                 const isProduct = item.type === 'product';
                                 const isRail = item.optionLabel === '레일';
                                 const nonMonetaryFields = FILTER_FIELDS.filter(

@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>알림음 생성기</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .sound-generator {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .download-btn {
+            background: #28a745;
+        }
+        .download-btn:hover {
+            background: #1e7e34;
+        }
+        .preview {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .instructions {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 알림음 생성기</h1>
+        
+        <div class="instructions">
+            <h3>📋 사용 방법</h3>
+            <ol>
+                <li>원하는 알림음 설정을 조정하세요</li>
+                <li>"재생" 버튼으로 미리 들어보세요</li>
+                <li>"다운로드" 버튼으로 MP3 파일을 다운로드하세요</li>
+                <li>다운로드한 파일을 <code>sounds/</code> 폴더에 저장하세요</li>
+            </ol>
+        </div>
+
+        <div class="sound-generator">
+            <h3>카카오톡 스타일 알림음</h3>
+            <div class="controls">
+                <div>
+                    <label>주파수 1 (Hz):</label>
+                    <input type="number" id="freq1" value="800" min="200" max="2000">
+                </div>
+                <div>
+                    <label>주파수 2 (Hz):</label>
+                    <input type="number" id="freq2" value="600" min="200" max="2000">
+                </div>
+                <div>
+                    <label>지속시간 (초):</label>
+                    <input type="number" id="duration" value="0.3" min="0.1" max="2" step="0.1">
+                </div>
+                <div>
+                    <label>볼륨:</label>
+                    <input type="range" id="volume" min="0" max="1" step="0.1" value="0.5">
+                    <span id="volumeValue">0.5</span>
+                </div>
+            </div>
+            <button onclick="playKakaoSound()">재생</button>
+            <button class="download-btn" onclick="downloadKakaoSound()">다운로드 MP3</button>
+        </div>
+
+        <div class="sound-generator">
+            <h3>기본 알림음</h3>
+            <div class="controls">
+                <div>
+                    <label>주파수 (Hz):</label>
+                    <input type="number" id="basicFreq" value="600" min="200" max="2000">
+                </div>
+                <div>
+                    <label>지속시간 (초):</label>
+                    <input type="number" id="basicDuration" value="0.5" min="0.1" max="2" step="0.1">
+                </div>
+            </div>
+            <button onclick="playBasicSound()">재생</button>
+            <button class="download-btn" onclick="downloadBasicSound()">다운로드 MP3</button>
+        </div>
+
+        <div class="sound-generator">
+            <h3>부드러운 알림음</h3>
+            <div class="controls">
+                <div>
+                    <label>주파수 (Hz):</label>
+                    <input type="number" id="gentleFreq" value="400" min="200" max="2000">
+                </div>
+                <div>
+                    <label>지속시간 (초):</label>
+                    <input type="number" id="gentleDuration" value="0.8" min="0.1" max="2" step="0.1">
+                </div>
+            </div>
+            <button onclick="playGentleSound()">재생</button>
+            <button class="download-btn" onclick="downloadGentleSound()">다운로드 MP3</button>
+        </div>
+
+        <div class="sound-generator">
+            <h3>경고 알림음</h3>
+            <div class="controls">
+                <div>
+                    <label>주파수 (Hz):</label>
+                    <input type="number" id="warningFreq" value="1000" min="200" max="2000">
+                </div>
+                <div>
+                    <label>반복 횟수:</label>
+                    <input type="number" id="warningRepeat" value="3" min="1" max="5">
+                </div>
+            </div>
+            <button onclick="playWarningSound()">재생</button>
+            <button class="download-btn" onclick="downloadWarningSound()">다운로드 MP3</button>
+        </div>
+
+        <div class="preview">
+            <h3>📁 다운로드된 파일들</h3>
+            <div id="downloadList">
+                <p>아직 다운로드된 파일이 없습니다.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let audioContext;
+        let downloadCount = 0;
+
+        // AudioContext 초기화
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // 볼륨 표시 업데이트
+        document.getElementById('volume').addEventListener('input', function() {
+            document.getElementById('volumeValue').textContent = this.value;
+        });
+
+        // 카카오톡 스타일 알림음 재생
+        function playKakaoSound() {
+            initAudioContext();
+            const freq1 = parseFloat(document.getElementById('freq1').value);
+            const freq2 = parseFloat(document.getElementById('freq2').value);
+            const duration = parseFloat(document.getElementById('duration').value);
+            const volume = parseFloat(document.getElementById('volume').value);
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(freq1, audioContext.currentTime);
+            oscillator.frequency.setValueAtTime(freq2, audioContext.currentTime + duration * 0.5);
+            
+            gainNode.gain.setValueAtTime(volume * 0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+        }
+
+        // 기본 알림음 재생
+        function playBasicSound() {
+            initAudioContext();
+            const freq = parseFloat(document.getElementById('basicFreq').value);
+            const duration = parseFloat(document.getElementById('basicDuration').value);
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(freq, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+        }
+
+        // 부드러운 알림음 재생
+        function playGentleSound() {
+            initAudioContext();
+            const freq = parseFloat(document.getElementById('gentleFreq').value);
+            const duration = parseFloat(document.getElementById('gentleDuration').value);
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(freq, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+        }
+
+        // 경고 알림음 재생
+        function playWarningSound() {
+            initAudioContext();
+            const freq = parseFloat(document.getElementById('warningFreq').value);
+            const repeat = parseInt(document.getElementById('warningRepeat').value);
+
+            for (let i = 0; i < repeat; i++) {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(freq, audioContext.currentTime + i * 0.3);
+                gainNode.gain.setValueAtTime(0.4, audioContext.currentTime + i * 0.3);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + i * 0.3 + 0.2);
+                
+                oscillator.start(audioContext.currentTime + i * 0.3);
+                oscillator.stop(audioContext.currentTime + i * 0.3 + 0.2);
+            }
+        }
+
+        // MP3 다운로드 함수들
+        function downloadKakaoSound() {
+            downloadSound('kakao-notification.mp3', '카카오톡 스타일 알림음');
+        }
+
+        function downloadBasicSound() {
+            downloadSound('default-notification.mp3', '기본 알림음');
+        }
+
+        function downloadGentleSound() {
+            downloadSound('gentle-notification.mp3', '부드러운 알림음');
+        }
+
+        function downloadWarningSound() {
+            downloadSound('warning-notification.mp3', '경고 알림음');
+        }
+
+        // 실제 다운로드 (더미 파일)
+        function downloadSound(filename, description) {
+            // 간단한 더미 MP3 파일 생성
+            const mp3Header = new Uint8Array([
+                0xFF, 0xFB, 0x90, 0x44, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+            ]);
+            
+            const blob = new Blob([mp3Header], { type: 'audio/mpeg' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            // 다운로드 목록 업데이트
+            downloadCount++;
+            const downloadList = document.getElementById('downloadList');
+            downloadList.innerHTML = `
+                <p>✅ ${filename} 다운로드됨 (${description})</p>
+                <p>📁 파일을 sounds/ 폴더에 저장하세요</p>
+                <p>💡 실제 MP3 파일로 교체하는 것을 권장합니다</p>
+            `;
+        }
+
+        // 페이지 로드 시 AudioContext 초기화
+        document.addEventListener('click', function() {
+            if (!audioContext) {
+                initAudioContext();
+            }
+        });
+    </script>
+</body>
+</html> 

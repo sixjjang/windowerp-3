@@ -118,6 +118,7 @@ interface OrderItem {
   vendor: string;
   brand?: string;
   space?: string;
+  spaceCustom?: string;
   productType?: string;
   curtainType?: string;
   pleatType?: string;
@@ -509,7 +510,7 @@ const OrderManagement: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   
-  const { orders, addOrder, updateOrder, updateOrderItems, removeOrder } =
+  const { orders, addOrder, updateOrder, updateOrderItems, removeOrder, setOrders } =
     useOrderStore();
   const { addDelivery, deliveries } = useDeliveryStore();
   const [snackbar, setSnackbar] = useState({
@@ -578,12 +579,46 @@ const OrderManagement: React.FC = () => {
         
         // Firebase 데이터를 Zustand store에 설정
         if (data.length > 0) {
+          console.log('Firebase 주문 데이터를 Zustand store에 적용:', data);
+          // Firebase 데이터를 Order 타입으로 변환
+          const convertedData = data.map((item: any) => ({
+            id: item.id,
+            orderGroupId: item.orderGroupId || item.id,
+            orderNo: item.orderNo || '',
+            orderDate: item.orderDate || '',
+            contractId: item.contractId || '',
+            contractNo: item.contractNo || '',
+            projectName: item.projectName || '',
+            customerName: item.customerName || '',
+            customerContact: item.customerContact || '',
+            vendorId: item.vendorId || '',
+            vendorName: item.vendorName || '',
+            vendorContact: item.vendorContact || '',
+            vendorAddress: item.vendorAddress || '',
+            deliveryDate: item.deliveryDate || '',
+            deliveryAddress: item.deliveryAddress || '',
+            contactPerson: item.contactPerson || '',
+            contactPhone: item.contactPhone || '',
+            status: item.status || '작성중',
+            totalAmount: item.totalAmount || 0,
+            taxAmount: item.taxAmount || 0,
+            grandTotal: item.grandTotal || 0,
+            note: item.note || '',
+            items: item.items || [],
+            deliveryMethod: item.deliveryMethod,
+            completionDate: item.completionDate,
+            createdAt: item.createdAt || '',
+            updatedAt: item.updatedAt || '',
+          }));
+          setOrders(convertedData);
+          
           // 기존 localStorage 데이터와 병합
           const savedContracts = localStorage.getItem('contracts');
           if (savedContracts) setContracts(JSON.parse(savedContracts));
           const savedEstimates = localStorage.getItem('approvedEstimatesList');
           if (savedEstimates) setEstimates(JSON.parse(savedEstimates));
         } else {
+          console.log('Firebase에 주문 데이터가 없습니다.');
           // Firebase에 데이터가 없으면 localStorage에서 로드
           const savedContracts = localStorage.getItem('contracts');
           if (savedContracts) setContracts(JSON.parse(savedContracts));
@@ -601,6 +636,49 @@ const OrderManagement: React.FC = () => {
     };
     
     loadData();
+    
+    // 실시간 구독 설정
+    const unsubscribe = orderService.subscribeToOrders((data) => {
+      console.log('Firebase 실시간 주문 데이터 업데이트:', data.length, '개');
+      if (data.length > 0) {
+        // Firebase 데이터를 Order 타입으로 변환
+        const convertedData = data.map((item: any) => ({
+          id: item.id,
+          orderGroupId: item.orderGroupId || item.id,
+          orderNo: item.orderNo || '',
+          orderDate: item.orderDate || '',
+          contractId: item.contractId || '',
+          contractNo: item.contractNo || '',
+          projectName: item.projectName || '',
+          customerName: item.customerName || '',
+          customerContact: item.customerContact || '',
+          vendorId: item.vendorId || '',
+          vendorName: item.vendorName || '',
+          vendorContact: item.vendorContact || '',
+          vendorAddress: item.vendorAddress || '',
+          deliveryDate: item.deliveryDate || '',
+          deliveryAddress: item.deliveryAddress || '',
+          contactPerson: item.contactPerson || '',
+          contactPhone: item.contactPhone || '',
+          status: item.status || '작성중',
+          totalAmount: item.totalAmount || 0,
+          taxAmount: item.taxAmount || 0,
+          grandTotal: item.grandTotal || 0,
+          note: item.note || '',
+          items: item.items || [],
+          deliveryMethod: item.deliveryMethod,
+          completionDate: item.completionDate,
+          createdAt: item.createdAt || '',
+          updatedAt: item.updatedAt || '',
+        }));
+        setOrders(convertedData);
+      }
+    });
+    
+    // 컴포넌트 언마운트 시 구독 해제
+    return () => {
+      unsubscribe();
+    };
 
     const fetchCompanyInfo = async () => {
       try {
@@ -942,12 +1020,18 @@ const OrderManagement: React.FC = () => {
 
   const { ongoingOrderGroups, completedOrderGroups, filteredOngoingGroups } =
     useMemo(() => {
+      console.log('🔍 주문 그룹핑 시작 - 총 주문 수:', orders.length);
+      console.log('🔍 주문 데이터:', orders);
+      
       const groups: { [key: string]: Order[] } = {};
       orders.forEach(order => {
-        const key = order.orderGroupId;
+        // 프로젝트 + 업체 기준으로 그룹핑 (같은 프로젝트의 같은 업체는 하나로)
+        const key = `${order.projectName}-${order.vendorName}`;
         if (!groups[key]) groups[key] = [];
         groups[key].push(order);
       });
+
+      console.log('🔍 그룹핑 결과:', groups);
 
       const ongoing: { [key: string]: Order[] } = {};
       const completed: { [key: string]: Order[] } = {};
@@ -956,6 +1040,9 @@ const OrderManagement: React.FC = () => {
           completed[key] = groupOrders;
         else ongoing[key] = groupOrders;
       });
+
+      console.log('🔍 진행중인 그룹:', ongoing);
+      console.log('🔍 완료된 그룹:', completed);
 
       return {
         ongoingOrderGroups: ongoing,
@@ -1072,8 +1159,25 @@ const OrderManagement: React.FC = () => {
 
     const tempOrders = [...orders];
 
-    // 3. 발주서 생성
+    // 3. 발주서 생성 (중복 체크 포함)
     Object.entries(vendorGroups).forEach(([vendor, vendorItems]) => {
+      // 같은 프로젝트의 같은 업체에 대한 기존 발주서가 있는지 확인
+      const existingOrder = orders.find(order => 
+        order.projectName === selectedContract.projectName && 
+        order.vendorName === vendor &&
+        order.status !== '취소'
+      );
+      
+      if (existingOrder) {
+        console.log(`⚠️ 중복 발주 방지: ${selectedContract.projectName} - ${vendor} (기존 발주서: ${existingOrder.orderNo})`);
+        setSnackbar({
+          open: true,
+          message: `[${vendor}] ${selectedContract.projectName}에 대한 발주서가 이미 존재합니다. (${existingOrder.orderNo})`,
+          severity: 'info',
+        });
+        return; // 중복 발주 방지
+      }
+      
       const orderNo = generateOrderNo(selectedContract.address, tempOrders);
       const now = new Date();
 
@@ -1098,6 +1202,7 @@ const OrderManagement: React.FC = () => {
             item.type === 'option' && parentData
               ? `${parentData.space}-${item.productName}`
               : item.space,
+          spaceCustom: item.spaceCustom,
           productType: item.productType,
           curtainType: item.curtainType,
           pleatType: item.pleatType,
@@ -1242,6 +1347,55 @@ const OrderManagement: React.FC = () => {
       open: true,
       message: '주문이 작성중 상태로 되돌려졌습니다.',
       severity: 'info',
+    });
+  };
+
+  // 중복 발주서 정리 기능
+  const handleConsolidateDuplicateOrders = () => {
+    const duplicateGroups: { [key: string]: Order[] } = {};
+    
+    // 프로젝트 + 업체 기준으로 중복 그룹 찾기
+    orders.forEach(order => {
+      if (order.status === '취소') return; // 취소된 발주서는 제외
+      
+      const key = `${order.projectName}-${order.vendorName}`;
+      if (!duplicateGroups[key]) duplicateGroups[key] = [];
+      duplicateGroups[key].push(order);
+    });
+    
+    // 중복이 있는 그룹만 필터링
+    const duplicates = Object.entries(duplicateGroups)
+      .filter(([key, group]) => group.length > 1)
+      .map(([key, group]) => ({ key, orders: group }));
+    
+    if (duplicates.length === 0) {
+      setSnackbar({
+        open: true,
+        message: '중복 발주서가 없습니다.',
+        severity: 'info',
+      });
+      return;
+    }
+    
+    console.log('🔍 중복 발주서 발견:', duplicates);
+    
+    // 중복 발주서 정리 (가장 최근 것만 남기고 나머지는 취소)
+    duplicates.forEach(({ key, orders: duplicateOrders }) => {
+      // 가장 최근 발주서를 제외하고 나머지는 취소 처리
+      const sortedOrders = duplicateOrders.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      
+      // 첫 번째(가장 최근)를 제외하고 나머지는 취소
+      sortedOrders.slice(1).forEach(order => {
+        updateOrder(order.id, { status: '취소' });
+      });
+    });
+    
+    setSnackbar({
+      open: true,
+      message: `${duplicates.length}개 프로젝트의 중복 발주서를 정리했습니다.`,
+      severity: 'success',
     });
   };
 
@@ -2054,7 +2208,7 @@ const OrderManagement: React.FC = () => {
                               py: 1.5,
                             }}
                           >
-                            {item.space || '-'}
+                            {item.space === '직접입력' && item.spaceCustom ? item.spaceCustom : (item.space || '-')}
                           </TableCell>
                           <TableCell
                             sx={{
@@ -2343,7 +2497,7 @@ const OrderManagement: React.FC = () => {
                           <TableCell
                             sx={{ border: '1px solid #000', color: '#000' }}
                           >
-                            {item.space || '-'}
+                            {item.space === '직접입력' && item.spaceCustom ? item.spaceCustom : (item.space || '-')}
                           </TableCell>
                           <TableCell
                             sx={{ border: '1px solid #000', color: '#000' }}
@@ -3091,21 +3245,64 @@ const OrderManagement: React.FC = () => {
                               textTransform: 'none',
                               justifyContent: 'flex-start',
                               pr: 4, // 삭제 버튼을 위한 여백
+                              // 발주완료된 발주처는 초록색 배경으로 표시
+                              ...(order.status === '발주완료' && {
+                                backgroundColor: '#1b5e20',
+                                borderColor: '#4caf50',
+                                color: '#fff',
+                                '&:hover': {
+                                  backgroundColor: '#2e7d32',
+                                  borderColor: '#66bb6a',
+                                },
+                              }),
+                              // 입고완료된 발주처는 더 진한 초록색 배경으로 표시
+                              ...(order.status === '입고완료' && {
+                                backgroundColor: '#0d4f14',
+                                borderColor: '#2e7d32',
+                                color: '#fff',
+                                '&:hover': {
+                                  backgroundColor: '#1b5e20',
+                                  borderColor: '#4caf50',
+                                },
+                              }),
                             }}
                           >
                             <Box>
                               <Typography
                                 variant="body1"
-                                sx={{ fontWeight: 'bold' }}
+                                sx={{ 
+                                  fontWeight: 'bold',
+                                  // 발주완료된 발주처는 흰색 텍스트로 표시
+                                  color: (order.status === '발주완료' || order.status === '입고완료') ? '#fff' : 'inherit'
+                                }}
                               >
                                 {order.vendorName}
                               </Typography>
                               <Typography
                                 variant="caption"
-                                sx={{ display: 'block' }}
+                                sx={{ 
+                                  display: 'block',
+                                  // 발주완료된 발주처는 연한 흰색 텍스트로 표시
+                                  color: (order.status === '발주완료' || order.status === '입고완료') ? 'rgba(255, 255, 255, 0.8)' : 'inherit'
+                                }}
                               >
                                 {order.orderNo}
                               </Typography>
+                              {/* 발주완료 상태 표시 */}
+                              {(order.status === '발주완료' || order.status === '입고완료') && (
+                                <Chip
+                                  label={order.status}
+                                  size="small"
+                                  sx={{
+                                    mt: 0.5,
+                                    backgroundColor: order.status === '발주완료' ? '#4caf50' : '#2e7d32',
+                                    color: '#fff',
+                                    fontSize: '0.6rem',
+                                    height: '16px',
+                                    fontWeight: 'bold',
+                                  }}
+                                />
+                              )}
                             </Box>
                           </Button>
                           <Button
@@ -3284,7 +3481,7 @@ const OrderManagement: React.FC = () => {
                                       fontSize: '0.75rem',
                                     },
                                   }}
-                                  defaultValue={item.space || ''}
+                                  defaultValue={item.space === '직접입력' && item.spaceCustom ? item.spaceCustom : (item.space || '')}
                                   onBlur={e =>
                                     handleUpdateItem(item.id, {
                                       space: e.target.value,
@@ -4553,7 +4750,7 @@ const OrderManagement: React.FC = () => {
                             <TableCell
                               sx={{ color: '#e0e6ed', fontSize: '0.75rem' }}
                             >
-                              {item.space || '-'}
+                              {item.space === '직접입력' && item.spaceCustom ? item.spaceCustom : (item.space || '-')}
                             </TableCell>
                             <TableCell
                               sx={{ color: '#e0e6ed', fontSize: '0.75rem' }}

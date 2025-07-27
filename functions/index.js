@@ -25,6 +25,9 @@ admin.initializeApp();
 const db = admin.firestore();
 const JWT_SECRET = functions.config().jwt?.secret || 'windowerp-2024-secure-jwt-secret-key-for-production';
 
+// FCM 토큰 관리를 위한 컬렉션
+const FCM_TOKENS_COLLECTION = 'fcm_tokens';
+
 // Express 앱 생성
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -770,17 +773,27 @@ exports.saveProduct = functions.https.onRequest(async (req, res) => {
 
 // 제품 배치 저장 (HTTP Request) - /saveProductsBatch (가벼운 파일 방식)
 exports.saveProductsBatch = functions.https.onRequest(async (req, res) => {
-  return corsHandler(req, res, async () => {
-    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+  // CORS 헤더 직접 설정
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  
+  // OPTIONS 요청 처리
+  if (req.method === 'OPTIONS') {
+    res.status(200).send();
+    return;
+  }
+  
+  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+  
+  try {
+    const { products } = req.body;
     
-    try {
-      const { products } = req.body;
-      
-      if (!products || !Array.isArray(products)) {
-        return res.status(400).json({ error: '제품 배열이 필요합니다.' });
-      }
-      
-      console.log(`${products.length}개의 제품 가벼운 파일 저장 시작`);
+    if (!products || !Array.isArray(products)) {
+      return res.status(400).json({ error: '제품 배열이 필요합니다.' });
+    }
+    
+    console.log(`${products.length}개의 제품 가벼운 파일 저장 시작`);
       
       // 가벼운 파일 방식으로 제품 데이터를 JSON으로 변환하여 Storage에 저장
       const jsonData = {
@@ -864,7 +877,6 @@ exports.saveProductsBatch = functions.https.onRequest(async (req, res) => {
       console.error('제품 가벼운 파일 저장 오류:', error);
       res.status(500).json({ error: error.message });
     }
-  });
 }, { timeoutSeconds: 540 }); // 9분으로 타임아웃 설정
 
 // 제품 업데이트 (HTTP Request) - /updateProduct
@@ -2840,6 +2852,48 @@ exports.saveDelivery = functions.https.onRequest(async (req, res) => {
   });
 });
 
+// 배송 업데이트 (HTTP Request) - /updateDelivery
+exports.updateDelivery = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const { deliveryId, ...deliveryData } = req.body;
+      
+      if (!deliveryId) {
+        return res.status(400).json({ error: 'deliveryId가 필요합니다.' });
+      }
+      
+      deliveryData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      
+      const deliveryRef = db.collection('deliveries').doc(deliveryId);
+      
+      // 문서 존재 여부 확인 (더 안정적인 방법)
+      const docSnapshot = await deliveryRef.get();
+      
+      if (!docSnapshot.exists) {
+        // 문서가 없으면 에러 반환 (새로 생성하지 않음)
+        console.log(`문서가 존재하지 않습니다: ${deliveryId}`);
+        return res.status(404).json({ 
+          error: '업데이트할 배송 문서를 찾을 수 없습니다.',
+          deliveryId: deliveryId 
+        });
+      } else {
+        // 문서가 있으면 업데이트
+        await deliveryRef.update(deliveryData);
+        
+        res.json({ 
+          message: '배송이 업데이트되었습니다.',
+          id: deliveryId 
+        });
+      }
+    } catch (error) {
+      console.error('배송 업데이트 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
 // ===== 자동 연동 API =====
 
 // 견적에서 계약으로 자동 연동 (HTTP Request) - /auto-sync/estimate-to-contract
@@ -3985,6 +4039,719 @@ exports.getChatImages = functions.https.onRequest(async (req, res) => {
       });
     } catch (error) {
       console.error('채팅 이미지 목록 조회 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// ===== FCM 푸시 알림 기능 =====
+
+// FCM 토큰 저장 (HTTP Request) - /saveFCMToken
+exports.saveFCMToken = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      await authenticateToken(req, res, async () => {
+        const { userId, fcmToken, deviceType = 'web' } = req.body;
+        
+        if (!userId || !fcmToken) {
+          return res.status(400).json({ error: 'userId와 fcmToken이 필요합니다.' });
+        }
+        
+        // FCM 토큰 저장/업데이트
+        await db.collection(FCM_TOKENS_COLLECTION).doc(userId).set({
+          fcmToken,
+          deviceType,
+          userId,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        
+        console.log(`FCM 토큰 저장 성공: ${userId}`);
+        
+        res.json({
+          success: true,
+          message: 'FCM 토큰이 저장되었습니다.'
+        });
+      });
+    } catch (error) {
+      console.error('FCM 토큰 저장 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// FCM 토큰 삭제 (HTTP Request) - /deleteFCMToken
+exports.deleteFCMToken = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      await authenticateToken(req, res, async () => {
+        const { userId } = req.body;
+        
+        if (!userId) {
+          return res.status(400).json({ error: 'userId가 필요합니다.' });
+        }
+        
+        // FCM 토큰 삭제
+        await db.collection(FCM_TOKENS_COLLECTION).doc(userId).delete();
+        
+        console.log(`FCM 토큰 삭제 성공: ${userId}`);
+        
+        res.json({
+          success: true,
+          message: 'FCM 토큰이 삭제되었습니다.'
+        });
+      });
+    } catch (error) {
+      console.error('FCM 토큰 삭제 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 웹 알림 전송 함수 (브라우저 알림용)
+const sendWebNotification = async (userId, title, body, data = {}) => {
+  try {
+    // 사용자의 알림 토큰 조회
+    const tokenDoc = await db.collection(FCM_TOKENS_COLLECTION).doc(userId).get();
+    
+    if (!tokenDoc.exists) {
+      console.log(`알림 토큰이 없음: ${userId}`);
+      return false;
+    }
+    
+    const tokenData = tokenDoc.data();
+    const deviceType = tokenData.deviceType || 'web';
+    
+    // 웹 사용자의 경우 브라우저 알림을 위한 이벤트 저장
+    if (deviceType === 'web') {
+      // 웹 알림 이벤트를 Firestore에 저장 (클라이언트에서 실시간으로 감지)
+      await db.collection('web_notifications').add({
+        userId: userId,
+        title: title,
+        body: body,
+        data: data,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        read: false
+      });
+      
+      console.log(`웹 알림 이벤트 저장 성공: ${userId}`);
+      return true;
+    }
+    
+    // 모바일 앱의 경우 FCM 사용
+    const fcmToken = tokenData.fcmToken;
+    if (!fcmToken) {
+      console.log(`유효하지 않은 FCM 토큰: ${userId}`);
+      return false;
+    }
+    
+    // FCM 메시지 구성
+    const message = {
+      token: fcmToken,
+      notification: {
+        title: title,
+        body: body
+      },
+      data: {
+        ...data,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        sound: 'default'
+      },
+      android: {
+        notification: {
+          sound: 'default',
+          channel_id: 'chat_notifications'
+        }
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default'
+          }
+        }
+      }
+    };
+    
+    // FCM 전송
+    const response = await admin.messaging().send(message);
+    console.log(`FCM 알림 전송 성공: ${userId}`, response);
+    return true;
+    
+  } catch (error) {
+    console.error(`알림 전송 실패: ${userId}`, error);
+    return false;
+  }
+};
+
+// 채팅 메시지 전송 시 푸시 알림 (기존 saveEmployeeChat 함수 수정)
+exports.saveEmployeeChatWithNotification = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      await authenticateToken(req, res, async () => {
+        const { user, text, userId } = req.body;
+        
+        if (!user || !text) {
+          return res.status(400).json({ error: '사용자명과 메시지가 필요합니다.' });
+        }
+        
+        // 채팅 메시지 저장
+        const chatRef = await db.collection('employeeChat').add({
+          user: user,
+          text: text,
+          userId: userId || 'current_user',
+          timestamp: admin.firestore.FieldValue.serverTimestamp()
+        });
+        
+        console.log('채팅 메시지 저장 성공:', chatRef.id);
+        
+        // 다른 사용자들에게 푸시 알림 전송
+        const allTokens = await db.collection(FCM_TOKENS_COLLECTION).get();
+        const notificationPromises = [];
+        
+        allTokens.docs.forEach(tokenDoc => {
+          const tokenData = tokenDoc.data();
+          // 메시지 발신자에게는 알림을 보내지 않음
+          if (tokenData.userId !== userId) {
+            notificationPromises.push(
+              sendWebNotification(
+                tokenData.userId,
+                `${user}님의 메시지`,
+                text.length > 50 ? text.substring(0, 50) + '...' : text,
+                {
+                  type: 'chat',
+                  chatId: chatRef.id,
+                  senderId: userId,
+                  senderName: user
+                }
+              )
+            );
+          }
+        });
+        
+        // 푸시 알림 전송 (비동기로 처리)
+        Promise.all(notificationPromises).then(results => {
+          const successCount = results.filter(result => result).length;
+          console.log(`푸시 알림 전송 완료: ${successCount}개 성공`);
+        });
+        
+        res.json({
+          success: true,
+          messageId: chatRef.id,
+          message: '메시지가 저장되었습니다.'
+        });
+      });
+    } catch (error) {
+      console.error('채팅 메시지 저장 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 스케줄 채팅 메시지 전송 시 푸시 알림
+exports.saveScheduleChatWithNotification = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      await authenticateToken(req, res, async () => {
+        const { user, text, userId, scheduleId, eventTitle } = req.body;
+        
+        if (!user || !text || !scheduleId) {
+          return res.status(400).json({ error: '사용자명, 메시지, 스케줄ID가 필요합니다.' });
+        }
+        
+        // 스케줄 채팅 메시지 저장
+        const chatRef = await db.collection('scheduleChat').add({
+          user: user,
+          text: text,
+          userId: userId || 'current_user',
+          scheduleId: scheduleId,
+          eventTitle: eventTitle || '스케줄',
+          timestamp: admin.firestore.FieldValue.serverTimestamp()
+        });
+        
+        console.log('스케줄 채팅 메시지 저장 성공:', chatRef.id);
+        
+        // 다른 사용자들에게 푸시 알림 전송
+        const allTokens = await db.collection(FCM_TOKENS_COLLECTION).get();
+        const notificationPromises = [];
+        
+        allTokens.docs.forEach(tokenDoc => {
+          const tokenData = tokenDoc.data();
+          // 메시지 발신자에게는 알림을 보내지 않음
+          if (tokenData.userId !== userId) {
+            notificationPromises.push(
+              sendWebNotification(
+                tokenData.userId,
+                `${eventTitle || '스케줄'} - ${user}님의 메시지`,
+                text.length > 50 ? text.substring(0, 50) + '...' : text,
+                {
+                  type: 'schedule_chat',
+                  chatId: chatRef.id,
+                  scheduleId: scheduleId,
+                  senderId: userId,
+                  senderName: user,
+                  eventTitle: eventTitle
+                }
+              )
+            );
+          }
+        });
+        
+        // 푸시 알림 전송 (비동기로 처리)
+        Promise.all(notificationPromises).then(results => {
+          const successCount = results.filter(result => result).length;
+          console.log(`스케줄 푸시 알림 전송 완료: ${successCount}개 성공`);
+        });
+        
+        res.json({
+          success: true,
+          messageId: chatRef.id,
+          message: '스케줄 메시지가 저장되었습니다.'
+        });
+      });
+    } catch (error) {
+      console.error('스케줄 채팅 메시지 저장 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 알림 소리 파일 관리 함수들
+
+// 알림 소리 파일 프록시 (CORS 문제 해결)
+exports.getNotificationSoundFile = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'GET') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const { fileName } = req.query;
+      
+      if (!fileName) {
+        return res.status(400).json({ error: '파일명이 필요합니다.' });
+      }
+      
+      const bucket = admin.storage().bucket();
+      const file = bucket.file(`notification-sounds/${fileName}`);
+      
+      // 파일 존재 여부 확인
+      const [exists] = await file.exists();
+      if (!exists) {
+        return res.status(404).json({ error: '파일을 찾을 수 없습니다.' });
+      }
+      
+      // 파일 메타데이터 가져오기
+      const [metadata] = await file.getMetadata();
+      
+      // 적절한 Content-Type 설정
+      let contentType = 'audio/mpeg';
+      if (fileName.endsWith('.wav')) {
+        contentType = 'audio/wav';
+      } else if (fileName.endsWith('.mp3')) {
+        contentType = 'audio/mpeg';
+      }
+      
+      // CORS 헤더 설정
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.set('Content-Type', contentType);
+      res.set('Content-Length', metadata.size);
+      res.set('Cache-Control', 'public, max-age=3600'); // 1시간 캐시
+      
+      // 파일 스트림을 응답으로 전송
+      file.createReadStream()
+        .on('error', (error) => {
+          console.error('파일 스트림 오류:', error);
+          res.status(500).json({ error: '파일 전송 중 오류가 발생했습니다.' });
+        })
+        .pipe(res);
+        
+    } catch (error) {
+      console.error('알림 소리 파일 프록시 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 알림 소리 파일 목록 조회
+exports.getNotificationSounds = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'GET') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const bucket = admin.storage().bucket();
+      const [files] = await bucket.getFiles({ prefix: 'notification-sounds/' });
+      
+      const soundFiles = files
+        .filter(file => file.name.endsWith('.mp3') || file.name.endsWith('.wav'))
+        .map(file => {
+          const fileName = file.name.split('/').pop();
+          const nameWithoutExt = fileName?.replace('.mp3', '').replace('.wav', '');
+          
+          // 디버깅 로그 추가
+          console.log('📁 처리 중인 파일:', {
+            originalName: file.name,
+            fileName: fileName,
+            nameWithoutExt: nameWithoutExt,
+            extension: fileName?.split('.').pop()
+          });
+          
+          return {
+            name: nameWithoutExt || fileName, // 확장자 제거 실패 시 원본 파일명 사용
+            url: `https://storage.googleapis.com/${bucket.name}/${file.name}`,
+            size: file.metadata?.size || 0,
+            updated: file.metadata?.updated || new Date().toISOString(),
+            extension: fileName?.split('.').pop() || 'mp3',
+            originalName: fileName, // 원본 파일명도 포함
+            fullPath: file.name // 전체 경로도 포함
+          };
+        });
+      
+      // CORS 헤더 추가
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      res.json({
+        success: true,
+        sounds: soundFiles
+      });
+    } catch (error) {
+      console.error('알림 소리 파일 목록 조회 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 사용자별 알림 소리 설정 저장
+exports.saveUserSoundSettings = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      await authenticateToken(req, res, async () => {
+        const { userId, settings } = req.body;
+        
+        if (!userId || !settings) {
+          return res.status(400).json({ error: '사용자 ID와 설정이 필요합니다.' });
+        }
+        
+        const soundSettings = {
+          userId,
+          enabled: settings.enabled || true,
+          volume: settings.volume || 0.7,
+          selectedSound: settings.selectedSound || 'kakao',
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+        };
+        
+        await db.collection('user_sound_settings').doc(userId).set(soundSettings);
+        
+        console.log(`사용자 알림 소리 설정 저장: ${userId}`);
+        
+        res.json({
+          success: true,
+          message: '알림 소리 설정이 저장되었습니다.',
+          settings: soundSettings
+        });
+      });
+    } catch (error) {
+      console.error('알림 소리 설정 저장 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 사용자별 알림 소리 설정 조회
+exports.getUserSoundSettings = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'GET') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      await authenticateToken(req, res, async () => {
+        const { userId } = req.query;
+        
+        if (!userId) {
+          return res.status(400).json({ error: '사용자 ID가 필요합니다.' });
+        }
+        
+        const doc = await db.collection('user_sound_settings').doc(userId).get();
+        
+        if (doc.exists) {
+          res.json({
+            success: true,
+            settings: doc.data()
+          });
+        } else {
+          // 기본 설정 반환
+          const defaultSettings = {
+            userId,
+            enabled: true,
+            volume: 0.7,
+            selectedSound: 'kakao',
+            lastUpdated: new Date().toISOString()
+          };
+          
+          res.json({
+            success: true,
+            settings: defaultSettings
+          });
+        }
+      });
+    } catch (error) {
+      console.error('알림 소리 설정 조회 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 알림 소리 파일 업로드 (관리자용)
+exports.uploadNotificationSound = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      await authenticateToken(req, res, async () => {
+        upload.single('soundFile')(req, res, async (err) => {
+          if (err) {
+            return res.status(400).json({ error: '파일 업로드 오류: ' + err.message });
+          }
+
+          const file = req.file;
+          const { soundName, description } = req.body;
+          
+          if (!file || !soundName) {
+            return res.status(400).json({ error: '파일과 소리 이름이 필요합니다.' });
+          }
+
+          // 오디오 파일 검증 (MP3, WAV 지원)
+          if (!file.mimetype.includes('audio/mpeg') && !file.mimetype.includes('audio/wav')) {
+            return res.status(400).json({ error: 'MP3 또는 WAV 파일만 업로드 가능합니다.' });
+          }
+
+          try {
+            const bucket = admin.storage().bucket();
+            const fileName = `notification-sounds/${soundName}.mp3`;
+            const fileUpload = bucket.file(fileName);
+
+            await fileUpload.save(file.buffer, {
+              metadata: {
+                contentType: file.mimetype,
+                customMetadata: {
+                  soundName: soundName,
+                  description: description || '',
+                  uploadedBy: req.user.userId,
+                  uploadDate: new Date().toISOString()
+                }
+              }
+            });
+
+            // 공개 URL 생성
+            await fileUpload.makePublic();
+            const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+
+            console.log('알림 소리 파일 업로드 성공:', fileName);
+
+            res.json({
+              success: true,
+              message: '알림 소리 파일이 업로드되었습니다.',
+              fileName: fileName,
+              url: publicUrl
+            });
+          } catch (uploadError) {
+            console.error('파일 업로드 실패:', uploadError);
+            res.status(500).json({ error: '파일 업로드에 실패했습니다.' });
+          }
+        });
+      });
+    } catch (error) {
+      console.error('알림 소리 파일 업로드 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// ===== 시공자 관리 API =====
+
+// 시공자 목록 조회
+exports.getWorkers = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'GET') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      await authenticateToken(req, res, async () => {
+        console.log('시공자 목록 조회 시작');
+        
+        const workersSnapshot = await db.collection('workers')
+          .orderBy('createdAt', 'desc')
+          .get();
+        
+        const workers = workersSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        
+        console.log(`시공자 목록 조회 완료: ${workers.length}명`);
+        
+        res.json({
+          success: true,
+          workers: workers
+        });
+      });
+    } catch (error) {
+      console.error('시공자 목록 조회 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 시공자 저장
+exports.saveWorker = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      await authenticateToken(req, res, async () => {
+        const { name, phone, vehicleNumber } = req.body;
+        
+        if (!name || !phone) {
+          return res.status(400).json({ error: '이름과 전화번호는 필수 입력 항목입니다.' });
+        }
+        
+        // 중복 체크 (이름 + 전화번호)
+        const existingWorker = await db.collection('workers')
+          .where('name', '==', name)
+          .where('phone', '==', phone)
+          .limit(1)
+          .get();
+        
+        if (!existingWorker.empty) {
+          return res.status(409).json({ error: '이미 존재하는 시공자입니다.' });
+        }
+        
+        const workerData = {
+          name,
+          phone,
+          vehicleNumber: vehicleNumber || '',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdBy: req.user.userId
+        };
+        
+        const docRef = await db.collection('workers').add(workerData);
+        
+        console.log('시공자 저장 완료:', docRef.id);
+        
+        res.json({
+          success: true,
+          message: '시공자가 성공적으로 등록되었습니다.',
+          id: docRef.id
+        });
+      });
+    } catch (error) {
+      console.error('시공자 저장 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 시공자 업데이트
+exports.updateWorker = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'PUT') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      await authenticateToken(req, res, async () => {
+        const { workerId } = req.body;
+        const { name, phone, vehicleNumber } = req.body;
+        
+        if (!workerId) {
+          return res.status(400).json({ error: '시공자 ID가 필요합니다.' });
+        }
+        
+        if (!name || !phone) {
+          return res.status(400).json({ error: '이름과 전화번호는 필수 입력 항목입니다.' });
+        }
+        
+        // 기존 시공자 확인
+        const workerDoc = await db.collection('workers').doc(workerId).get();
+        
+        if (!workerDoc.exists) {
+          return res.status(404).json({ error: '시공자를 찾을 수 없습니다.' });
+        }
+        
+        // 중복 체크 (다른 시공자와 이름 + 전화번호가 같은지)
+        const existingWorker = await db.collection('workers')
+          .where('name', '==', name)
+          .where('phone', '==', phone)
+          .get();
+        
+        const duplicateExists = existingWorker.docs.some(doc => doc.id !== workerId);
+        
+        if (duplicateExists) {
+          return res.status(409).json({ error: '다른 시공자와 동일한 이름과 전화번호입니다.' });
+        }
+        
+        const updateData = {
+          name,
+          phone,
+          vehicleNumber: vehicleNumber || '',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedBy: req.user.userId
+        };
+        
+        await db.collection('workers').doc(workerId).update(updateData);
+        
+        console.log('시공자 업데이트 완료:', workerId);
+        
+        res.json({
+          success: true,
+          message: '시공자 정보가 성공적으로 수정되었습니다.'
+        });
+      });
+    } catch (error) {
+      console.error('시공자 업데이트 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+// 시공자 삭제
+exports.deleteWorker = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'DELETE') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      await authenticateToken(req, res, async () => {
+        const { workerId } = req.body;
+        
+        if (!workerId) {
+          return res.status(400).json({ error: '시공자 ID가 필요합니다.' });
+        }
+        
+        // 기존 시공자 확인
+        const workerDoc = await db.collection('workers').doc(workerId).get();
+        
+        if (!workerDoc.exists) {
+          return res.status(404).json({ error: '시공자를 찾을 수 없습니다.' });
+        }
+        
+        await db.collection('workers').doc(workerId).delete();
+        
+        console.log('시공자 삭제 완료:', workerId);
+        
+        res.json({
+          success: true,
+          message: '시공자가 성공적으로 삭제되었습니다.'
+        });
+      });
+    } catch (error) {
+      console.error('시공자 삭제 오류:', error);
       res.status(500).json({ error: error.message });
     }
   });

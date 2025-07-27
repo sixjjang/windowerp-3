@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { ref, onValue, push, off } from 'firebase/database';
 import { realtimeDb } from '../firebase/config';
+import { playChatNotification, playScheduleNotification, playGeneralNotification } from './soundUtils';
 
 export interface Notification {
   id: string;
@@ -187,6 +188,21 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
         icon: '/logo192.png',
         tag: newNotification.id,
       });
+    }
+
+    // 알림 소리 재생 (사용자 ID가 필요한 경우)
+    try {
+      // 현재 사용자 ID를 가져오는 방법이 필요합니다
+      // 임시로 기본 알림 소리만 재생
+      if (notification.type === 'chat') {
+        // playChatNotification(userId); // userId 필요
+      } else if (notification.type === 'schedule') {
+        // playScheduleNotification(userId); // userId 필요
+      } else {
+        // playGeneralNotification(userId); // userId 필요
+      }
+    } catch (error) {
+      console.error('알림 소리 재생 실패:', error);
     }
   },
 
