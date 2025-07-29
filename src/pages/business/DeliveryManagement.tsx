@@ -67,7 +67,7 @@ import { UserContext } from '../../components/Layout';
 // @ts-ignore
 import { v4 as uuidv4 } from 'uuid';
 import CuteASApplicationModal from '../../components/CuteASApplicationModal';
-import { Order } from './OrderManagement';
+import { Order, OrderItem } from './OrderManagement';
 import { deliveryService, workerService } from '../../utils/firebaseDataService';
 
 // OrderDetailModal 컴포넌트 정의
@@ -2500,23 +2500,7 @@ const DeliveryManagement: React.FC = () => {
               }}
             >
                             <AccordionSummary
-                expandIcon={
-                  <ExpandMoreIcon 
-                    sx={{ 
-                      color: '#e0e6ed',
-                      cursor: 'pointer',
-                      '&:hover': {
-                        color: '#40c4ff',
-                        transform: 'scale(1.1)',
-                      },
-                      transition: 'all 0.2s ease-in-out',
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setExpandedDelivery(expandedDelivery === delivery.id ? null : delivery.id);
-                    }}
-                  />
-                }
+                expandIcon={null}
                 disableRipple
                 disableTouchRipple
                 onClick={(e) => {
@@ -2964,6 +2948,38 @@ const DeliveryManagement: React.FC = () => {
                           marginLeft: 0,
                         }}
                       />
+                      {/* 아코디언 토글 아이콘 - 제품준비중/미수금 버튼 아래에 배치 */}
+                      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-start', pl: 4.125 }}>
+                        <IconButton
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedDelivery(expandedDelivery === delivery.id ? null : delivery.id);
+                          }}
+                          sx={{
+                            color: '#e0e6ed',
+                            backgroundColor: 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: '50%',
+                            width: 64,
+                            height: 64,
+                            '&:hover': {
+                              color: '#40c4ff',
+                              backgroundColor: 'rgba(64, 196, 255, 0.1)',
+                              border: '1px solid rgba(64, 196, 255, 0.3)',
+                              transform: 'scale(1.05)',
+                            },
+                            transition: 'all 0.2s ease-in-out',
+                          }}
+                        >
+                          <ExpandMoreIcon 
+                            sx={{ 
+                              fontSize: 36,
+                              transform: expandedDelivery === delivery.id ? 'rotate(180deg)' : 'rotate(0deg)',
+                              transition: 'transform 0.2s ease-in-out',
+                            }}
+                          />
+                        </IconButton>
+                      </Box>
                     </Box>
                   </Grid>
 

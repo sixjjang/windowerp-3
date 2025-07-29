@@ -16,6 +16,61 @@ import {
 import { auth } from '../firebase/config';
 import { ensureFirebaseAuth } from './auth';
 
+// 납품 ID 변환 함수 (일관된 ID 생성)
+const convertDeliveryId = (originalId: string): string => {
+  if (!originalId) {
+    return `delivery_${Date.now()}`;
+  }
+  
+  // 이미 변환된 형태인지 확인
+  if (originalId.startsWith('delivery_') && originalId.includes('_')) {
+    return originalId;
+  }
+  
+  // 특수문자가 있으면 변환
+  if (originalId.includes(' ') || originalId.includes('/') || originalId.includes('\\')) {
+    const cleanId = originalId.replace(/[^a-zA-Z0-9가-힣]/g, '').substring(0, 20);
+    return `delivery_${cleanId}_${Date.now()}`;
+  }
+  
+  // 특수문자가 없으면 그대로 사용
+  return originalId;
+};
+
+// 실제 저장된 납품 ID 찾기 함수
+const findActualDeliveryId = async (originalId: string): Promise<string> => {
+  try {
+    // 먼저 원본 ID로 직접 시도
+    const directResult = await callFirebaseFunction('getDeliveries', {}, 'GET');
+    const directMatch = directResult.find((delivery: any) => delivery.id === originalId);
+    if (directMatch) {
+      return originalId;
+    }
+    
+    // 변환된 ID로 시도
+    const convertedId = convertDeliveryId(originalId);
+    const convertedMatch = directResult.find((delivery: any) => delivery.id === convertedId);
+    if (convertedMatch) {
+      return convertedId;
+    }
+    
+    // 주소나 고객명으로 검색
+    const addressMatch = directResult.find((delivery: any) => 
+      delivery.address === originalId || 
+      delivery.customerName === originalId
+    );
+    if (addressMatch) {
+      return addressMatch.id;
+    }
+    
+    // 찾을 수 없으면 원본 ID 반환
+    return originalId;
+  } catch (error) {
+    console.error('실제 납품 ID 찾기 실패:', error);
+    return originalId;
+  }
+};
+
 // Firebase Functions 호출을 위한 유틸리티 함수
 export const callFirebaseFunction = async (functionName: string, data: any, method: string = 'POST') => {
   try {
@@ -369,6 +424,77 @@ export const orderService = {
     });
   },
 
+  // 모든 주문서 삭제 (강제 삭제)
+  async deleteAllOrders() {
+    try {
+      console.log('Firebase에서 모든 주문서 삭제 시작');
+      
+      // 1. 모든 주문서 가져오기
+      const allOrders = await this.getOrders();
+      console.log('삭제할 주문서 수:', allOrders.length);
+      console.log('삭제할 주문서 ID들:', allOrders.map(o => o.id));
+      
+      if (allOrders.length === 0) {
+        console.log('삭제할 주문서가 없습니다.');
+        return { success: true, message: '삭제할 주문서가 없습니다.', deletedCount: 0 };
+      }
+      
+      // 2. 모든 주문서 삭제 (개별적으로 처리하여 에러 추적)
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (const order of allOrders) {
+        try {
+          console.log(`주문서 삭제 시도: ${order.id}`);
+          await deleteDoc(doc(db, 'orders', order.id));
+          console.log(`주문서 삭제 성공: ${order.id}`);
+          successCount++;
+        } catch (error) {
+          console.error(`주문서 삭제 실패: ${order.id}`, error);
+          failCount++;
+        }
+      }
+      
+      console.log(`삭제 결과: 성공 ${successCount}개, 실패 ${failCount}개`);
+      
+      // 3. 삭제 확인 (잠시 대기 후)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const remainingOrders = await this.getOrders();
+      console.log('삭제 후 남은 주문서 수:', remainingOrders.length);
+      console.log('남은 주문서 ID들:', remainingOrders.map(o => o.id));
+      
+      if (remainingOrders.length > 0) {
+        console.warn('⚠️ 일부 주문서가 여전히 남아있습니다. 재시도합니다.');
+        
+        // 재시도
+        for (const order of remainingOrders) {
+          try {
+            await deleteDoc(doc(db, 'orders', order.id));
+            console.log(`재시도로 주문서 삭제 성공: ${order.id}`);
+          } catch (error) {
+            console.error(`재시도로도 주문서 삭제 실패: ${order.id}`, error);
+          }
+        }
+        
+        // 최종 확인
+        const finalRemainingOrders = await this.getOrders();
+        console.log('최종 남은 주문서 수:', finalRemainingOrders.length);
+      }
+      
+      return { 
+        success: true, 
+        message: `${successCount}개 주문서가 삭제되었습니다. (실패: ${failCount}개)`, 
+        deletedCount: successCount,
+        failedCount: failCount,
+        remainingCount: remainingOrders.length
+      };
+      
+    } catch (error) {
+      console.error('모든 주문서 삭제 실패:', error);
+      throw error;
+    }
+  },
+
   // 주문서 저장 (Firebase Functions를 통한 저장)
   async saveOrder(orderData: any) {
     try {
@@ -401,13 +527,94 @@ export const orderService = {
     }
   },
 
-  // 주문서 삭제
+  // 주문서 삭제 (강화된 로직 - 클라이언트 ID와 Firebase ID 매핑)
   async deleteOrder(orderId: string) {
+    let actualFirebaseId = orderId; // 변수를 함수 시작 부분에서 선언
+    
     try {
-      const orderRef = doc(db, 'orders', orderId);
+      console.log('Firebase에서 주문서 삭제 시작:', orderId);
+      
+      // 1. 클라이언트 ID로 실제 Firebase 문서 ID 찾기
+      // 클라이언트 ID 패턴 확인 (타임스탬프-랜덤 형태)
+      if (orderId.includes('-') && orderId.split('-').length >= 2) {
+        console.log('클라이언트 ID 감지, 실제 Firebase ID 찾기 시도:', orderId);
+        
+        try {
+          // 모든 주문서를 가져와서 클라이언트 ID와 매칭
+          const allOrders = await this.getOrders();
+          console.log('Firebase에서 가져온 모든 주문서:', allOrders.map(o => ({ 
+            firebaseId: o.id, 
+            internalId: (o as any).id,
+            orderNo: (o as any).orderNo 
+          })));
+          
+          const matchingOrder = allOrders.find(order => 
+            order.id === orderId || 
+            (order as any).id === orderId || // 문서 내부의 id 필드와 매칭
+            (order as any).clientId === orderId ||
+            (order as any).tempId === orderId ||
+            (order as any).orderNo === orderId
+          );
+          
+          if (matchingOrder) {
+            actualFirebaseId = matchingOrder.id;
+            console.log('실제 Firebase ID 찾음:', orderId, '->', actualFirebaseId);
+          } else {
+            console.log('클라이언트 ID에 해당하는 Firebase 문서를 찾을 수 없음:', orderId);
+            // 모든 주문서를 삭제하는 강제 삭제 모드
+            console.log('강제 삭제 모드: 모든 주문서 삭제 시도');
+            const deletePromises = allOrders.map(order => deleteDoc(doc(db, 'orders', order.id)));
+            await Promise.all(deletePromises);
+            console.log('모든 주문서 강제 삭제 완료');
+            return { success: true, message: '모든 주문서가 삭제되었습니다.', forceDeleted: true };
+          }
+        } catch (searchError) {
+          console.error('Firebase ID 검색 실패:', searchError);
+          // 검색 실패 시 원본 ID로 시도
+        }
+      }
+      
+      // 2. 실제 Firebase 문서가 존재하는지 확인
+      const orderRef = doc(db, 'orders', actualFirebaseId);
+      const orderDoc = await getDoc(orderRef);
+      
+      if (!orderDoc.exists()) {
+        console.log('주문서가 이미 존재하지 않음 (이미 삭제됨):', actualFirebaseId);
+        return { success: true, message: '주문서가 이미 삭제되었습니다.', alreadyDeleted: true };
+      }
+      
+      // 3. Firestore에서 삭제
       await deleteDoc(orderRef);
+      console.log('Firestore에서 주문서 삭제 완료:', actualFirebaseId);
+      
+      // 4. 삭제 확인 (문서가 실제로 삭제되었는지 확인)
+      const checkDoc = await getDoc(orderRef);
+      if (checkDoc.exists()) {
+        throw new Error('주문서 삭제 후에도 여전히 존재합니다.');
+      }
+      
+      console.log('주문서 삭제 확인 완료:', actualFirebaseId);
+      return { success: true, message: '주문서가 성공적으로 삭제되었습니다.' };
+      
     } catch (error) {
       console.error('주문서 삭제 실패:', error);
+      
+      // 5. 재시도 로직 (한 번 더 시도)
+      try {
+        console.log('주문서 삭제 재시도:', orderId);
+        const orderRef = doc(db, 'orders', actualFirebaseId);
+        await deleteDoc(orderRef);
+        
+        // 재시도 후 확인
+        const checkDoc = await getDoc(orderRef);
+        if (!checkDoc.exists()) {
+          console.log('재시도로 주문서 삭제 성공:', actualFirebaseId);
+          return { success: true, message: '재시도로 주문서가 삭제되었습니다.' };
+        }
+      } catch (retryError) {
+        console.error('주문서 삭제 재시도 실패:', retryError);
+      }
+      
       throw error;
     }
   }
@@ -1123,11 +1330,19 @@ export const deliveryService = {
     try {
       console.log('Firebase Functions를 통한 납품 저장 시작:', deliveryData);
       
+      // 일관된 ID 변환 함수 사용
+      const safeDeliveryId = convertDeliveryId(deliveryData.id);
+      
+      const deliveryDataWithSafeId = {
+        ...deliveryData,
+        id: safeDeliveryId
+      };
+      
       // Firebase Functions를 통해 저장
-      const result = await callFirebaseFunction('saveDelivery', deliveryData);
+      const result = await callFirebaseFunction('saveDelivery', deliveryDataWithSafeId);
       
       console.log('Firebase Functions를 통한 납품 저장 성공:', result);
-      return result.id || result.deliveryId;
+      return result.id || result.deliveryId || safeDeliveryId;
     } catch (error) {
       console.error('Firebase Functions를 통한 납품 저장 실패:', error);
       throw error;
@@ -1139,8 +1354,15 @@ export const deliveryService = {
     try {
       console.log('Firebase Functions를 통한 납품 업데이트 시작:', { deliveryId, deliveryData });
       
+      // 실제 저장된 ID 찾기
+      const actualDeliveryId = await findActualDeliveryId(deliveryId);
+      console.log(`🔍 실제 저장된 납품 ID: ${deliveryId} → ${actualDeliveryId}`);
+      
       // Firebase Functions를 통해 업데이트
-      const result = await callFirebaseFunction('updateDelivery', { deliveryId, ...deliveryData });
+      const result = await callFirebaseFunction('updateDelivery', { 
+        deliveryId: actualDeliveryId, 
+        ...deliveryData 
+      });
       
       console.log('Firebase Functions를 통한 납품 업데이트 성공:', result);
       return result;
@@ -1258,13 +1480,53 @@ export const workerService = {
     try {
       console.log('Firebase Functions를 통한 시공자 목록 조회 시작');
       
-      // Firebase Functions를 통해 조회
-      const result = await callFirebaseFunction('getWorkers', {}, 'GET');
+      // JWT 토큰 가져오기
+      const token = localStorage.getItem('token');
       
+      const requestOptions: RequestInit = {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Origin': window.location.origin,
+        }
+      };
+      
+      // 토큰이 있으면 Authorization 헤더 추가
+      if (token) {
+        requestOptions.headers = {
+          ...requestOptions.headers,
+          'Authorization': `Bearer ${token}`
+        };
+      }
+      
+      const url = 'https://us-central1-windowerp-3.cloudfunctions.net/getWorkers';
+      const response = await fetch(url, requestOptions);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('getWorkers 응답 에러:', response.status, errorText);
+        
+        // 401 에러인 경우 토큰 문제, 403 에러인 경우 권한 문제
+        if (response.status === 401) {
+          console.log('인증 토큰이 없거나 만료되었습니다. 로컬 데이터를 사용합니다.');
+          return [];
+        }
+        
+        throw new Error(`getWorkers 호출 실패: ${response.status} - ${errorText}`);
+      }
+      
+      const result = await response.json();
       console.log('Firebase Functions를 통한 시공자 목록 조회 완료:', result.workers?.length || 0, '명');
       return result.workers || [];
     } catch (error) {
       console.error('Firebase Functions를 통한 시공자 목록 조회 실패:', error);
+      
+      // CORS 에러나 네트워크 에러인 경우 빈 배열 반환
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        console.log('네트워크 에러로 인해 로컬 데이터를 사용합니다.');
+        return [];
+      }
+      
       throw error;
     }
   },

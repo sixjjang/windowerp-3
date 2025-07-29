@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { API_BASE } from '../../utils/auth';
-import { contractService, estimateService } from '../../utils/firebaseDataService';
 import {
   Box,
   Paper,
@@ -92,7 +91,6 @@ interface Contract {
   createdAt: string;
   updatedAt: string;
   rows?: any[];
-  firebaseId?: string; // Firebase 문서 ID
 }
 
 interface Estimate {
@@ -118,199 +116,24 @@ const ContractManagement: React.FC = () => {
   // 모바일 환경 감지
   const isMobile = useMediaQuery('(max-width:768px)');
 
-  const [contracts, setContracts] = useState<Contract[]>([]);
-  const [firebaseContracts, setFirebaseContracts] = useState<Contract[]>([]);
-  const [isLoadingContracts, setIsLoadingContracts] = useState(false);
-
-  // Firebase에서 계약서 데이터 로드
-  useEffect(() => {
-    const loadFirebaseContracts = async () => {
-      setIsLoadingContracts(true);
-      try {
-        console.log('🔥 Firebase에서 계약서 데이터 로드 시작...');
-        const data = await contractService.getContracts();
-        console.log('🔥 Firebase 계약서 데이터 로드 완료:', data.length, '개');
-        
-        if (data.length > 0) {
-          // Firebase 데이터를 Contract 타입으로 변환
-          const convertedData = data.map((item: any) => ({
-            id: parseInt(item.id) || Date.now(),
-            contractNo: item.contractNo || '',
-            estimateNo: item.estimateNo || '',
-            contractDate: item.contractDate || '',
-            customerName: item.customerName || '',
-            contact: item.contact || '',
-            emergencyContact: item.emergencyContact || '',
-            address: item.address || '',
-            projectName: item.projectName || '',
-            type: item.type || '',
-            totalAmount: item.totalAmount || 0,
-            discountedAmount: item.discountedAmount || 0,
-            depositAmount: item.depositAmount || 0,
-            remainingAmount: item.remainingAmount || 0,
-            paymentMethod: item.paymentMethod || '',
-            paymentDate: item.paymentDate || '',
-            status: item.status || 'draft',
-            signatureData: item.signatureData || '',
-            agreementMethod: item.agreementMethod || 'signature',
-            memo: item.memo || '',
-            measurementDate: item.measurementDate || '',
-            constructionDate: item.constructionDate || '',
-            createdAt: item.createdAt || '',
-            updatedAt: item.updatedAt || '',
-            rows: item.rows || [],
-            firebaseId: item.id // Firebase ID 저장
-          }));
-          setFirebaseContracts(convertedData);
-        } else {
-          console.log('🔥 Firebase에 계약서 데이터가 없습니다.');
-        }
-      } catch (error) {
-        console.error('🔥 Firebase 계약서 데이터 로드 실패:', error);
-      } finally {
-        setIsLoadingContracts(false);
-      }
-    };
-
-    loadFirebaseContracts();
-  }, []);
-
-  // Firebase 실시간 구독 설정
-  useEffect(() => {
-    console.log('🔥 Firebase 계약서 실시간 구독 설정...');
-    const unsubscribe = contractService.subscribeToContracts((data) => {
-      console.log('🔥 Firebase 실시간 계약서 데이터 업데이트:', data.length, '개');
-      if (data.length > 0) {
-        // Firebase 데이터를 Contract 타입으로 변환
-        const convertedData = data.map((item: any) => ({
-          id: parseInt(item.id) || Date.now(),
-          contractNo: item.contractNo || '',
-          estimateNo: item.estimateNo || '',
-          contractDate: item.contractDate || '',
-          customerName: item.customerName || '',
-          contact: item.contact || '',
-          emergencyContact: item.emergencyContact || '',
-          address: item.address || '',
-          projectName: item.projectName || '',
-          type: item.type || '',
-          totalAmount: item.totalAmount || 0,
-          discountedAmount: item.discountedAmount || 0,
-          depositAmount: item.depositAmount || 0,
-          remainingAmount: item.remainingAmount || 0,
-          paymentMethod: item.paymentMethod || '',
-          paymentDate: item.paymentDate || '',
-          status: item.status || 'draft',
-          signatureData: item.signatureData || '',
-          agreementMethod: item.agreementMethod || 'signature',
-          memo: item.memo || '',
-          measurementDate: item.measurementDate || '',
-          constructionDate: item.constructionDate || '',
-          createdAt: item.createdAt || '',
-          updatedAt: item.updatedAt || '',
-          rows: item.rows || [],
-          firebaseId: item.id // Firebase ID 저장
-        }));
-        setFirebaseContracts(convertedData);
-      }
-    });
-
-    // 컴포넌트 언마운트 시 구독 해제
-    return () => {
-      unsubscribe();
-    };
-  }, []);
-
-  // Firebase와 localStorage 데이터 병합
-  useEffect(() => {
+  const [contracts, setContracts] = useState<Contract[]>(() => {
     const savedContracts = localStorage.getItem('contracts');
-    const localContracts = savedContracts ? JSON.parse(savedContracts) : [];
-    
-    // Firebase 데이터와 localStorage 데이터 병합 (Firebase 우선)
-    const mergedContracts = [...firebaseContracts];
-    
-    // localStorage에만 있는 데이터 추가 (Firebase에 없는 것들)
-    localContracts.forEach((localContract: Contract) => {
-      const existsInFirebase = firebaseContracts.some(
-        (firebaseContract: Contract) => 
-          firebaseContract.estimateNo === localContract.estimateNo ||
-          firebaseContract.contractNo === localContract.contractNo
-      );
-      
-      if (!existsInFirebase) {
-        mergedContracts.push(localContract);
-      }
-    });
-    
-    setContracts(mergedContracts);
-    console.log('📋 계약서 데이터 병합 완료:', {
-      firebase: firebaseContracts.length,
-      local: localContracts.length,
-      merged: mergedContracts.length
-    });
-  }, [firebaseContracts]);
+    return savedContracts ? JSON.parse(savedContracts) : [];
+  });
 
-  // contracts 상태가 변경될 때마다 localStorage에 저장 (Firebase에 없는 것들만)
+  // contracts 상태가 변경될 때마다 localStorage에 저장
   useEffect(() => {
-    const contractsToSave = contracts.filter(contract => !contract.firebaseId);
-    if (contractsToSave.length > 0) {
-      localStorage.setItem('contracts', JSON.stringify(contractsToSave));
-    }
+    localStorage.setItem('contracts', JSON.stringify(contracts));
   }, [contracts]);
 
-  const [estimates, setEstimates] = useState<Estimate[]>([]);
-  const [isLoadingEstimates, setIsLoadingEstimates] = useState(false);
+  const [estimates, setEstimates] = useState<Estimate[]>(() => {
+    const savedEstimates = localStorage.getItem('approvedEstimatesList');
+    return savedEstimates ? JSON.parse(savedEstimates) : [];
+  });
 
-  // Firebase에서 승인된 견적서 목록 로드
   useEffect(() => {
-    const loadApprovedEstimates = async () => {
-      setIsLoadingEstimates(true);
-      try {
-        console.log('🔥 Firebase에서 승인된 견적서 목록 로드 시작...');
-        const data = await estimateService.getEstimates();
-        
-        // status가 'approved'인 견적서만 필터링
-        const approvedEstimates = data.filter((estimate: any) => 
-          estimate.status === 'approved' || estimate.status === '계약진행'
-        );
-        
-        console.log('🔥 Firebase 승인된 견적서 로드 완료:', approvedEstimates.length, '개');
-        setEstimates(approvedEstimates);
-      } catch (error) {
-        console.error('🔥 Firebase 승인된 견적서 로드 실패:', error);
-        // Firebase 실패 시 localStorage에서 로드 (fallback)
-        const savedEstimates = localStorage.getItem('approvedEstimatesList');
-        if (savedEstimates) {
-          const localEstimates = JSON.parse(savedEstimates);
-          console.log('💾 localStorage에서 승인된 견적서 로드 (fallback):', localEstimates.length, '개');
-          setEstimates(localEstimates);
-        }
-      } finally {
-        setIsLoadingEstimates(false);
-      }
-    };
-
-    loadApprovedEstimates();
-  }, []);
-
-  // Firebase 실시간 구독 설정 (승인된 견적서)
-  useEffect(() => {
-    console.log('🔥 Firebase 승인된 견적서 실시간 구독 설정...');
-    const unsubscribe = estimateService.subscribeToEstimates((data: any[]) => {
-      console.log('🔥 Firebase 실시간 견적서 데이터 업데이트:', data.length, '개');
-      
-      // status가 'approved'인 견적서만 필터링
-      const approvedEstimates = data.filter((estimate: any) => 
-        estimate.status === 'approved' || estimate.status === '계약진행'
-      );
-      
-      setEstimates(approvedEstimates);
-    });
-
-    // 컴포넌트 언마운트 시 구독 해제
-    return () => {
-      unsubscribe();
-    };
-  }, []);
+    localStorage.setItem('approvedEstimatesList', JSON.stringify(estimates));
+  }, [estimates]);
 
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
@@ -931,35 +754,9 @@ const ContractManagement: React.FC = () => {
           contract.id === existingContract!.id ? newContract : contract
         )
       );
-      
-      // Firebase에도 업데이트
-      if (existingContract.firebaseId) {
-        try {
-          await contractService.updateContract(existingContract.firebaseId, newContract);
-          console.log('🔥 Firebase 계약서 업데이트 완료');
-        } catch (error) {
-          console.error('🔥 Firebase 계약서 업데이트 실패:', error);
-        }
-      }
     } else {
       console.log('새 계약서 추가 중...');
       setContracts(prev => [...prev, newContract]);
-      
-      // Firebase에도 저장
-      try {
-        const firebaseId = await contractService.saveContract(newContract);
-        console.log('🔥 Firebase 계약서 저장 완료:', firebaseId);
-        // Firebase ID를 계약서에 추가
-        setContracts(prev =>
-          prev.map(contract =>
-            contract.id === newContract.id 
-              ? { ...contract, firebaseId }
-              : contract
-          )
-        );
-      } catch (error) {
-        console.error('🔥 Firebase 계약서 저장 실패:', error);
-      }
     }
     setDialogOpen(false);
 
@@ -1639,45 +1436,9 @@ const ContractManagement: React.FC = () => {
         >
           계약 관리
         </Typography>
-        <Typography variant="body1" sx={{ color: 'var(--text-secondary-color)', mb: 2 }}>
+        <Typography variant="body1" sx={{ color: 'var(--text-secondary-color)' }}>
           견적서를 기반으로 계약을 생성하고 관리합니다.
         </Typography>
-        
-        {/* Firebase 데이터 상태 표시 */}
-        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
-          <Chip
-            label={`🔥 Firebase 계약서: ${firebaseContracts.length}개`}
-            color={firebaseContracts.length > 0 ? 'success' : 'default'}
-            variant="outlined"
-            size="small"
-          />
-          <Chip
-            label={`📋 전체 계약서: ${contracts.length}개`}
-            color="primary"
-            variant="outlined"
-            size="small"
-          />
-          <Chip
-            label={`✅ 계약완료: ${contracts.filter(c => c.status === 'signed').length}개`}
-            color="success"
-            variant="outlined"
-            size="small"
-          />
-          <Chip
-            label={`📝 승인된 견적서: ${estimates.length}개`}
-            color="info"
-            variant="outlined"
-            size="small"
-          />
-          {(isLoadingContracts || isLoadingEstimates) && (
-            <Chip
-              label="🔥 Firebase 데이터 로딩 중..."
-              color="warning"
-              variant="outlined"
-              size="small"
-            />
-          )}
-        </Box>
       </Box>
 
       {/* 검색 및 필터 */}
@@ -1900,14 +1661,6 @@ const ContractManagement: React.FC = () => {
                     fontSize: isMobile ? 16 : 14,
                     py: isMobile ? 2 : 1
                   }}>
-                    데이터 소스
-                  </TableCell>
-                  <TableCell sx={{ 
-                    color: 'var(--text-color)', 
-                    borderColor: 'var(--border-color)',
-                    fontSize: isMobile ? 16 : 14,
-                    py: isMobile ? 2 : 1
-                  }}>
                     작업
                   </TableCell>
                 </TableRow>
@@ -2038,18 +1791,6 @@ const ContractManagement: React.FC = () => {
                       <Chip
                         label={getStatusText(contract.status)}
                         color={getStatusColor(contract.status) as any}
-                        size={isMobile ? "medium" : "small"}
-                        sx={{ 
-                          fontSize: isMobile ? 14 : '0.75rem',
-                          minHeight: isMobile ? 32 : 24
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell sx={{ borderColor: 'var(--border-color)' }}>
-                      <Chip
-                        label={contract.firebaseId ? '🔥 Firebase' : '💾 Local'}
-                        color={contract.firebaseId ? 'success' : 'default'}
-                        variant="outlined"
                         size={isMobile ? "medium" : "small"}
                         sx={{ 
                           fontSize: isMobile ? 14 : '0.75rem',

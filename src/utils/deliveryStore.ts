@@ -140,36 +140,42 @@ export const useDeliveryStore = create(
           console.error('납품 Firebase 삭제 실패:', error);
         }
       },
-      updateDelivery: async (deliveryId, updatedFields) => {
-        const updatedDelivery = {
-          ...updatedFields,
-          updatedAt: new Date().toISOString(),
-        };
-        
+      updateDelivery: async (
+        deliveryId: string,
+        updatedFields: Partial<DeliverySite>
+      ) => {
+        // 로컬 상태 먼저 업데이트
         set(state => ({
           deliveries: state.deliveries.map(delivery =>
             delivery.id === deliveryId
               ? {
                   ...delivery,
-                  ...updatedDelivery,
+                  ...updatedFields,
+                  updatedAt: new Date().toISOString(),
                 }
               : delivery
           ),
         }));
         
-        // Firebase에 업데이트
+        // Firebase에 업데이트 (실패해도 로컬 상태는 유지)
         try {
-          await deliveryService.updateDelivery(deliveryId, updatedDelivery);
-          console.log('납품 Firebase 업데이트 성공:', deliveryId);
+          await deliveryService.updateDelivery(deliveryId, updatedFields);
+          console.log('✅ 납품 Firebase 업데이트 성공:', deliveryId);
         } catch (error) {
-          console.error('납품 Firebase 업데이트 실패:', error);
+          console.error('❌ 납품 Firebase 업데이트 실패:', error);
           
           // 문서가 없는 경우 로컬 상태만 업데이트 (Firebase 동기화 안함)
           if (error instanceof Error && error.message && error.message.includes('404')) {
-            console.warn('Firebase 문서가 없어 로컬 상태만 업데이트:', deliveryId);
+            console.warn('⚠️ Firebase 문서가 없어 로컬 상태만 업데이트:', deliveryId);
             // 로컬 상태는 이미 업데이트되었으므로 성공으로 처리
             return;
           }
+          
+          // 다른 에러의 경우 로컬 상태를 원래대로 되돌리지 않음 (사용자 경험을 위해)
+          console.warn('⚠️ Firebase 업데이트 실패했지만 로컬 상태는 유지:', deliveryId);
+          
+          // 사용자에게 알림 (선택사항)
+          // alert('납품 정보가 로컬에만 저장되었습니다. Firebase 동기화에 실패했습니다.');
         }
       },
       updateDeliveryStatus: (deliveryId, status) => {

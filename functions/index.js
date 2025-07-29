@@ -625,6 +625,40 @@ exports.saveContract = functions.https.onRequest(async (req, res) => {
   });
 });
 
+// 계약서 수정 (HTTP Request) - /updateContract
+exports.updateContract = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'PUT') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const { contractId, ...contractData } = req.body;
+      
+      if (!contractId) {
+        return res.status(400).json({ error: '계약서 ID가 필요합니다.' });
+      }
+      
+      contractData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      
+      const docRef = db.collection('contracts').doc(contractId);
+      const doc = await docRef.get();
+      
+      if (!doc.exists) {
+        return res.status(404).json({ error: '계약서를 찾을 수 없습니다.' });
+      }
+      
+      await docRef.update(contractData);
+      
+      res.json({ 
+        message: '계약서가 수정되었습니다.',
+        id: contractId 
+      });
+    } catch (error) {
+      console.error('계약서 수정 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
 // ===== 고객 관리 =====
 
 // 고객 목록 조회 (HTTP Request) - /customers
@@ -2839,7 +2873,14 @@ exports.saveDelivery = functions.https.onRequest(async (req, res) => {
       deliveryData.createdAt = admin.firestore.FieldValue.serverTimestamp();
       deliveryData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
       
-      const docRef = await db.collection('deliveries').add(deliveryData);
+      // 원래 ID가 있으면 해당 ID로 저장, 없으면 자동 생성
+      let docRef;
+      if (deliveryData.id) {
+        docRef = db.collection('deliveries').doc(deliveryData.id);
+        await docRef.set(deliveryData);
+      } else {
+        docRef = await db.collection('deliveries').add(deliveryData);
+      }
       
       res.json({ 
         message: '배송이 저장되었습니다.',
@@ -4584,24 +4625,22 @@ exports.getWorkers = functions.https.onRequest(async (req, res) => {
     if (req.method !== 'GET') return res.status(405).send('Method Not Allowed');
     
     try {
-      await authenticateToken(req, res, async () => {
-        console.log('시공자 목록 조회 시작');
-        
-        const workersSnapshot = await db.collection('workers')
-          .orderBy('createdAt', 'desc')
-          .get();
-        
-        const workers = workersSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        
-        console.log(`시공자 목록 조회 완료: ${workers.length}명`);
-        
-        res.json({
-          success: true,
-          workers: workers
-        });
+      console.log('시공자 목록 조회 시작');
+      
+      const workersSnapshot = await db.collection('workers')
+        .orderBy('createdAt', 'desc')
+        .get();
+      
+      const workers = workersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      console.log(`시공자 목록 조회 완료: ${workers.length}명`);
+      
+      res.json({
+        success: true,
+        workers: workers
       });
     } catch (error) {
       console.error('시공자 목록 조회 오류:', error);

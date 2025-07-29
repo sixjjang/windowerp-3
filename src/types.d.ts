@@ -72,6 +72,7 @@ export interface EstimateRow {
   originalIndex?: number;
   optionLabel?: string;
   options?: OptionItem[];
+  isManualQuantity?: boolean; // 수동 수량 설정 여부
   // 추가 필드들
   lineDirection?: string;
   lineLength?: string;

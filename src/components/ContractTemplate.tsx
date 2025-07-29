@@ -26,12 +26,14 @@ import {
   Tab,
   TextField,
   Divider,
+  useTheme,
 } from '@mui/material';
 import {
   Print as PrintIcon,
   Settings as SettingsIcon,
   Save as SaveIcon,
 } from '@mui/icons-material';
+import { useTheme as useCustomTheme } from '../contexts/ThemeContext';
 
 export interface Contract {
   id: number;
@@ -193,6 +195,8 @@ const TemplateSettingsModal: React.FC<{
   currentTemplate: any;
   onSave: (template: any) => void;
 }> = ({ open, onClose, currentTemplate, onSave }) => {
+  const theme = useTheme();
+  const { isDarkMode } = useCustomTheme();
   const [template, setTemplate] = useState(currentTemplate);
   const [companyInfo, setCompanyInfo] = useState(() => {
     const saved = localStorage.getItem('contractCompanyInfo');
@@ -212,30 +216,59 @@ const TemplateSettingsModal: React.FC<{
 
   // 저장된 회사 정보 불러오기
   useEffect(() => {
-    const loadSavedCompanies = () => {
+    const loadSavedCompanies = async () => {
       try {
+        // 먼저 localStorage에서 확인
         const saved = localStorage.getItem('companyInfo');
+        let companies = [];
+        
         if (saved) {
-          const companies = JSON.parse(saved);
-          if (Array.isArray(companies)) {
-            // 우리회사 타입만 필터링
-            const ourCompanies = companies.filter((company: any) => company.type === '우리회사');
-            setSavedCompanies(ourCompanies);
-            
-            // 현재 선택된 회사 ID 찾기
-            if (ourCompanies.length > 0) {
-              const currentCompany = ourCompanies.find((company: any) => 
-                company.name === companyInfo.name && 
-                company.address === companyInfo.address
-              );
-              if (currentCompany) {
-                setSelectedCompanyId(currentCompany.id);
-              } else {
-                setSelectedCompanyId(ourCompanies[0].id);
-              }
-            }
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            companies = parsed;
           }
         }
+        
+        // Firebase에서도 확인 (최신 데이터)
+        try {
+          const response = await fetch(`${process.env.REACT_APP_API_BASE || 'https://us-central1-windowerp-3.cloudfunctions.net'}/getCompanyInfo`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          });
+          
+          if (response.ok) {
+            const firebaseData = await response.json();
+            if (Array.isArray(firebaseData)) {
+              companies = firebaseData;
+              // localStorage 업데이트
+              localStorage.setItem('companyInfo', JSON.stringify(firebaseData));
+            }
+          }
+        } catch (firebaseError) {
+          console.log('Firebase에서 회사 정보 로드 실패, localStorage 사용:', firebaseError);
+        }
+        
+        // 우리회사 타입만 필터링
+        const ourCompanies = companies.filter((company: any) => company.type === '우리회사');
+        setSavedCompanies(ourCompanies);
+        
+        // 현재 선택된 회사 ID 찾기
+        if (ourCompanies.length > 0) {
+          const currentCompany = ourCompanies.find((company: any) => 
+            company.name === companyInfo.name && 
+            company.address === companyInfo.address
+          );
+          if (currentCompany) {
+            setSelectedCompanyId(currentCompany.id);
+          } else {
+            setSelectedCompanyId(ourCompanies[0].id);
+          }
+        }
+        
+        console.log('로드된 우리회사 정보:', ourCompanies.length, '개');
       } catch (error) {
         console.error('회사 정보 로드 중 오류:', error);
       }
@@ -274,14 +307,51 @@ const TemplateSettingsModal: React.FC<{
     onClose();
   };
 
+  const handleResetCompanyInfo = () => {
+    if (window.confirm('회사 정보를 기본값으로 초기화하시겠습니까?')) {
+      setCompanyInfo(DEFAULT_COMPANY_INFO);
+    }
+  };
+
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>계약서 템플릿 설정</DialogTitle>
-      <DialogContent>
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      maxWidth="md" 
+      fullWidth
+      PaperProps={{
+        sx: {
+          backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff',
+          color: isDarkMode ? '#ffffff' : '#000000',
+        }
+      }}
+    >
+      <DialogTitle sx={{ 
+        backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff',
+        color: isDarkMode ? '#ffffff' : '#000000',
+        borderBottom: isDarkMode ? '1px solid #333' : '1px solid #e0e0e0'
+      }}>
+        계약서 템플릿 설정
+      </DialogTitle>
+      <DialogContent sx={{ 
+        backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff',
+        color: isDarkMode ? '#ffffff' : '#000000',
+      }}>
         <Tabs
           value={activeTab}
           onChange={(_, newValue) => setActiveTab(newValue)}
-          sx={{ mb: 2 }}
+          sx={{ 
+            mb: 2,
+            '& .MuiTab-root': {
+              color: isDarkMode ? '#ffffff' : '#000000',
+            },
+            '& .Mui-selected': {
+              color: isDarkMode ? '#90caf9' : '#1976d2',
+            },
+            '& .MuiTabs-indicator': {
+              backgroundColor: isDarkMode ? '#90caf9' : '#1976d2',
+            }
+          }}
         >
           <Tab label="출력 항목" />
           <Tab label="회사 정보" />
@@ -379,7 +449,10 @@ const TemplateSettingsModal: React.FC<{
 
         {activeTab === 1 && (
           <Box>
-            <Typography variant="h6" sx={{ mb: 2 }}>
+            <Typography variant="h6" sx={{ 
+              mb: 2,
+              color: isDarkMode ? '#ffffff' : '#000000'
+            }}>
               회사 정보 설정
             </Typography>
             
@@ -395,36 +468,86 @@ const TemplateSettingsModal: React.FC<{
                       <Box
                         sx={{
                           p: 2,
-                          border: selectedCompanyId === company.id ? '2px solid #1976d2' : '1px solid #ddd',
+                          border: selectedCompanyId === company.id 
+                            ? (isDarkMode ? '2px solid #90caf9' : '2px solid #1976d2') 
+                            : (isDarkMode ? '1px solid #444' : '1px solid #ddd'),
                           borderRadius: 1,
                           cursor: 'pointer',
-                          backgroundColor: selectedCompanyId === company.id ? '#f3f8ff' : 'transparent',
+                          backgroundColor: selectedCompanyId === company.id 
+                            ? (isDarkMode ? '#1a237e' : '#f3f8ff') 
+                            : 'transparent',
                           '&:hover': {
-                            backgroundColor: selectedCompanyId === company.id ? '#f3f8ff' : '#f5f5f5',
+                            backgroundColor: selectedCompanyId === company.id 
+                              ? (isDarkMode ? '#1a237e' : '#f3f8ff') 
+                              : (isDarkMode ? '#2d2d2d' : '#f5f5f5'),
                           },
                         }}
                         onClick={() => handleCompanySelect(company.id)}
                       >
-                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                        <Typography variant="subtitle2" sx={{ 
+                          fontWeight: 'bold', 
+                          mb: 0.5,
+                          color: isDarkMode ? '#ffffff' : '#000000'
+                        }}>
                           {company.name}
                         </Typography>
-                        <Typography variant="body2" sx={{ color: 'text.secondary', mb: 0.5 }}>
+                        <Typography variant="body2" sx={{ 
+                          color: isDarkMode ? '#cccccc' : 'text.secondary', 
+                          mb: 0.5 
+                        }}>
                           {company.address}
                         </Typography>
-                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                          {company.contact}
+                        <Typography variant="body2" sx={{ 
+                          color: isDarkMode ? '#cccccc' : 'text.secondary', 
+                          mb: 0.5 
+                        }}>
+                          TEL: {company.contact}
                         </Typography>
+                        {company.email && (
+                          <Typography variant="body2" sx={{ 
+                            color: isDarkMode ? '#cccccc' : 'text.secondary' 
+                          }}>
+                            EMAIL: {company.email}
+                          </Typography>
+                        )}
                       </Box>
                     </Grid>
                   ))}
                 </Grid>
+                <Typography variant="caption" sx={{ 
+                  color: isDarkMode ? '#cccccc' : 'text.secondary', 
+                  fontStyle: 'italic' 
+                }}>
+                  * 회사를 클릭하면 자동으로 정보가 입력됩니다
+                </Typography>
+              </Box>
+            )}
+
+            {savedCompanies.length === 0 && (
+              <Box sx={{ 
+                mb: 3, 
+                p: 2, 
+                backgroundColor: isDarkMode ? '#2d2d2d' : '#f5f5f5', 
+                borderRadius: 1,
+                border: isDarkMode ? '1px solid #444' : '1px solid #e0e0e0'
+              }}>
+                <Typography variant="body2" sx={{ 
+                  color: isDarkMode ? '#cccccc' : 'text.secondary', 
+                  textAlign: 'center' 
+                }}>
+                  등록된 회사 정보가 없습니다. 아래에서 직접 입력하거나 관리자 페이지에서 회사 정보를 등록해주세요.
+                </Typography>
               </Box>
             )}
 
             <Divider sx={{ my: 2 }} />
 
             {/* 수동 입력 */}
-            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
+            <Typography variant="subtitle1" sx={{ 
+              mb: 2, 
+              fontWeight: 'bold',
+              color: isDarkMode ? '#ffffff' : '#000000'
+            }}>
               수동 입력
             </Typography>
             <Grid container spacing={2}>
@@ -436,16 +559,22 @@ const TemplateSettingsModal: React.FC<{
                   onChange={e =>
                     setCompanyInfo({ ...companyInfo, name: e.target.value })
                   }
+                  placeholder="예: (주)윈도우ERP"
+                  helperText="계약서에 표시될 회사명을 입력하세요"
                 />
               </Grid>
               <Grid item xs={12}>
                 <TextField
                   fullWidth
-                  label="주소"
+                  label="회사 주소"
                   value={companyInfo.address}
                   onChange={e =>
                     setCompanyInfo({ ...companyInfo, address: e.target.value })
                   }
+                  placeholder="예: 서울시 강남구 테헤란로 123"
+                  helperText="계약서에 표시될 회사 주소를 입력하세요"
+                  multiline
+                  rows={2}
                 />
               </Grid>
               <Grid item xs={6}>
@@ -456,6 +585,8 @@ const TemplateSettingsModal: React.FC<{
                   onChange={e =>
                     setCompanyInfo({ ...companyInfo, phone: e.target.value })
                   }
+                  placeholder="예: 02-1234-5678"
+                  helperText="고객이 연락할 수 있는 전화번호"
                 />
               </Grid>
               <Grid item xs={6}>
@@ -466,9 +597,71 @@ const TemplateSettingsModal: React.FC<{
                   onChange={e =>
                     setCompanyInfo({ ...companyInfo, email: e.target.value })
                   }
+                  placeholder="예: info@company.com"
+                  helperText="고객이 연락할 수 있는 이메일"
                 />
               </Grid>
             </Grid>
+            
+            {/* 미리보기 */}
+            <Box sx={{ 
+              mt: 3, 
+              p: 2, 
+              border: isDarkMode ? '1px solid #444' : '1px solid #e0e0e0', 
+              borderRadius: 1, 
+              backgroundColor: isDarkMode ? '#2d2d2d' : '#f9f9f9' 
+            }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ 
+                  fontWeight: 'bold',
+                  color: isDarkMode ? '#ffffff' : '#000000'
+                }}>
+                  미리보기
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={handleResetCompanyInfo}
+                  sx={{ 
+                    fontSize: '0.75rem',
+                    color: isDarkMode ? '#90caf9' : '#1976d2',
+                    borderColor: isDarkMode ? '#90caf9' : '#1976d2',
+                    '&:hover': {
+                      borderColor: isDarkMode ? '#64b5f6' : '#1565c0',
+                      backgroundColor: isDarkMode ? 'rgba(144, 202, 249, 0.1)' : 'rgba(25, 118, 210, 0.1)'
+                    }
+                  }}
+                >
+                  기본값으로 초기화
+                </Button>
+              </Box>
+              <Box sx={{ fontSize: '12pt' }}>
+                <Typography variant="body2" sx={{ 
+                  fontWeight: 'bold', 
+                  mb: 0.5,
+                  color: isDarkMode ? '#ffffff' : '#000000'
+                }}>
+                  {companyInfo.name || '[회사명]'}
+                </Typography>
+                <Typography variant="body2" sx={{ 
+                  mb: 0.5,
+                  color: isDarkMode ? '#cccccc' : '#000000'
+                }}>
+                  {companyInfo.address || '[회사주소]'}
+                </Typography>
+                <Typography variant="body2" sx={{ 
+                  mb: 0.5,
+                  color: isDarkMode ? '#cccccc' : '#000000'
+                }}>
+                  TEL: {companyInfo.phone || '[전화번호]'}
+                </Typography>
+                <Typography variant="body2" sx={{
+                  color: isDarkMode ? '#cccccc' : '#000000'
+                }}>
+                  EMAIL: {companyInfo.email || '[이메일]'}
+                </Typography>
+              </Box>
+            </Box>
           </Box>
         )}
 
@@ -489,9 +682,32 @@ const TemplateSettingsModal: React.FC<{
           </Box>
         )}
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>취소</Button>
-        <Button onClick={handleSave} variant="contained">
+      <DialogActions sx={{
+        backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff',
+        borderTop: isDarkMode ? '1px solid #333' : '1px solid #e0e0e0'
+      }}>
+        <Button 
+          onClick={onClose}
+          sx={{
+            color: isDarkMode ? '#ffffff' : '#000000',
+            '&:hover': {
+              backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+            }
+          }}
+        >
+          취소
+        </Button>
+        <Button 
+          onClick={handleSave} 
+          variant="contained"
+          sx={{
+            backgroundColor: isDarkMode ? '#90caf9' : '#1976d2',
+            color: isDarkMode ? '#000000' : '#ffffff',
+            '&:hover': {
+              backgroundColor: isDarkMode ? '#64b5f6' : '#1565c0'
+            }
+          }}
+        >
           저장
         </Button>
       </DialogActions>

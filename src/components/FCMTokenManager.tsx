@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, Button, CircularProgress } from '@mui/material';
+import { Box, IconButton, CircularProgress, Tooltip } from '@mui/material';
+import { Notifications as NotificationsIcon, NotificationsOff as NotificationsOffIcon } from '@mui/icons-material';
 import { fcmService } from '../utils/firebaseDataService';
 
 interface FCMTokenManagerProps {
@@ -16,6 +17,7 @@ const FCMTokenManager: React.FC<FCMTokenManagerProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [permission, setPermission] = useState<NotificationPermission>('default');
 
   // 알림 권한 요청 및 설정
   const requestNotificationPermission = async () => {
@@ -35,10 +37,11 @@ const FCMTokenManager: React.FC<FCMTokenManagerProps> = ({
       }
 
       // 알림 권한 요청
-      const permission = await Notification.requestPermission();
-      console.log('알림 권한 상태:', permission);
+      const newPermission = await Notification.requestPermission();
+      setPermission(newPermission);
+      console.log('알림 권한 상태:', newPermission);
       
-      if (permission !== 'granted') {
+      if (newPermission !== 'granted') {
         throw new Error('알림 권한이 거부되었습니다.');
       }
 
@@ -74,47 +77,49 @@ const FCMTokenManager: React.FC<FCMTokenManagerProps> = ({
     }
   };
 
-  // 컴포넌트 마운트 시 자동으로 알림 권한 요청
+  // 컴포넌트 마운트 시 현재 알림 권한 상태 확인
   useEffect(() => {
-    if (userId) {
+    if ('Notification' in window) {
+      setPermission(Notification.permission);
+    }
+  }, []);
+
+  // 사용자 ID가 변경될 때 알림 권한 요청
+  useEffect(() => {
+    if (userId && permission === 'default') {
       requestNotificationPermission();
     }
-  }, [userId]);
+  }, [userId, permission]);
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center' }}>
       {loading && (
-        <CircularProgress size={16} sx={{ color: '#fff' }} />
+        <CircularProgress size={16} sx={{ color: 'var(--text-color)' }} />
       )}
       
-      {error && (
-        <Typography sx={{ fontSize: 10, color: '#ff6b6b' }}>
-          알림 오류
-        </Typography>
-      )}
-      
-      {success && (
-        <Typography sx={{ fontSize: 10, color: '#4caf50' }}>
-          알림 설정됨
-        </Typography>
-      )}
-      
-      <Button 
-        size="small"
-        variant="outlined" 
-        onClick={requestNotificationPermission}
-        disabled={loading}
-        sx={{ 
-          color: '#fff', 
-          borderColor: '#fff',
-          fontSize: 10,
-          minWidth: 'auto',
-          px: 1,
-          py: 0.5
-        }}
+      <Tooltip 
+        title={
+          permission === 'granted' 
+            ? '알림이 활성화되어 있습니다' 
+            : permission === 'denied' 
+            ? '알림이 차단되었습니다. 브라우저 설정에서 허용해주세요.' 
+            : '알림 설정'
+        }
       >
-        알림 설정
-      </Button>
+        <IconButton
+          onClick={requestNotificationPermission}
+          disabled={loading}
+          sx={{ 
+            color: permission === 'granted' ? 'var(--success-color)' : 'var(--text-color)',
+            p: 0.5,
+            '&:hover': {
+              bgcolor: 'rgba(255,255,255,0.1)',
+            }
+          }}
+        >
+          {permission === 'granted' ? <NotificationsIcon fontSize="small" /> : <NotificationsOffIcon fontSize="small" />}
+        </IconButton>
+      </Tooltip>
     </Box>
   );
 };

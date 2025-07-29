@@ -158,7 +158,7 @@ import {
   deleteDoc,
   updateDoc
 } from 'firebase/firestore';
-import { fcmService } from '../../utils/firebaseDataService';
+import { fcmService, estimateService } from '../../utils/firebaseDataService';
 
 // 메모 인터페이스 추가
 
@@ -742,7 +742,28 @@ const Schedule: React.FC = () => {
     };
 
     updateScheduleDescriptions();
-  }, [deliveries]); // deliveries가 변경될 때마다 실행
+  }, [deliveries]);
+
+  // 시공 일정 색상 통일 (기존 일정의 색상을 주황색으로 강제 변경)
+  useEffect(() => {
+    const normalizeConstructionColors = () => {
+      setEvents(prevEvents =>
+        prevEvents.map(event => {
+          if (event.type === '시공' && event.color !== '#ef6c00') {
+            console.log(`🔄 시공 일정 색상 통일: ${event.title} (${event.color} → #ef6c00)`);
+            return {
+              ...event,
+              color: '#ef6c00',
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return event;
+        })
+      );
+    };
+
+    normalizeConstructionColors();
+  }, []); // deliveries가 변경될 때마다 실행
 
   // 실측 다이얼로그가 열릴 때 Firebase 구독 시작 및 견적번호 자동 연결
   useEffect(() => {
@@ -845,6 +866,60 @@ const Schedule: React.FC = () => {
     };
 
     loadSchedules();
+  }, []);
+
+  // 스케줄 업데이트 이벤트 리스너 추가
+  useEffect(() => {
+    const handleScheduleUpdate = (event: CustomEvent) => {
+      console.log('📅 스케줄 업데이트 이벤트 감지:', event.detail);
+      // AS 스케줄이 생성, 수정, 또는 삭제되면 즉시 다시 로드
+      if (event.detail.type === 'AS' && (event.detail.action === 'created' || event.detail.action === 'updated' || event.detail.action === 'deleted')) {
+        console.log(`🔄 AS 스케줄 ${event.detail.action} 감지 - 스케줄 다시 로드`);
+        // loadSchedules 함수를 직접 호출하지 않고 setTimeout으로 지연 실행
+        setTimeout(() => {
+          const loadSchedulesAsync = async () => {
+            try {
+              // 현재 날짜 기준으로 로드할 기간 설정 (전후 6개월씩, 총 13개월)
+              const currentDate = new Date();
+              const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 6, 1);
+              const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 6, 0);
+              
+              const startDateStr = startDate.toISOString().split('T')[0];
+              const endDateStr = endDate.toISOString().split('T')[0];
+
+              console.log(`스케줄 재로드 기간: ${startDateStr} ~ ${endDateStr}`);
+
+              // Firebase Functions에서 기간별 데이터 로드
+              const response = await fetch(`${API_BASE}/schedules?startDate=${startDateStr}&endDate=${endDateStr}`);
+              console.log('스케줄 재로드 응답 상태:', response.status);
+              
+              if (response.ok) {
+                const serverData = await response.json();
+                console.log('서버에서 받은 스케줄 데이터 개수:', serverData.length);
+                
+                // 서버 데이터를 그대로 사용 (실제 Firebase 문서 상태 반영)
+                const processedData = serverData.map((event: any) => ({
+                  ...event,
+                  id: event.id || event.firestoreId || generateEventId()
+                }));
+                
+                setEvents(processedData);
+                localStorage.setItem('schedules', JSON.stringify(processedData));
+              }
+            } catch (error) {
+              console.error('스케줄 재로드 오류:', error);
+            }
+          };
+          loadSchedulesAsync();
+        }, 1000); // 1초 지연
+      }
+    };
+
+    window.addEventListener('scheduleUpdated', handleScheduleUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener('scheduleUpdated', handleScheduleUpdate as EventListener);
+    };
   }, []);
 
   // 음력 날짜를 양력으로 변환하는 함수
@@ -1014,7 +1089,7 @@ const Schedule: React.FC = () => {
           address: delivery.address,
           contact: delivery.contact,
           deliveryId: delivery.id,
-          color: getTypeColor('시공'),
+          color: '#ef6c00', // 시공 일정은 항상 주황색으로 통일
           priority: '높음' as const,
           status: '예정' as const,
           createdAt: new Date().toISOString(),
@@ -1163,6 +1238,10 @@ const Schedule: React.FC = () => {
 
   // 이벤트 타입별 색상 (카테고리 우선)
   const getEventColor = (type: string) => {
+    // 시공 일정은 항상 주황색으로 통일
+    if (type === '시공') {
+      return '#ef6c00';
+    }
     return getTypeColor(type);
   };
 
@@ -1471,6 +1550,10 @@ const Schedule: React.FC = () => {
 
   // 실측 데이터 저장 핸들러
   const handleMeasurementSave = async (data: MeasurementRowData[]) => {
+    console.log('=== 실측 데이터 저장 시작 ===');
+    console.log('전달받은 데이터:', data);
+    console.log('현재 실측 이벤트:', currentMeasurementEvent);
+    
     if (currentMeasurementEvent) {
       // 기존 실측 이벤트 업데이트
       const updatedEvent = {
@@ -1478,6 +1561,8 @@ const Schedule: React.FC = () => {
         measurementData: data,
         updatedAt: new Date().toISOString(),
       };
+
+      console.log('업데이트된 이벤트:', updatedEvent);
 
       // 먼저 로컬 상태 업데이트 (즉시 반영)
       setEvents(prev =>
@@ -1490,6 +1575,7 @@ const Schedule: React.FC = () => {
       try {
         console.log('실측 데이터 서버 저장 시작:', currentMeasurementEvent.id);
         console.log('저장할 데이터:', data);
+        console.log('API URL:', `${API_BASE}/schedules/${currentMeasurementEvent.id}`);
         
         const response = await fetch(`${API_BASE}/schedules/${currentMeasurementEvent.id}`, {
           method: 'PUT',
@@ -1532,6 +1618,11 @@ const Schedule: React.FC = () => {
         setMeasurementDialogOpen(false);
       } catch (error) {
         console.error('실측 데이터 저장 실패:', error);
+        console.error('에러 상세 정보:', {
+          error: error,
+          message: error instanceof Error ? error.message : '알 수 없는 오류',
+          stack: error instanceof Error ? error.stack : undefined
+        });
         
         // 에러 발생 시 로컬 상태 롤백
         setEvents(prev =>
@@ -1631,7 +1722,7 @@ const Schedule: React.FC = () => {
         contact: newEvent.contact || '',
         priority: newEvent.priority || '보통',
         status: newEvent.status || '예정',
-        color: getEventColor(newEvent.type || '매장상담'),
+        color: newEvent.type === '시공' ? '#ef6c00' : getEventColor(newEvent.type || '매장상담'),
         isLunar: newEvent.isLunar || false,
         isYearly: newEvent.isYearly || false,
         estimateNo: estimateNo || '',
@@ -1970,7 +2061,7 @@ const Schedule: React.FC = () => {
       // final 견적서 생성
       const finalEstimate = {
         ...originalEstimate,
-        id: Date.now() + Math.random(),
+        id: `temp-${Date.now()}-${Math.random()}`, // 임시 ID, Firebase 저장 후 실제 ID로 교체
         estimateNo: finalEstimateNo,
         name:
           finalNumber === 1
@@ -2007,6 +2098,37 @@ const Schedule: React.FC = () => {
       
       localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
 
+      // Firebase에 Final 견적서 저장
+      try {
+        console.log('Firebase에 Final 견적서 저장 시작:', finalEstimateNo);
+        
+        if (existingFinalIndex !== -1) {
+          // 기존 Final 견적서 업데이트
+          await estimateService.updateEstimate(finalEstimate.id, finalEstimate);
+          console.log('Firebase에 기존 Final 견적서 업데이트 완료');
+        } else {
+          // 새로운 Final 견적서 저장
+          const savedEstimate = await estimateService.saveEstimate(finalEstimate);
+          console.log('Firebase에 새로운 Final 견적서 저장 완료:', savedEstimate);
+          
+          // 저장된 ID로 업데이트
+          if (savedEstimate) {
+            finalEstimate.id = savedEstimate;
+            savedEstimates[savedEstimates.length - 1] = finalEstimate;
+            localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
+          }
+        }
+      } catch (firebaseError) {
+        console.error('Firebase Final 견적서 저장 실패, localStorage만 사용:', firebaseError);
+        // Firebase 실패 시 localStorage만 사용하고 사용자에게 알림
+        setSnackbar({
+          open: true,
+          message: `Final 견적서가 로컬에만 저장되었습니다. (${finalEstimateNo}) - 실측 데이터가 반영되었습니다.`,
+          severity: 'warning',
+        });
+        return;
+      }
+
       console.log('Final 견적서 처리 완료:', finalEstimateNo);
       console.log(
         '업데이트된 제품 정보:',
@@ -2014,8 +2136,8 @@ const Schedule: React.FC = () => {
       );
 
       const message = existingFinalIndex !== -1 
-        ? `Final 견적서가 업데이트되었습니다. (${finalEstimateNo}) - 실측 데이터가 반영되었습니다.`
-        : `Final 견적서가 생성되었습니다. (${finalEstimateNo}) - 실측 데이터가 반영되었습니다.`;
+        ? `Final 견적서가 Firebase에 업데이트되었습니다. (${finalEstimateNo}) - 실측 데이터가 반영되었습니다.`
+        : `Final 견적서가 Firebase에 생성되었습니다. (${finalEstimateNo}) - 실측 데이터가 반영되었습니다.`;
 
       setSnackbar({
         open: true,
@@ -2084,7 +2206,7 @@ const Schedule: React.FC = () => {
           contact: newEvent.contact || '',
           priority: newEvent.priority || '보통',
           status: newEvent.status || '예정',
-          color: getEventColor(newEvent.type || '매장상담'),
+          color: newEvent.type === '시공' ? '#ef6c00' : getEventColor(newEvent.type || '매장상담'),
           isLunar: newEvent.isLunar || false,
           isYearly: newEvent.isYearly || false,
           estimateNo: newEvent.estimateNo || '',
@@ -2151,7 +2273,7 @@ const Schedule: React.FC = () => {
           contact: newEvent.contact || '',
           priority: newEvent.priority || '보통',
           status: newEvent.status || '예정',
-          color: getEventColor(newEvent.type || '매장상담'),
+          color: newEvent.type === '시공' ? '#ef6c00' : getEventColor(newEvent.type || '매장상담'),
           isLunar: newEvent.isLunar || false,
           isYearly: newEvent.isYearly || false,
           estimateNo: newEvent.estimateNo || '',
@@ -2201,27 +2323,59 @@ const Schedule: React.FC = () => {
             );
             setEvents(updatedEvents);
 
-            // localStorage에도 저장
-            localStorage.setItem('schedules', JSON.stringify(updatedEvents));
+                    // localStorage에도 저장
+        localStorage.setItem('schedules', JSON.stringify(updatedEvents));
 
-            // 날짜가 변경되었는지 확인하고 currentDate 업데이트
-            if (editingEvent.date !== eventData.date) {
-              const newDate = new Date(eventData.date);
-              setCurrentDate(newDate);
-            }
-
-            // 일정 수정 알림 소리 재생
-            try {
-              playScheduleNotification(currentUser?.id?.toString() || 'current_user');
-            } catch (error) {
-              console.error('일정 수정 알림 소리 재생 실패:', error);
-            }
-
-            setSnackbar({
-              open: true,
-              message: '일정이 수정되었습니다.',
-              severity: 'success',
+        // 납품 관련 일정인 경우 납품관리 상태도 업데이트
+        if ((eventData as any).deliveryId && eventData.type === '시공') {
+          try {
+            console.log('🔄 납품 관련 일정 수정 감지 - 납품관리 상태 업데이트:', {
+              deliveryId: (eventData as any).deliveryId,
+              oldDate: editingEvent.date,
+              newDate: eventData.date,
+              oldTime: editingEvent.time,
+              newTime: eventData.time
             });
+            
+            // 납품관리 store에서 해당 납품 데이터 찾기
+            const { deliveries, updateDelivery } = useDeliveryStore.getState();
+            const targetDelivery = deliveries.find(d => d.id === (eventData as any).deliveryId);
+            
+            if (targetDelivery) {
+              // 시공일시 업데이트
+              updateDelivery((eventData as any).deliveryId, {
+                constructionDate: eventData.date,
+                constructionTime: eventData.time,
+                updatedAt: new Date().toISOString(),
+              });
+              
+              console.log('✅ 납품관리 상태 업데이트 완료:', (eventData as any).deliveryId);
+            } else {
+              console.log('⚠️ 해당 납품 데이터를 찾을 수 없음:', (eventData as any).deliveryId);
+            }
+          } catch (error) {
+            console.error('❌ 납품관리 상태 업데이트 실패:', error);
+          }
+        }
+
+        // 날짜가 변경되었는지 확인하고 currentDate 업데이트
+        if (editingEvent.date !== eventData.date) {
+          const newDate = new Date(eventData.date);
+          setCurrentDate(newDate);
+        }
+
+        // 일정 수정 알림 소리 재생
+        try {
+          playScheduleNotification(currentUser?.id?.toString() || 'current_user');
+        } catch (error) {
+          console.error('일정 수정 알림 소리 재생 실패:', error);
+        }
+
+        setSnackbar({
+          open: true,
+          message: '일정이 수정되었습니다.',
+          severity: 'success',
+        });
           } else {
             // 새 일정 추가
             const newEventWithId = {
@@ -2455,6 +2609,46 @@ const Schedule: React.FC = () => {
           event.id === selectedEventForEdit.id ? updatedEvent : event
         );
         localStorage.setItem('schedules', JSON.stringify(updatedEvents));
+
+        // 납품 관련 일정인 경우 납품관리 상태도 업데이트
+        if (updatedEvent.deliveryId && updatedEvent.type === '시공') {
+          try {
+            console.log('🔄 납품 관련 일정 수정 감지 - 납품관리 상태 업데이트:', {
+              deliveryId: updatedEvent.deliveryId,
+              oldDate: selectedEventForEdit.date,
+              newDate: updatedEvent.date,
+              oldTime: selectedEventForEdit.time,
+              newTime: updatedEvent.time
+            });
+            
+            // 납품관리 store에서 해당 납품 데이터 찾기
+            const { deliveries, updateDelivery } = useDeliveryStore.getState();
+            const targetDelivery = deliveries.find(d => d.id === updatedEvent.deliveryId);
+            
+            if (targetDelivery) {
+              // 시공일시 업데이트
+              const updatedDelivery = {
+                ...targetDelivery,
+                constructionDate: updatedEvent.date,
+                constructionTime: updatedEvent.time,
+                updatedAt: new Date().toISOString(),
+              };
+              
+              // 납품관리 상태 업데이트
+              updateDelivery(updatedEvent.deliveryId, {
+                constructionDate: updatedEvent.date,
+                constructionTime: updatedEvent.time,
+                updatedAt: new Date().toISOString(),
+              });
+              
+              console.log('✅ 납품관리 상태 업데이트 완료:', updatedEvent.deliveryId);
+            } else {
+              console.log('⚠️ 해당 납품 데이터를 찾을 수 없음:', updatedEvent.deliveryId);
+            }
+          } catch (error) {
+            console.error('❌ 납품관리 상태 업데이트 실패:', error);
+          }
+        }
 
         // 일정 수정 알림 소리 재생
         try {
@@ -5942,13 +6136,15 @@ const Schedule: React.FC = () => {
                       label="일정 날짜 변경"
                       type="date"
                       value={scheduleEvent.date}
-                      onChange={e => {
+                      onChange={async e => {
                         const newDate = e.target.value;
                         const updatedEvent = {
                           ...scheduleEvent,
                           date: newDate,
                           updatedAt: new Date().toISOString(),
                         };
+                        
+                        // 로컬 상태 먼저 업데이트
                         setEvents(prev =>
                           prev.map(ev =>
                             ev.id === scheduleEvent.id ? updatedEvent : ev
@@ -5961,6 +6157,60 @@ const Schedule: React.FC = () => {
                           'schedules',
                           JSON.stringify(updatedEvents)
                         );
+
+                        // Firebase에 업데이트 요청
+                        try {
+                          console.log('🔄 스케줄 날짜 변경 - Firebase 업데이트:', {
+                            eventId: scheduleEvent.id,
+                            oldDate: scheduleEvent.date,
+                            newDate: newDate
+                          });
+                          
+                          const response = await fetch(`${API_BASE}/schedules/${encodeURIComponent(scheduleEvent.id)}`, {
+                            method: 'PUT',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(updatedEvent),
+                          });
+
+                          if (response.ok) {
+                            console.log('✅ Firebase 스케줄 날짜 업데이트 성공:', scheduleEvent.id);
+                          } else {
+                            console.error('❌ Firebase 스케줄 날짜 업데이트 실패:', response.status);
+                          }
+                        } catch (error) {
+                          console.error('❌ Firebase 스케줄 날짜 업데이트 오류:', error);
+                        }
+
+                        // 납품 관련 일정인 경우 납품관리 상태도 업데이트
+                        if (scheduleEvent.deliveryId && scheduleEvent.type === '시공') {
+                          try {
+                            console.log('🔄 납품 관련 일정 날짜 변경 감지 - 납품관리 상태 업데이트:', {
+                              deliveryId: scheduleEvent.deliveryId,
+                              oldDate: scheduleEvent.date,
+                              newDate: newDate
+                            });
+                            
+                            // 납품관리 store에서 해당 납품 데이터 찾기
+                            const { deliveries, updateDelivery } = useDeliveryStore.getState();
+                            const targetDelivery = deliveries.find(d => d.id === scheduleEvent.deliveryId);
+                            
+                            if (targetDelivery) {
+                              // 시공일시 업데이트
+                              updateDelivery(scheduleEvent.deliveryId, {
+                                constructionDate: newDate,
+                                updatedAt: new Date().toISOString(),
+                              });
+                              
+                              console.log('✅ 납품관리 상태 업데이트 완료:', scheduleEvent.deliveryId);
+                            } else {
+                              console.log('⚠️ 해당 납품 데이터를 찾을 수 없음:', scheduleEvent.deliveryId);
+                            }
+                          } catch (error) {
+                            console.error('❌ 납품관리 상태 업데이트 실패:', error);
+                          }
+                        }
                       }}
                       sx={{ mb: 2, background: '#232a36', borderRadius: 1 }}
                       InputLabelProps={{ shrink: true }}
@@ -7567,7 +7817,19 @@ const Schedule: React.FC = () => {
                       취소
                     </Button>
                     <Button 
-                      onClick={() => handleMeasurementSave([])} 
+                      onClick={() => {
+                        console.log('저장 버튼 클릭 - 현재 실측 데이터:', currentMeasurementEvent?.measurementData);
+                        if (currentMeasurementEvent?.measurementData) {
+                          handleMeasurementSave(currentMeasurementEvent.measurementData);
+                        } else {
+                          console.warn('저장할 실측 데이터가 없습니다.');
+                          setSnackbar({
+                            open: true,
+                            message: '저장할 실측 데이터가 없습니다.',
+                            severity: 'warning',
+                          });
+                        }
+                      }} 
                       variant="contained" 
                       color="primary"
                       sx={{ backgroundColor: '#FF6B9D' }}
@@ -7576,7 +7838,19 @@ const Schedule: React.FC = () => {
                     </Button>
                     {estimateInfo && (
                       <Button 
-                        onClick={() => handleCreateFinalEstimate([])}
+                        onClick={() => {
+                          console.log('Final견적서 만들기 버튼 클릭 - 현재 실측 데이터:', currentMeasurementEvent?.measurementData);
+                          if (currentMeasurementEvent?.measurementData) {
+                            handleCreateFinalEstimate(currentMeasurementEvent.measurementData);
+                          } else {
+                            console.warn('Final견적서를 만들 실측 데이터가 없습니다.');
+                            setSnackbar({
+                              open: true,
+                              message: 'Final견적서를 만들 실측 데이터가 없습니다.',
+                              severity: 'warning',
+                            });
+                          }
+                        }}
                         variant="contained" 
                         color="secondary"
                         sx={{ 

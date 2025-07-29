@@ -374,13 +374,10 @@ const VendorManagement: React.FC = () => {
     }
   };
 
-  // 드래그 앤 드롭
+  // 드래그 기능 비활성화 (사용하지 않음)
   const onDragEnd = (result: any) => {
-    if (!result.destination) return;
-    const reordered = Array.from(vendors);
-    const [removed] = reordered.splice(result.source.index, 1);
-    reordered.splice(result.destination.index, 0, removed);
-    setVendors(reordered);
+    // 드래그 기능을 사용하지 않으므로 아무것도 하지 않음
+    return;
   };
 
   return (
@@ -478,8 +475,8 @@ const VendorManagement: React.FC = () => {
                   >
                     {sortedVendors.map((vendor, idx) => (
                       <Draggable
-                        key={vendor.id}
-                        draggableId={String(vendor.id || idx)}
+                        key={`vendor-${String(vendor.id)}-${String(idx)}`}
+                        draggableId={`vendor-${String(vendor.id)}-${String(idx)}`}
                         index={idx}
                       >
                         {(draggableProvided: any) => (

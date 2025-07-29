@@ -67,6 +67,7 @@ interface Product {
   note: string;
   space: string;
   spaceCustom: string;
+  firebaseId?: string; // Firebase 문서 ID (선택적)
 }
 
 const initialProduct: Product = {
@@ -1179,8 +1180,8 @@ const ProductManagement: React.FC = () => {
                       >
                         {sortedProducts.map((product, idx) => (
                           <Draggable
-                            key={product.id}
-                            draggableId={String(product.id || idx)}
+                            key={product.firebaseId || `product-${String(product.id)}-${String(idx)}`}
+                            draggableId={product.firebaseId || `product-${String(product.id)}-${String(idx)}`}
                             index={idx}
                           >
                             {(draggableProvided: any) => (

@@ -312,6 +312,7 @@ class FirebaseNotificationSoundPlayer {
   // 알림 소리 재생
   async playNotificationSound(soundType: 'chat' | 'schedule' | 'general' = 'general'): Promise<void> {
     if (!this.settings.enabled) {
+      console.log('🔇 알림 소리가 비활성화되어 있습니다.');
       return;
     }
 
@@ -319,6 +320,7 @@ class FirebaseNotificationSoundPlayer {
       // 사용 가능한 소리 파일이 있는지 확인
       if (this.soundFiles.length === 0) {
         // 소리 파일이 없으면 폴백 소리 재생
+        console.log('📁 사용 가능한 소리 파일이 없어 폴백 소리를 재생합니다.');
         this.playFallbackSound();
         return;
       }
@@ -354,11 +356,12 @@ class FirebaseNotificationSoundPlayer {
       // 재생
       await audio.play();
       
-      console.log(`Firebase 알림 소리 재생: ${soundKey} (${soundType})`);
+      console.log(`✅ Firebase 알림 소리 재생 성공: ${soundKey} (${soundType})`);
     } catch (error) {
-      console.error('Firebase 알림 소리 재생 실패:', error);
+      console.error('❌ Firebase 알림 소리 재생 실패:', error);
       
       // 폴백: 기본 브라우저 알림음 사용
+      console.log('🔄 폴백 소리 재생 시도...');
       this.playFallbackSound();
     }
   }

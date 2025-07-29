@@ -61,6 +61,7 @@ interface Customer {
   projects: Project[];
   createdAt: string;
   updatedAt: string;
+  firebaseId?: string; // Firebase 문서 ID (선택적)
 }
 
 const initialCustomers: Customer[] = [
@@ -811,8 +812,8 @@ const CustomerManagement: React.FC = () => {
                     {Array.isArray(sortedCustomers) &&
                       sortedCustomers.map((customer, idx) => (
                         <Draggable
-                          key={customer.id}
-                          draggableId={String(customer.id || idx)}
+                          key={customer.firebaseId || `customer-${String(customer.id)}-${String(idx)}`}
+                          draggableId={customer.firebaseId || `customer-${String(customer.id)}-${String(idx)}`}
                           index={idx}
                         >
                           {(draggableProvided: any) => (

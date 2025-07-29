@@ -146,6 +146,39 @@ const MeasurementForm: React.FC<MeasurementFormProps> = ({
     });
   };
 
+  // Enter 키로 다음 필드 이동 핸들러
+  const handleKeyDown = (e: React.KeyboardEvent, currentIdx: number, currentField: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      
+      // 실측가로와 실측세로만 번갈아가며 이동
+      if (currentField === 'measuredWidth') {
+        // 실측가로에서 실측세로로 이동
+        const nextElement = document.querySelector(`[tabindex="${currentIdx * 2 + 2}"]`) as HTMLElement; // 실측세로
+        if (nextElement) {
+          nextElement.focus();
+          return;
+        }
+      } else if (currentField === 'measuredHeight') {
+        // 실측세로에서 다음 행의 실측가로로 이동
+        if (currentIdx < rows.length - 1) {
+          const nextRowElement = document.querySelector(`[tabindex="${(currentIdx + 1) * 2 + 1}"]`) as HTMLElement; // 다음 행의 실측가로
+          if (nextRowElement) {
+            nextRowElement.focus();
+            return;
+          }
+        } else {
+          // 마지막 행이면 첫 번째 행의 실측가로로 이동
+          const firstRowElement = document.querySelector(`[tabindex="1"]`) as HTMLElement; // 첫 번째 행의 실측가로
+          if (firstRowElement) {
+            firstRowElement.focus();
+            return;
+          }
+        }
+      }
+    }
+  };
+
   const handleAddRow = () => {
     setRows(prev => [
       ...prev,
@@ -533,8 +566,10 @@ const MeasurementForm: React.FC<MeasurementFormProps> = ({
                           onChange={e =>
                             handleChange(idx, 'space', e.target.value)
                           }
+                          onKeyDown={e => handleKeyDown(e, idx, 'space')}
                           size="small"
                           fullWidth
+                          tabIndex={1000 + idx * 4 + 0} // 공간입력: 1000, 1004, 1008, 1012, 1016, 1020, 1024...
                           InputProps={{
                             sx: { fontSize: '0.8rem', height: 32 },
                           }}
@@ -567,34 +602,38 @@ const MeasurementForm: React.FC<MeasurementFormProps> = ({
                       )}
                     </TableCell>
                     <TableCell>
-                      <TextField
-                        value={row.measuredWidth}
-                        onChange={e =>
-                          handleChange(idx, 'measuredWidth', e.target.value)
-                        }
-                        size="small"
-                        fullWidth
-                        type="number"
-                        InputProps={{
-                          sx: { fontSize: '0.8rem', height: 32 },
-                          onWheel: e => (e.target as HTMLInputElement).blur(),
-                        }}
-                      />
+                                              <TextField
+                          value={row.measuredWidth}
+                          onChange={e =>
+                            handleChange(idx, 'measuredWidth', e.target.value)
+                          }
+                          onKeyDown={e => handleKeyDown(e, idx, 'measuredWidth')}
+                          size="small"
+                          fullWidth
+                          type="number"
+                          tabIndex={idx * 2 + 1} // 실측가로: 1, 3, 5, 7, 9, 11, 13...
+                          InputProps={{
+                            sx: { fontSize: '0.8rem', height: 32 },
+                            onWheel: e => (e.target as HTMLInputElement).blur(),
+                          }}
+                        />
                     </TableCell>
                     <TableCell>
-                      <TextField
-                        value={row.measuredHeight}
-                        onChange={e =>
-                          handleChange(idx, 'measuredHeight', e.target.value)
-                        }
-                        size="small"
-                        fullWidth
-                        type="number"
-                        InputProps={{
-                          sx: { fontSize: '0.8rem', height: 32 },
-                          onWheel: e => (e.target as HTMLInputElement).blur(),
-                        }}
-                      />
+                                              <TextField
+                          value={row.measuredHeight}
+                          onChange={e =>
+                            handleChange(idx, 'measuredHeight', e.target.value)
+                          }
+                          onKeyDown={e => handleKeyDown(e, idx, 'measuredHeight')}
+                          size="small"
+                          fullWidth
+                          type="number"
+                          tabIndex={idx * 2 + 2} // 실측세로: 2, 4, 6, 8, 10, 12, 14...
+                          InputProps={{
+                            sx: { fontSize: '0.8rem', height: 32 },
+                            onWheel: e => (e.target as HTMLInputElement).blur(),
+                          }}
+                        />
                     </TableCell>
                     <TableCell>
                       <FormControl size="small" fullWidth>
@@ -603,6 +642,8 @@ const MeasurementForm: React.FC<MeasurementFormProps> = ({
                           onChange={e =>
                             handleChange(idx, 'lineDirection', e.target.value)
                           }
+                          onKeyDown={e => handleKeyDown(e, idx, 'lineDirection')}
+                          tabIndex={1000 + idx * 4 + 3} // 줄방향: 1003, 1007, 1011, 1015, 1019, 1023, 1027...
                           sx={{ fontSize: '0.8rem', height: 32 }}
                         >
                           <MenuItem value="">선택</MenuItem>
@@ -625,6 +666,8 @@ const MeasurementForm: React.FC<MeasurementFormProps> = ({
                           onChange={e =>
                             handleChange(idx, 'lineLength', e.target.value)
                           }
+                          onKeyDown={e => handleKeyDown(e, idx, 'lineLength')}
+                          tabIndex={1000 + idx * 4 + 4} // 줄길이: 1004, 1008, 1012, 1016, 1020, 1024, 1028...
                           sx={{ fontSize: '0.8rem', height: 32 }}
                         >
                           <MenuItem value="">선택</MenuItem>
@@ -649,9 +692,11 @@ const MeasurementForm: React.FC<MeasurementFormProps> = ({
                               e.target.value
                             )
                           }
+                          onKeyDown={e => handleKeyDown(e, idx, 'customLineLength')}
                           size="small"
                           fullWidth
                           placeholder="줄길이 입력(mm)"
+                          tabIndex={1000 + idx * 4 + 5} // 직접입력: 1005, 1009, 1013, 1017, 1021, 1025, 1029...
                           sx={{ mt: 0.5 }}
                           InputProps={{
                             sx: { fontSize: '0.7rem', height: 28 },
@@ -660,14 +705,16 @@ const MeasurementForm: React.FC<MeasurementFormProps> = ({
                       )}
                     </TableCell>
                     <TableCell align="center">
-                      <Checkbox
-                        checked={row.showMemo || false}
-                        onChange={e =>
-                          handleChange(idx, 'showMemo', e.target.checked)
-                        }
-                        size="small"
-                        sx={{ padding: 0 }}
-                      />
+                                              <Checkbox
+                          checked={row.showMemo || false}
+                          onChange={e =>
+                            handleChange(idx, 'showMemo', e.target.checked)
+                          }
+                          onKeyDown={e => handleKeyDown(e, idx, 'showMemo')}
+                          tabIndex={1000 + idx * 4 + 6} // 메모체크박스: 1006, 1010, 1014, 1018, 1022, 1026, 1030...
+                          size="small"
+                          sx={{ padding: 0 }}
+                        />
                     </TableCell>
                     <TableCell align="center">
                       <Button
@@ -689,11 +736,13 @@ const MeasurementForm: React.FC<MeasurementFormProps> = ({
                           onChange={e =>
                             handleChange(idx, 'memo', e.target.value)
                           }
+                          onKeyDown={e => handleKeyDown(e, idx, 'memo')}
                           size="small"
                           fullWidth
                           placeholder="메모를 입력하세요"
                           multiline
                           rows={2}
+                          tabIndex={1000 + idx * 4 + 7} // 메모입력: 1007, 1011, 1015, 1019, 1023, 1027, 1031...
                           InputProps={{ sx: { fontSize: '0.8rem' } }}
                         />
                       </TableCell>

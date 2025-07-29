@@ -2919,6 +2919,15 @@ const EstimateManagement: React.FC = () => {
   const [editOptionDialogOpen, setEditOptionDialogOpen] = useState(false);
   const [editingOption, setEditingOption] = useState<any>(null);
   const [editOptionQuantity, setEditOptionQuantity] = useState<number>(1);
+  
+  // 수량 수정 모달 상태
+  const [quantityEditModalOpen, setQuantityEditModalOpen] = useState(false);
+  const [editingQuantityRow, setEditingQuantityRow] = useState<any>(null);
+  const [editingQuantityValue, setEditingQuantityValue] = useState<number>(1);
+  const [editingQuantityOriginal, setEditingQuantityOriginal] = useState<number>(1);
+  
+
+  
   const [contextMenu, setContextMenu] = useState<{
     mouseX: number;
     mouseY: number;
@@ -3043,6 +3052,139 @@ const EstimateManagement: React.FC = () => {
     setContextMenu(null);
   };
 
+  // 수량 수정 모달 열기
+  const handleOpenQuantityEditModal = (row: any) => {
+    setEditingQuantityRow(row);
+    setEditingQuantityValue(row.quantity || 1);
+    setEditingQuantityOriginal(row.quantity || 1);
+    setQuantityEditModalOpen(true);
+  };
+
+  // 수량 수정 모달 닫기
+  const handleCloseQuantityEditModal = () => {
+    setQuantityEditModalOpen(false);
+    setEditingQuantityRow(null);
+    setEditingQuantityValue(1);
+    setEditingQuantityOriginal(1);
+  };
+
+  // 수량 수정 적용
+  const handleApplyQuantityEdit = () => {
+    if (!editingQuantityRow) return;
+
+    const currentRows = estimates[activeTab].rows;
+    const updatedRows = currentRows.map(row => {
+      if (row.id === editingQuantityRow.id) {
+        // 견적서 표시 형식 업데이트
+        let updatedDetails = row.details || '';
+        const optionName = row.optionLabel || row.productName || '';
+        
+        // 커튼시공/블라인드시공: 수량 업데이트
+        if (optionName.includes('커튼시공') || optionName.includes('커튼 시공')) {
+          // 기존 형식에서 수량만 변경
+          updatedDetails = updatedDetails.replace(/커튼\s+\d+조/, `커튼 ${editingQuantityValue}조`);
+        } else if (optionName.includes('블라인드시공') || optionName.includes('블라인드 시공')) {
+          // 기존 형식에서 수량만 변경
+          updatedDetails = updatedDetails.replace(/블라인드\s+\d+개/, `블라인드 ${editingQuantityValue}개`);
+        }
+        // 전동커튼시공: 괄호 안의 수량 업데이트
+        else if (optionName.includes('전동커튼시공') || optionName.includes('전동커튼 시공')) {
+          // 괄호 안의 수량 업데이트
+          updatedDetails = updatedDetails.replace(/\(커튼\s+\d+조\)/, `(커튼 ${editingQuantityValue}조)`);
+        }
+
+        return {
+          ...row,
+          quantity: editingQuantityValue,
+          totalPrice: (row.salePrice || 0) * editingQuantityValue,
+          cost: (row.purchaseCost || 0) * editingQuantityValue,
+          margin: ((row.salePrice || 0) - (row.purchaseCost || 0)) * editingQuantityValue,
+          details: updatedDetails,
+          isManualQuantity: true, // 수동 설정으로 변경
+        };
+      }
+      return row;
+    });
+
+    updateEstimateRows(activeTab, updatedRows);
+    handleCloseQuantityEditModal();
+  };
+
+  // 자동 계산으로 복원
+  const handleRestoreAutoQuantity = () => {
+    if (!editingQuantityRow) return;
+
+    const currentRows = estimates[activeTab].rows;
+    let autoQuantity = 1;
+
+    // 옵션 타입별 자동 계산
+    const optionName = editingQuantityRow.optionLabel || editingQuantityRow.productName || '';
+    
+    // 커튼시공 자동 계산
+    if (optionName.includes('커튼시공') || optionName.includes('커튼 시공')) {
+      const curtainQuantity = currentRows
+        .filter(row => row.type === 'product' && 
+                      (row.productType?.includes('커튼') || 
+                       row.productName?.includes('커튼') ||
+                       row.curtainType?.includes('커튼')))
+        .reduce((sum, row) => sum + (row.quantity || 1), 0);
+      autoQuantity = curtainQuantity > 0 ? curtainQuantity : 1;
+    }
+    // 블라인드시공 자동 계산
+    else if (optionName.includes('블라인드시공') || optionName.includes('블라인드 시공')) {
+      const blindQuantity = currentRows
+        .filter(row => row.type === 'product' && 
+                      (row.productType?.includes('블라인드') || 
+                       row.productName?.includes('블라인드') ||
+                       row.curtainType?.includes('블라인드')))
+        .reduce((sum, row) => sum + (row.quantity || 1), 0);
+      autoQuantity = blindQuantity > 0 ? blindQuantity : 1;
+    }
+    // 레일 옵션 자동 계산 (레일 개수별)
+    else if (optionName.includes('레일') || editingQuantityRow.details?.includes('레일')) {
+      // 레일 관련 제품 개수 계산
+      const railQuantity = currentRows
+        .filter(row => row.type === 'product' && 
+                      (row.productType?.includes('레일') || 
+                       row.productName?.includes('레일')))
+        .reduce((sum, row) => sum + (row.quantity || 1), 0);
+      autoQuantity = railQuantity > 0 ? railQuantity : 1;
+    }
+    // 전동 관련 옵션 (기본값 1)
+    else if (optionName.includes('전동') || optionName.includes('모터')) {
+      autoQuantity = 1; // 전동은 기본적으로 1개
+    }
+    // 기타 옵션 (기본값 1)
+    else {
+      autoQuantity = 1;
+    }
+
+    setEditingQuantityValue(autoQuantity);
+    
+    // 자동 계산된 수량으로 견적서 표시 형식 미리보기 업데이트
+    if (editingQuantityRow) {
+      const optionName = editingQuantityRow.optionLabel || editingQuantityRow.productName || '';
+      let updatedDetails = editingQuantityRow.details || '';
+      
+      // 커튼시공/블라인드시공: 수량 업데이트
+      if (optionName.includes('커튼시공') || optionName.includes('커튼 시공')) {
+        updatedDetails = updatedDetails.replace(/커튼\s+\d+조/, `커튼 ${autoQuantity}조`);
+      } else if (optionName.includes('블라인드시공') || optionName.includes('블라인드 시공')) {
+        updatedDetails = updatedDetails.replace(/블라인드\s+\d+개/, `블라인드 ${autoQuantity}개`);
+      }
+      // 전동커튼시공: 괄호 안의 수량 업데이트
+      else if (optionName.includes('전동커튼시공') || optionName.includes('전동커튼 시공')) {
+        updatedDetails = updatedDetails.replace(/\(커튼\s+\d+조\)/, `(커튼 ${autoQuantity}조)`);
+      }
+      
+      // 미리보기용으로 editingQuantityRow 업데이트
+      setEditingQuantityRow({
+        ...editingQuantityRow,
+        details: updatedDetails
+      });
+    }
+  };
+
   const handleEditFromContextMenu = () => {
     if (contextMenu) {
       handleEditOption(contextMenu.option);
@@ -3059,24 +3201,25 @@ const EstimateManagement: React.FC = () => {
             row.details?.includes('시공'));
   };
 
-  // 견적서 테이블의 시공 옵션 더블클릭 핸들러
+  // 견적서 테이블의 옵션 더블클릭 핸들러
   const handleEstimateOptionDoubleClick = (row: any, idx: number) => {
     console.log('견적서 옵션 더블클릭:', row);
     
-    if (isConstructionOption(row)) {
-      console.log('시공 옵션 더블클릭 - 수정 모달 열기');
-      setEditingOption({
-        optionName: row.optionLabel || row.productName,
-        vendor: row.vendor,
-        salePrice: row.salePrice,
-        purchaseCost: row.purchaseCost,
-        details: row.details,
-        note: row.note
-      });
-      setEditOptionQuantity(row.quantity || 1);
-      setEditOptionDialogOpen(true);
-    }
+    // 모든 옵션에 대해 수정 모달 열기
+    console.log('옵션 더블클릭 - 수정 모달 열기');
+    setEditingOption({
+      optionName: row.optionLabel || row.productName,
+      vendor: row.vendor,
+      salePrice: row.salePrice,
+      purchaseCost: row.purchaseCost,
+      details: row.details,
+      note: row.note
+    });
+    setEditOptionQuantity(row.quantity || 1);
+    setEditOptionDialogOpen(true);
   };
+
+
 
   const handleAddOptionToEstimate = (selectedOption: any) => {
     if (!selectedOption) return;
@@ -3096,74 +3239,92 @@ const EstimateManagement: React.FC = () => {
       }
     }
 
-    // 시공 옵션인지 확인
-    const isConstructionOption = selectedOption.optionType === '시공' || 
-                                selectedOption.optionType === '시공옵션' ||
-                                optionTypeMap[optionSearchTab] === '시공옵션';
-    
-    // 시공 옵션의 수량을 자동으로 계산
+    // 모든 옵션의 수량을 자동으로 계산
     let finalQuantity = 1;
+    const optionName = selectedOption.optionName || '';
     
-    if (isConstructionOption) {
-      // 커튼시공인 경우 커튼 제품의 수량 합계
-      if (selectedOption.optionName?.includes('커튼시공') || 
-          selectedOption.optionName?.includes('커튼 시공')) {
-        const curtainQuantity = currentRows
-          .filter(row => row.type === 'product' && 
-                        (row.productType?.includes('커튼') || 
-                         row.productName?.includes('커튼') ||
-                         row.curtainType?.includes('커튼')))
-          .reduce((sum, row) => sum + (row.quantity || 1), 0);
-        finalQuantity = curtainQuantity > 0 ? curtainQuantity : optionQuantity;
-        console.log('커튼시공 자동 수량 설정:', curtainQuantity);
-      }
-      // 블라인드시공인 경우 블라인드 제품의 수량 합계
-      else if (selectedOption.optionName?.includes('블라인드시공') || 
-               selectedOption.optionName?.includes('블라인드 시공')) {
-        const blindQuantity = currentRows
-          .filter(row => row.type === 'product' && 
-                        (row.productType?.includes('블라인드') || 
-                         row.productName?.includes('블라인드') ||
-                         row.curtainType?.includes('블라인드')))
-          .reduce((sum, row) => sum + (row.quantity || 1), 0);
-        finalQuantity = blindQuantity > 0 ? blindQuantity : optionQuantity;
-        console.log('블라인드시공 자동 수량 설정:', blindQuantity);
-      }
-      // 기타 시공 옵션은 사용자 입력 수량 사용
-      else {
-        finalQuantity = optionQuantity;
-      }
+    // 커튼시공인 경우 커튼 제품의 수량 합계
+    if (optionName.includes('커튼시공') || optionName.includes('커튼 시공')) {
+      const curtainQuantity = currentRows
+        .filter(row => row.type === 'product' && 
+                      (row.productType?.includes('커튼') || 
+                       row.productName?.includes('커튼') ||
+                       row.curtainType?.includes('커튼')))
+        .reduce((sum, row) => sum + (row.quantity || 1), 0);
+      finalQuantity = curtainQuantity > 0 ? curtainQuantity : optionQuantity;
+      console.log('커튼시공 자동 수량 설정:', curtainQuantity);
+    }
+    // 블라인드시공인 경우 블라인드 제품의 수량 합계
+    else if (optionName.includes('블라인드시공') || optionName.includes('블라인드 시공')) {
+      const blindQuantity = currentRows
+        .filter(row => row.type === 'product' && 
+                      (row.productType?.includes('블라인드') || 
+                       row.productName?.includes('블라인드') ||
+                       row.curtainType?.includes('블라인드')))
+        .reduce((sum, row) => sum + (row.quantity || 1), 0);
+      finalQuantity = blindQuantity > 0 ? blindQuantity : optionQuantity;
+      console.log('블라인드시공 자동 수량 설정:', blindQuantity);
+    }
+    // 레일 관련 옵션인 경우 레일 제품의 수량 합계
+    else if (optionName.includes('레일') || selectedOption.details?.includes('레일')) {
+      const railQuantity = currentRows
+        .filter(row => row.type === 'product' && 
+                      (row.productType?.includes('레일') || 
+                       row.productName?.includes('레일')))
+        .reduce((sum, row) => sum + (row.quantity || 1), 0);
+      finalQuantity = railQuantity > 0 ? railQuantity : optionQuantity;
+      console.log('레일 옵션 자동 수량 설정:', railQuantity);
+    }
+    // 전동 관련 옵션은 기본값 1
+    else if (optionName.includes('전동') || optionName.includes('모터')) {
+      finalQuantity = 1;
+      console.log('전동 옵션 기본 수량 설정:', 1);
+    }
+    // 기타 옵션은 사용자 입력 수량 사용
+    else {
+      finalQuantity = optionQuantity;
+      console.log('기타 옵션 수량 설정:', optionQuantity);
     }
 
-    // 시공 옵션의 세부내용에 자동 계산 정보 추가
+    // 모든 옵션의 세부내용에 자동 계산 정보 추가
     let optionDetails = selectedOption.details || '';
     
-    if (isConstructionOption) {
-      if (selectedOption.optionName?.includes('커튼시공') || 
-          selectedOption.optionName?.includes('커튼 시공')) {
-        const curtainQuantity = currentRows
-          .filter(row => row.type === 'product' && 
-                        (row.productType?.includes('커튼') || 
-                         row.productName?.includes('커튼') ||
-                         row.curtainType?.includes('커튼')))
-          .reduce((sum, row) => sum + (row.quantity || 1), 0);
-        const autoCalcPattern = /\(커튼 \d+조\)/;
-        if (!autoCalcPattern.test(optionDetails)) {
-          optionDetails = `${selectedOption.details || ''} (커튼 ${curtainQuantity}조)`;
-        }
+    // 커튼시공 세부내용에 자동 계산 정보 추가
+    if (optionName.includes('커튼시공') || optionName.includes('커튼 시공')) {
+      const curtainQuantity = currentRows
+        .filter(row => row.type === 'product' && 
+                      (row.productType?.includes('커튼') || 
+                       row.productName?.includes('커튼') ||
+                       row.curtainType?.includes('커튼')))
+        .reduce((sum, row) => sum + (row.quantity || 1), 0);
+      const autoCalcPattern = /\(커튼 \d+조\)/;
+      if (!autoCalcPattern.test(optionDetails)) {
+        optionDetails = `${selectedOption.details || ''} (커튼 ${curtainQuantity}조)`;
       }
-      else if (selectedOption.optionName?.includes('블라인드시공') || 
-               selectedOption.optionName?.includes('블라인드 시공')) {
-        const blindQuantity = currentRows
-          .filter(row => row.type === 'product' && 
-                        (row.productType?.includes('블라인드') || 
-                         row.productName?.includes('블라인드') ||
-                         row.curtainType?.includes('블라인드')))
-          .reduce((sum, row) => sum + (row.quantity || 1), 0);
-        const autoCalcPattern = /\(블라인드 \d+개\)/;
-        if (!autoCalcPattern.test(optionDetails)) {
-          optionDetails = `${selectedOption.details || ''} (블라인드 ${blindQuantity}개)`;
-        }
+    }
+    // 블라인드시공 세부내용에 자동 계산 정보 추가
+    else if (optionName.includes('블라인드시공') || optionName.includes('블라인드 시공')) {
+      const blindQuantity = currentRows
+        .filter(row => row.type === 'product' && 
+                      (row.productType?.includes('블라인드') || 
+                       row.productName?.includes('블라인드') ||
+                       row.curtainType?.includes('블라인드')))
+        .reduce((sum, row) => sum + (row.quantity || 1), 0);
+      const autoCalcPattern = /\(블라인드 \d+개\)/;
+      if (!autoCalcPattern.test(optionDetails)) {
+        optionDetails = `${selectedOption.details || ''} (블라인드 ${blindQuantity}개)`;
+      }
+    }
+    // 레일 옵션 세부내용에 자동 계산 정보 추가
+    else if (optionName.includes('레일') || selectedOption.details?.includes('레일')) {
+      const railQuantity = currentRows
+        .filter(row => row.type === 'product' && 
+                      (row.productType?.includes('레일') || 
+                       row.productName?.includes('레일')))
+        .reduce((sum, row) => sum + (row.quantity || 1), 0);
+      const autoCalcPattern = /\(레일 \d+개\)/;
+      if (!autoCalcPattern.test(optionDetails)) {
+        optionDetails = `${selectedOption.details || ''} (레일 ${railQuantity}개)`;
       }
     }
 
@@ -3182,6 +3343,7 @@ const EstimateManagement: React.FC = () => {
       totalPrice: (selectedOption.salePrice || 0) * finalQuantity, // 수량을 곱한 총 판매가
       cost: (selectedOption.purchaseCost || 0) * finalQuantity, // 수량을 곱한 총 원가
       optionLabel: selectedOption.optionName, // 옵션명을 optionLabel로 설정
+      isManualQuantity: false, // 기본적으로 자동 계산
       // ... 나머지 필드 초기화
       space: '',
       curtainType: '',
@@ -4427,16 +4589,56 @@ const EstimateManagement: React.FC = () => {
         try {
           if (existingFinalIndex >= 0) {
             // 기존 Final 견적서 업데이트
-            await estimateService.updateEstimate(savedEstimates[existingFinalIndex].id, savedEstimates[existingFinalIndex]);
-            console.log('Firebase에 기존 Final 견적서 업데이트 완료');
+            const estimateToUpdate = savedEstimates[existingFinalIndex];
+            console.log('Firebase에 기존 Final 견적서 업데이트 시작:', estimateToUpdate.id, estimateToUpdate.estimateNo);
+            
+            // ID가 Firebase 문서 ID인지 확인
+            if (estimateToUpdate.id && estimateToUpdate.id.length > 20) {
+              // Firebase 문서 ID로 업데이트
+              await estimateService.updateEstimate(estimateToUpdate.id, estimateToUpdate);
+              console.log('Firebase에 기존 Final 견적서 업데이트 완료 (문서 ID 사용)');
+            } else {
+              // 견적번호로 검색하여 업데이트
+              const existingEstimate = await estimateService.getEstimateByNumber(estimateToUpdate.estimateNo);
+              if (existingEstimate) {
+                await estimateService.updateEstimate(existingEstimate.id, estimateToUpdate);
+                console.log('Firebase에 기존 Final 견적서 업데이트 완료 (견적번호 검색)');
+              } else {
+                // 기존 견적서가 없으면 새로 저장
+                const savedEstimate = await estimateService.saveEstimate(estimateToUpdate);
+                console.log('Firebase에 새로운 Final 견적서 저장 완료:', savedEstimate);
+                
+                // 저장된 ID로 업데이트
+                if (savedEstimate) {
+                  estimateToUpdate.id = savedEstimate;
+                  savedEstimates[existingFinalIndex] = estimateToUpdate;
+                  localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
+                }
+              }
+            }
           } else {
             // 새로운 Final 견적서 저장
-            const savedEstimate = await estimateService.saveEstimate(savedEstimates[savedEstimates.length - 1]);
+            const estimateToSave = savedEstimates[savedEstimates.length - 1];
+            console.log('Firebase에 새로운 Final 견적서 저장 시작:', estimateToSave.estimateNo);
+            
+            const savedEstimate = await estimateService.saveEstimate(estimateToSave);
             console.log('Firebase에 새로운 Final 견적서 저장 완료:', savedEstimate);
+            
+            // 저장된 ID로 업데이트
+            if (savedEstimate) {
+              estimateToSave.id = savedEstimate;
+              savedEstimates[savedEstimates.length - 1] = estimateToSave;
+              localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
+            }
           }
         } catch (firebaseError) {
           console.error('Firebase 저장 실패, localStorage만 사용:', firebaseError);
-          // Firebase 실패 시 localStorage만 사용
+          // Firebase 실패 시 localStorage만 사용하고 사용자에게 알림
+          setSnackbar({
+            open: true,
+            message: `Final 견적서가 로컬에만 저장되었습니다. (${finalEstimateNo})`,
+            severity: 'warning',
+          });
         }
 
         // Final 견적서 저장 후에는 새로운 견적서로 초기화하지 않음
@@ -5171,7 +5373,7 @@ const EstimateManagement: React.FC = () => {
   };
 
   const [isTemplateManagerOpen, setTemplateManagerOpen] = useState(false);
-  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string }>({
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'error' | 'warning' | 'info' }>({
     open: false,
     message: '',
   });
@@ -5614,7 +5816,7 @@ const EstimateManagement: React.FC = () => {
           const parts = match.match(/([^:]+):\s*(\d+)자\s*(\d+)개/);
           if (parts) {
             railItems.push({
-              space: parts[1].trim(),
+              space: parts[1].trim().replace(/^,+|,+$/g, ''), // 앞뒤 쉼표 제거
               length: Number(parts[2]),
               count: Number(parts[3]),
             });
@@ -7952,7 +8154,23 @@ const EstimateManagement: React.FC = () => {
                             </Box>
                           </TableCell>
                         )}
-                        <TableCell sx={{ color: 'var(--text-color)' }}>{option.details}</TableCell>
+                        <TableCell sx={{ color: 'var(--text-color)' }}>
+                          <Tooltip
+                            title={option.details || '세부내용 없음'}
+                            placement="top"
+                            arrow
+                          >
+                            <span>
+                              {option.details ? 
+                                (option.details.length > 20 ? 
+                                  `${option.details.substring(0, 20)}...` : 
+                                  option.details
+                                ) : 
+                                '세부내용 없음'
+                              }
+                            </span>
+                          </Tooltip>
+                        </TableCell>
                         <TableCell sx={{ color: 'var(--text-color)' }}>{option.note}</TableCell>
                       </TableRow>
                     ))}
@@ -8873,6 +9091,9 @@ const EstimateManagement: React.FC = () => {
                                 fontSize: '11pt',
                                 cursor: 'pointer',
                                 transition: 'background 0.2s',
+                                '&:hover': {
+                                  backgroundColor: '#ffb74d',
+                                }
                               }}
                               onClick={() => {
                                 if (isBulkEditMode) {
@@ -8882,6 +9103,10 @@ const EstimateManagement: React.FC = () => {
                                 }
                               }}
                               onDoubleClick={() => handleRowClick(idx)}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                handleRowClick(idx);
+                              }}
                             >
                               {isBulkEditMode && (
                                 <TableCell sx={{ width: 50 }}>
@@ -8961,14 +9186,22 @@ const EstimateManagement: React.FC = () => {
                               sx={{
                                 backgroundColor: getSpaceColor(row.space, 1.12),
                                 fontSize: '10.5pt',
-                                cursor: isRail || isConstructionOption(row) ? 'pointer' : 'default',
+                                cursor: 'pointer',
                                 '&:hover': {
-                                  backgroundColor: isConstructionOption(row) ? '#ffb74d' : undefined,
+                                  backgroundColor: '#ffb74d',
                                 }
                               }}
+                                                              onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  if (isRail) {
+                                    handleRailEdit(idx);
+                                  } else {
+                                    handleOpenQuantityEditModal(row);
+                                  }
+                                }}
                               onDoubleClick={
                                 isRail ? () => handleRailEdit(idx) : 
-                                isConstructionOption(row) ? () => handleEstimateOptionDoubleClick(row, idx) : undefined
+                                () => handleEstimateOptionDoubleClick(row, idx)
                               }
                             >
                               <TableCell sx={{ 
@@ -9011,13 +9244,41 @@ const EstimateManagement: React.FC = () => {
                                   textOverflow: 'ellipsis',
                                   maxWidth: '300px',
                                 }}
-                                title={isRail
-                                  ? `${row.details} (서비스 품목입니다)`
-                                  : `${row.optionLabel} / ${row.details}`}
                               >
-                                {isRail
-                                  ? `${row.details} (서비스 품목입니다)`
-                                  : `${row.optionLabel}`}
+                                <Tooltip
+                                  title={isRail
+                                    ? `${row.details} (서비스 품목입니다)`
+                                    : row.details 
+                                      ? `${row.optionLabel} / ${row.details}`
+                                      : row.optionLabel}
+                                  placement="top"
+                                  arrow
+                                >
+                                  <span>
+                                    {isRail
+                                      ? `${row.details} (서비스 품목입니다)`
+                                                                              : (() => {
+                                            // 시공옵션의 경우 괄호 안의 수량 정보만 추출 (전동 제외)
+                                            if (row.details && (row.optionLabel?.includes('시공') || row.optionLabel?.includes('커튼') || row.optionLabel?.includes('블라인드'))) {
+                                              // 전동이 포함된 옵션은 전체 상세정보 표시
+                                              if (row.optionLabel?.includes('전동')) {
+                                                return row.details 
+                                                  ? `${row.optionLabel} / ${row.details}`
+                                                  : row.optionLabel;
+                                              }
+                                              // 일반 시공옵션은 괄호 안의 수량 정보만 추출
+                                              const match = row.details.match(/\(([^)]+)\)/);
+                                              if (match) {
+                                                return `${row.optionLabel} / ${match[1]}`;
+                                              }
+                                            }
+                                            // 일반적인 경우
+                                            return row.details 
+                                              ? `${row.optionLabel} / ${row.details}`
+                                              : row.optionLabel;
+                                          })()}
+                                  </span>
+                                </Tooltip>
                               </TableCell>
                               {monetaryFields.map(
                                 field =>
@@ -9399,6 +9660,8 @@ const EstimateManagement: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
+
+
       </Grid>
 
       {/* 견적서 양식 */}
@@ -11044,6 +11307,182 @@ const EstimateManagement: React.FC = () => {
           </Typography>
         </Box>
       </Snackbar>
+
+      {/* 수량 수정 모달 */}
+      <Dialog
+        open={quantityEditModalOpen}
+        onClose={handleCloseQuantityEditModal}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            backgroundColor: '#1e2633',
+            color: '#e0e6ed',
+            border: '1px solid #2e3a4a',
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          borderBottom: '1px solid #2e3a4a',
+          backgroundColor: '#2e3a4a',
+          color: '#ffffff'
+        }}>
+          옵션 수량 수정
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          {editingQuantityRow && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box>
+                <Typography variant="subtitle2" sx={{ color: '#b0b8c1', mb: 1 }}>
+                  옵션명
+                </Typography>
+                <Typography variant="body1" sx={{ color: '#ffffff' }}>
+                  {editingQuantityRow.optionLabel || editingQuantityRow.productName}
+                </Typography>
+              </Box>
+              
+              <Box>
+                <Typography variant="subtitle2" sx={{ color: '#b0b8c1', mb: 1 }}>
+                  현재 수량
+                </Typography>
+                <Typography variant="body1" sx={{ color: '#ffffff' }}>
+                  {editingQuantityRow.quantity || 1}
+                </Typography>
+              </Box>
+
+              <Box>
+                <Typography variant="subtitle2" sx={{ color: '#b0b8c1', mb: 1 }}>
+                  설정 방식
+                </Typography>
+                <Typography variant="body1" sx={{ color: '#ffffff' }}>
+                  {editingQuantityRow.isManualQuantity ? '수동 설정' : '자동 계산'}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#8a9ba8', display: 'block', mt: 0.5 }}>
+                  {(() => {
+                    const optionName = editingQuantityRow.optionLabel || editingQuantityRow.productName || '';
+                    if (optionName.includes('커튼시공') || optionName.includes('커튼 시공')) {
+                      return '커튼 개수별 자동 계산';
+                    } else if (optionName.includes('블라인드시공') || optionName.includes('블라인드 시공')) {
+                      return '블라인드 개수별 자동 계산';
+                    } else if (optionName.includes('레일') || editingQuantityRow.details?.includes('레일')) {
+                      return '레일 개수별 자동 계산';
+                    } else if (optionName.includes('전동') || optionName.includes('모터')) {
+                      return '전동 옵션 (기본값 1)';
+                    } else {
+                      return '기본 수량 (1개)';
+                    }
+                  })()}
+                </Typography>
+              </Box>
+
+              <Box>
+                <Typography variant="subtitle2" sx={{ color: '#b0b8c1', mb: 1 }}>
+                  새 수량
+                </Typography>
+                <TextField
+                  type="number"
+                  value={editingQuantityValue}
+                  onChange={(e) => setEditingQuantityValue(Number(e.target.value) || 1)}
+                  fullWidth
+                  size="small"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      color: '#ffffff',
+                      backgroundColor: '#2e3a4a',
+                      '& fieldset': {
+                        borderColor: '#4a5568',
+                      },
+                      '&:hover fieldset': {
+                        borderColor: '#718096',
+                      },
+                      '&.Mui-focused fieldset': {
+                        borderColor: '#40c4ff',
+                      },
+                    },
+                    '& .MuiInputLabel-root': {
+                      color: '#b0b8c1',
+                    },
+                  }}
+                />
+              </Box>
+
+              {/* 표시 형식 미리보기 */}
+              <Box>
+                <Typography variant="subtitle2" sx={{ color: '#b0b8c1', mb: 1 }}>
+                  표시 형식 미리보기
+                </Typography>
+                <Box sx={{ 
+                  p: 2, 
+                  backgroundColor: '#2e3a4a', 
+                  borderRadius: 1,
+                  border: '1px solid #4a5568'
+                }}>
+                  <Typography variant="body2" sx={{ color: '#ffffff' }}>
+                    {(() => {
+                      const optionName = editingQuantityRow.optionLabel || editingQuantityRow.productName || '';
+                      let previewText = '';
+                      
+                      if (optionName.includes('커튼시공') || optionName.includes('커튼 시공')) {
+                        previewText = `커튼시공 / 커튼 ${editingQuantityValue}조`;
+                      } else if (optionName.includes('블라인드시공') || optionName.includes('블라인드 시공')) {
+                        previewText = `블라인드시공 / 블라인드 ${editingQuantityValue}개`;
+                      } else if (optionName.includes('전동커튼시공') || optionName.includes('전동커튼 시공')) {
+                        previewText = `전동커튼시공 / 전동커튼 시공비용 (커튼 ${editingQuantityValue}조)`;
+                      } else {
+                        previewText = `${optionName} / ${editingQuantityValue}개`;
+                      }
+                      
+                      return previewText;
+                    })()}
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ 
+          borderTop: '1px solid #2e3a4a',
+          backgroundColor: '#2e3a4a',
+          p: 2
+        }}>
+          <Button
+            onClick={handleRestoreAutoQuantity}
+            sx={{
+              color: '#40c4ff',
+              '&:hover': {
+                backgroundColor: 'rgba(64, 196, 255, 0.1)',
+              }
+            }}
+          >
+            자동 계산으로 복원
+          </Button>
+          <Box sx={{ flexGrow: 1 }} />
+          <Button
+            onClick={handleCloseQuantityEditModal}
+            sx={{
+              color: '#b0b8c1',
+              '&:hover': {
+                backgroundColor: '#4a5568',
+              }
+            }}
+          >
+            취소
+          </Button>
+          <Button
+            onClick={handleApplyQuantityEdit}
+            variant="contained"
+            sx={{
+              backgroundColor: '#40c4ff',
+              color: '#ffffff',
+              '&:hover': {
+                backgroundColor: '#00b0ff',
+              }
+            }}
+          >
+            적용
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

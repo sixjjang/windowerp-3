@@ -32,7 +32,18 @@ export const isChatActive = (chatId: string): boolean => {
 
 // 메시지 발신자인지 확인
 export const isMessageSender = (senderId: string, senderName: string): boolean => {
-  return currentUserId === senderId || currentUserName === senderName;
+  // ID나 이름 중 하나라도 일치하면 발신자로 판단
+  const isSender = currentUserId === senderId || currentUserName === senderName;
+  
+  console.log(`🔍 발신자 확인:`, {
+    senderId,
+    senderName,
+    currentUserId,
+    currentUserName,
+    isSender
+  });
+  
+  return isSender;
 };
 
 // 채팅 알림이 필요한지 확인

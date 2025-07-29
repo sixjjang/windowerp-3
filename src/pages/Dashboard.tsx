@@ -24,6 +24,7 @@ import {
   DialogActions,
   Menu,
   MenuItem,
+  CircularProgress,
 } from '@mui/material';
 import ScheduleDetailModal from '../components/ScheduleDetailModal';
 import {
@@ -59,6 +60,10 @@ import {
   PhotoLibrary as PhotoLibraryIcon,
   Download as DownloadIcon,
   CloudUpload as CloudUploadIcon,
+  ClearAll as ClearAllIcon,
+  Archive as ArchiveIcon,
+  Check as CheckIcon,
+  DoneAll as DoneAllIcon,
 } from '@mui/icons-material';
 import { UserContext } from '../components/Layout';
 import { API_BASE } from '../utils/auth';
@@ -208,6 +213,19 @@ const defaultQuickLinks = {
 
 const Dashboard: React.FC = () => {
   const { nickname, userId } = useContext(UserContext);
+  const [currentUserProfileImage, setCurrentUserProfileImage] = useState<string>('');
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [userProfileModalOpen, setUserProfileModalOpen] = useState(false);
+  const [messageStatuses, setMessageStatuses] = useState<{ [key: string]: 'sending' | 'sent' | 'read' }>({});
+  const [messageContextMenu, setMessageContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    message: any;
+  } | null>(null);
+  const [messageReactions, setMessageReactions] = useState<{ [key: string]: { [emoji: string]: string[] } }>({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [expandedReactions, setExpandedReactions] = useState<{ [key: string]: boolean }>({});
   const navigate = useNavigate();
   const location = useLocation(); // 현재 페이지 위치 추적
   const [todayEvents, setTodayEvents] = useState<ScheduleEvent[]>([]);
@@ -223,6 +241,10 @@ const Dashboard: React.FC = () => {
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
+  // 채팅 메시지 관리 상태
+  const [showOldMessages, setShowOldMessages] = useState(false); // 기본적으로 이전 메시지 숨김
+  const [maxVisibleMessages, setMaxVisibleMessages] = useState(30); // 최근 30개 메시지만 표시
+  const [chatMessageCount, setChatMessageCount] = useState(0);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [scheduleExpanded, setScheduleExpanded] = useState(true);
   const [activeChats, setActiveChats] = useState<{ [key: string]: boolean }>({});
@@ -412,12 +434,49 @@ const Dashboard: React.FC = () => {
     loadQuickLinks();
   }, []);
 
+  // 채팅 메시지 관리 설정 로드
+  useEffect(() => {
+    try {
+      const savedShowOldMessages = localStorage.getItem('chatShowOldMessages');
+      const savedMaxVisibleMessages = localStorage.getItem('chatMaxVisibleMessages');
+      
+      if (savedShowOldMessages !== null) {
+        setShowOldMessages(JSON.parse(savedShowOldMessages));
+      }
+      if (savedMaxVisibleMessages !== null) {
+        setMaxVisibleMessages(JSON.parse(savedMaxVisibleMessages));
+      }
+    } catch (error) {
+      console.error('채팅 설정 로드 오류:', error);
+    }
+  }, []);
+
+  // 채팅 메시지 관리 설정 저장
+  useEffect(() => {
+    try {
+      localStorage.setItem('chatShowOldMessages', JSON.stringify(showOldMessages));
+      localStorage.setItem('chatMaxVisibleMessages', JSON.stringify(maxVisibleMessages));
+    } catch (error) {
+      console.error('채팅 설정 저장 오류:', error);
+    }
+  }, [showOldMessages, maxVisibleMessages]);
+
   // 현재 사용자 정보 설정 및 채팅창 활성화 상태 관리
   useEffect(() => {
-    if (userId && nickname) {
-      setCurrentUser(userId, nickname);
-      console.log(`👤 현재 사용자 설정: ${nickname} (${userId})`);
-    }
+    // 현재 사용자 정보 설정
+    setCurrentUser(userId || 'current_user', nickname || '사용자');
+    
+    // 대시보드가 활성화되면 전체 채팅창을 활성으로 등록
+    registerActiveChat('global-chat');
+    
+    console.log(`🔧 사용자 정보 설정: ${nickname} (${userId})`);
+    console.log(`🔧 전체 채팅창 활성화 등록`);
+    
+    // 컴포넌트 언마운트 시 활성 채팅창 해제
+    return () => {
+      unregisterActiveChat('global-chat');
+      console.log(`🔧 전체 채팅창 활성화 해제`);
+    };
   }, [userId, nickname]);
 
   // 대시보드 페이지 활성화/비활성화 관리
@@ -701,12 +760,19 @@ const Dashboard: React.FC = () => {
                 console.log(`🔔 전체 채팅 알림 재생: ${newMessage.user}의 메시지`);
               } catch (error) {
                 console.error('채팅 알림 소리 재생 실패:', error);
+                // 에러가 발생해도 앱이 중단되지 않도록 처리
               }
             }
           });
         }
         
         setChatMessages(messages);
+        setChatMessageCount(messages.length);
+        
+        // 메시지가 많아지면 자동으로 이전 메시지 숨김
+        if (messages.length > maxVisibleMessages * 2 && showOldMessages) {
+          setShowOldMessages(false);
+        }
         
         // 온라인 사용자 목록 업데이트 (최근 5분 내 메시지 보낸 사용자)
         const recentUsers = new Set<string>();
@@ -974,34 +1040,104 @@ const Dashboard: React.FC = () => {
 
 
 
+  // 채팅 메시지 관리 함수들
+  const handleToggleOldMessages = () => {
+    setShowOldMessages(!showOldMessages);
+  };
+
+  const handleClearOldMessages = async () => {
+    if (window.confirm('30일 이전의 모든 채팅 메시지를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) {
+      try {
+        // Firebase에서 30일 이전 메시지 삭제
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        const messagesRef = collection(db, 'employeeChat');
+        const q = query(messagesRef, orderBy('timestamp', 'asc'));
+        const snapshot = await getDocs(q);
+        
+        const deletePromises = snapshot.docs
+          .filter(doc => {
+            const timestamp = doc.data().timestamp?.toDate?.() || new Date(doc.data().timestamp);
+            return timestamp < thirtyDaysAgo;
+          })
+          .map(doc => deleteDoc(doc.ref));
+        
+        await Promise.all(deletePromises);
+        alert('30일 이전 메시지가 삭제되었습니다.');
+      } catch (error) {
+        console.error('메시지 삭제 오류:', error);
+        alert('메시지 삭제에 실패했습니다.');
+      }
+    }
+  };
+
+  const handleClearAllMessages = async () => {
+    if (window.confirm('모든 채팅 메시지를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) {
+      try {
+        const messagesRef = collection(db, 'employeeChat');
+        const q = query(messagesRef, orderBy('timestamp', 'asc'));
+        const snapshot = await getDocs(q);
+        
+        const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+        alert('모든 메시지가 삭제되었습니다.');
+      } catch (error) {
+        console.error('메시지 삭제 오류:', error);
+        alert('메시지 삭제에 실패했습니다.');
+      }
+    }
+  };
+
   const handleSendChat = async () => {
     if (!chatInput.trim()) return;
+
+    const messageId = `temp_${Date.now()}`;
+    const messageText = chatInput.trim();
+    
+    // 임시 메시지 추가 (전송 중 상태)
+    const tempMessage = {
+      id: messageId,
+      user: nickname || '사용자',
+      text: messageText,
+      time: new Date().toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      timestamp: new Date().toISOString(),
+    };
+    
+    setChatMessages(prev => [...prev, tempMessage]);
+    setMessageStatuses(prev => ({ ...prev, [messageId]: 'sending' }));
+    setChatInput('');
 
     try {
       // 채팅 메시지 전송
       await fcmService.sendChatMessageWithNotification(
         nickname || '사용자',
-        chatInput.trim(),
+        messageText,
         userId || 'current_user'
       );
 
-      // 브라우저 알림 표시 (다른 사용자들에게)
-      if (Notification.permission === 'granted') {
-        new Notification('새로운 채팅 메시지', {
-          body: `${nickname || '사용자'}: ${chatInput.trim()}`,
-          icon: '/logo192.png',
-          badge: '/logo192.png',
-          requireInteraction: true,
-          tag: 'chat-notification'
-        });
-      }
-
-      // 입력 필드 초기화
-      setChatInput('');
+      // 전송 완료 상태로 업데이트
+      setMessageStatuses(prev => ({ ...prev, [messageId]: 'sent' }));
+      
+      // 3초 후 읽음 상태로 변경 (시뮬레이션)
+      setTimeout(() => {
+        setMessageStatuses(prev => ({ ...prev, [messageId]: 'read' }));
+      }, 3000);
+      
     } catch (error) {
       console.error('채팅 메시지 저장 오류:', error);
       // 에러 발생 시 사용자에게 알림
       alert('메시지 전송에 실패했습니다. 다시 시도해주세요.');
+      // 실패한 메시지 제거
+      setChatMessages(prev => prev.filter(msg => msg.id !== messageId));
+      setMessageStatuses(prev => {
+        const newStatuses = { ...prev };
+        delete newStatuses[messageId];
+        return newStatuses;
+      });
     }
   };
 
@@ -1156,19 +1292,166 @@ const Dashboard: React.FC = () => {
     handleContextMenuClose();
   };
 
-  // 사용자 목록 가져오기
+  // 아바타 클릭 핸들러
+  const handleAvatarClick = (user: any) => {
+    setSelectedUser(user);
+    setUserProfileModalOpen(true);
+  };
+
+  // 메시지 우클릭 핸들러
+  const handleMessageContextMenu = (event: React.MouseEvent, message: any) => {
+    event.preventDefault();
+    setMessageContextMenu({
+      mouseX: event.clientX + 2,
+      mouseY: event.clientY - 6,
+      message,
+    });
+  };
+
+  // 메시지 컨텍스트 메뉴 닫기
+  const handleMessageContextMenuClose = () => {
+    setMessageContextMenu(null);
+  };
+
+  // 메시지 복사
+  const handleCopyMessage = (text: string) => {
+    navigator.clipboard.writeText(text);
+    handleMessageContextMenuClose();
+  };
+
+  // 이모지 반응 추가
+  const handleAddReaction = (messageId: string, emoji: string) => {
+    setMessageReactions(prev => {
+      const currentReactions = prev[messageId] || {};
+      const currentUsers = currentReactions[emoji] || [];
+      
+      if (currentUsers.includes(nickname || '')) {
+        // 이미 반응한 경우 제거
+        const updatedUsers = currentUsers.filter(user => user !== nickname);
+        if (updatedUsers.length === 0) {
+          const newReactions = { ...currentReactions };
+          delete newReactions[emoji];
+          return { ...prev, [messageId]: newReactions };
+        }
+        return { ...prev, [messageId]: { ...currentReactions, [emoji]: updatedUsers } };
+      } else {
+        // 새로운 반응 추가
+        return { 
+          ...prev, 
+          [messageId]: { 
+            ...currentReactions, 
+            [emoji]: [...currentUsers, nickname || ''] 
+          } 
+        };
+      }
+    });
+  };
+
+  // 날짜 구분선 렌더링 함수
+  const renderDateDivider = (currentMsg: any, index: number, messages: any[]) => {
+    if (index === 0) return null;
+    
+    const currentDate = new Date(currentMsg.timestamp || currentMsg.time);
+    const prevDate = new Date(messages[index - 1].timestamp || messages[index - 1].time);
+    
+    if (isNaN(currentDate.getTime()) || isNaN(prevDate.getTime())) return null;
+    
+    const currentDay = currentDate.toDateString();
+    const prevDay = prevDate.toDateString();
+    
+    if (currentDay !== prevDay) {
+      const today = new Date().toDateString();
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toDateString();
+      
+      let dateText = currentDate.toLocaleDateString();
+      if (currentDay === today) dateText = '오늘';
+      else if (currentDay === yesterday) dateText = '어제';
+      
+      return (
+        <Box
+          sx={{
+            textAlign: 'center',
+            my: 2,
+            position: 'relative',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              top: '50%',
+              left: 0,
+              right: 0,
+              height: '1px',
+              background: 'var(--border-color)',
+              zIndex: 1,
+            }
+          }}
+        >
+          <Chip
+            label={dateText}
+            size="small"
+            sx={{
+              backgroundColor: 'var(--surface-color)',
+              color: 'var(--text-color)',
+              border: '1px solid var(--border-color)',
+              fontSize: '0.7rem',
+              zIndex: 2,
+              position: 'relative',
+            }}
+          />
+        </Box>
+      );
+    }
+    return null;
+  };
+
+  // 상대적 시간 표시 함수
+  const formatRelativeTime = (timestamp: string) => {
+    try {
+      const now = new Date();
+      const messageTime = new Date(timestamp);
+      
+      // Invalid Date 체크
+      if (isNaN(messageTime.getTime())) {
+        return '';
+      }
+      
+      const diffInMinutes = Math.floor((now.getTime() - messageTime.getTime()) / (1000 * 60));
+      
+      if (diffInMinutes < 1) return '방금 전';
+      if (diffInMinutes < 60) return `${diffInMinutes}분 전`;
+      if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}시간 전`;
+      return messageTime.toLocaleDateString();
+    } catch (error) {
+      return '';
+    }
+  };
+
+  // 사용자 목록 가져오기 (프로필 사진 포함)
   useEffect(() => {
     const fetchUsers = async () => {
       try {
         const userList = await userService.getUsers();
-        setUsers(userList);
+        // 프로필 사진 정보가 포함된 사용자 목록 설정
+        const usersWithProfile = userList.map((user: any) => ({
+          ...user,
+          profileImage: user.profileImage || ''
+        }));
+        setUsers(usersWithProfile);
+        
+        // 현재 사용자의 프로필 사진 찾기
+        const currentUser = usersWithProfile.find(user => 
+          user.id === userId || user.username === userId || user.name === nickname
+        );
+        if (currentUser?.profileImage) {
+          setCurrentUserProfileImage(currentUser.profileImage);
+        }
+        
         console.log('사용자 목록 로드 완료:', userList.length, '명');
       } catch (error) {
         console.error('사용자 목록 로드 실패:', error);
       }
     };
     fetchUsers();
-  }, []);
+  }, [userId, nickname]);
 
   return (
     <Box sx={{ p: 3, position: 'relative', minHeight: '100vh' }}>
@@ -2431,6 +2714,111 @@ const Dashboard: React.FC = () => {
         </MenuItem>
       </Menu>
 
+      {/* 사용자 프로필 모달 */}
+      <Dialog
+        open={userProfileModalOpen}
+        onClose={() => setUserProfileModalOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
+            borderRadius: 3,
+            border: '1px solid var(--border-color)',
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            background: 'var(--primary-color)',
+            color: 'var(--text-color)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>
+            사용자 프로필
+          </Typography>
+          <IconButton
+            onClick={() => setUserProfileModalOpen(false)}
+            sx={{ color: 'var(--text-color)' }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          {selectedUser && (
+            <Box sx={{ textAlign: 'center' }}>
+              <Avatar
+                src={selectedUser.profileImage || undefined}
+                sx={{
+                  width: 100,
+                  height: 100,
+                  margin: 'auto',
+                  mb: 2,
+                  background: selectedUser.profileImage ? 'transparent' : 'var(--primary-color)',
+                  fontSize: '2rem',
+                  border: '3px solid var(--border-color)',
+                }}
+              >
+                {(selectedUser.name || selectedUser.username || '?')[0]}
+              </Avatar>
+              <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
+                {selectedUser.name || selectedUser.username || '사용자'}
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)', mb: 2 }}>
+                {selectedUser.role === 'admin' ? '관리자' : selectedUser.role === 'staff' ? '직원' : '사용자'}
+              </Typography>
+              {selectedUser.profileImage && (
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary-color)' }}>
+                  프로필 사진이 설정되어 있습니다
+                </Typography>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 메시지 컨텍스트 메뉴 */}
+      <Menu
+        open={messageContextMenu !== null}
+        onClose={handleMessageContextMenuClose}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          messageContextMenu !== null
+            ? { top: messageContextMenu.mouseY, left: messageContextMenu.mouseX }
+            : undefined
+        }
+        PaperProps={{
+          sx: {
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
+            borderRadius: 2,
+            border: '1px solid var(--border-color)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+            '& .MuiMenuItem-root': {
+              color: 'var(--text-color)',
+              '&:hover': {
+                backgroundColor: 'var(--hover-color)',
+              },
+            },
+          },
+        }}
+      >
+        <MenuItem onClick={() => messageContextMenu && handleCopyMessage(messageContextMenu.message.text)}>
+          <ContentCopyIcon sx={{ mr: 1, fontSize: 20, color: 'var(--primary-color)' }} />
+          메시지 복사
+        </MenuItem>
+        {messageContextMenu?.message.user === nickname && (
+          <MenuItem onClick={handleMessageContextMenuClose}>
+            <DeleteIcon sx={{ mr: 1, fontSize: 20, color: 'var(--error-color)' }} />
+            메시지 삭제
+          </MenuItem>
+        )}
+      </Menu>
+
       {/* 우측 하단 채팅 플로팅 버튼 */}
       {!chatOpen && (
         <Fab
@@ -2465,11 +2853,11 @@ const Dashboard: React.FC = () => {
             zIndex: 1300,
             width: { xs: '95vw', sm: 450 },
             maxWidth: 500,
-            boxShadow: '0 8px 32px rgba(255, 107, 157, 0.18)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
             borderRadius: 4,
-            background: '#23232a',
-            color: 'white',
-            border: '2px solid #FF6B9D',
+            background: 'var(--surface-color)',
+            color: 'var(--text-color)',
+            border: '1px solid var(--border-color)',
             display: 'flex',
             flexDirection: 'column',
             minHeight: 400,
@@ -2479,18 +2867,19 @@ const Dashboard: React.FC = () => {
           {/* 채팅창 헤더 */}
           <Box
             sx={{
-              background: 'linear-gradient(90deg, #FF6B9D 0%, #FF4757 100%)',
-              color: '#fff',
+              background: 'var(--primary-color)',
+              color: 'var(--text-color)',
               borderRadius: '4px 4px 0 0',
               px: 2,
               pt: 1,
               pb: 1,
               fontWeight: 700,
               fontSize: '1rem',
-              boxShadow: '0 2px 8px rgba(255, 107, 157, 0.10)',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
               minHeight: 44,
               display: 'flex',
               flexDirection: 'column',
+              borderBottom: '1px solid var(--border-color)',
             }}
           >
             <Box
@@ -2503,9 +2892,80 @@ const Dashboard: React.FC = () => {
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <GroupIcon sx={{ fontSize: 18, mr: 0.5 }} />
-                <span>전체 사용자 채팅 ({users.length}명)</span>
+                <span>전체채팅({users.length}명)</span>
+                <Chip
+                  label={`${chatMessageCount}개 메시지`}
+                  size="small"
+                  sx={{
+                    ml: 1,
+                    bgcolor: chatMessageCount > maxVisibleMessages ? 'var(--warning-color)' : 'rgba(255,255,255,0.1)',
+                    color: 'var(--text-color)',
+                    fontSize: '0.7rem',
+                    height: 20,
+                    border: chatMessageCount > maxVisibleMessages ? '1px solid var(--warning-color)' : 'none',
+                  }}
+                />
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {/* 메시지 관리 버튼들 */}
+                <Tooltip title="이전 메시지 숨김/표시">
+                  <IconButton
+                    onClick={handleToggleOldMessages}
+                    sx={{ 
+                      color: 'var(--text-color)', 
+                      p: 0.5,
+                      bgcolor: showOldMessages ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)',
+                      '&:hover': {
+                        bgcolor: 'rgba(255,255,255,0.15)',
+                      }
+                    }}
+                  >
+                    {showOldMessages ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="30일 이전 메시지 삭제">
+                  <IconButton
+                    onClick={handleClearOldMessages}
+                    sx={{ 
+                      color: 'var(--text-color)', 
+                      p: 0.5,
+                      '&:hover': {
+                        bgcolor: 'rgba(255,255,255,0.1)',
+                      }
+                    }}
+                  >
+                    <ArchiveIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="모든 메시지 삭제">
+                  <IconButton
+                    onClick={handleClearAllMessages}
+                    sx={{ 
+                      color: 'var(--text-color)', 
+                      p: 0.5,
+                      '&:hover': {
+                        bgcolor: 'rgba(255,255,255,0.1)',
+                      }
+                    }}
+                  >
+                    <ClearAllIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="메시지 검색">
+                  <IconButton
+                    onClick={() => setSearchOpen(!searchOpen)}
+                    sx={{ 
+                      color: 'var(--text-color)', 
+                      p: 0.5,
+                      bgcolor: searchOpen ? 'rgba(255,255,255,0.1)' : 'transparent',
+                      '&:hover': {
+                        bgcolor: 'rgba(255,255,255,0.1)',
+                      }
+                    }}
+                  >
+                    <InfoIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
                 {/* FCM 토큰 관리자 */}
                 <FCMTokenManager 
                   userId={userId || 'current_user'}
@@ -2514,7 +2974,13 @@ const Dashboard: React.FC = () => {
                 />
                 <IconButton
                   onClick={() => setChatOpen(false)}
-                  sx={{ color: '#fff', p: 0.5 }}
+                  sx={{ 
+                    color: 'var(--text-color)', 
+                    p: 0.5,
+                    '&:hover': {
+                      bgcolor: 'rgba(255,255,255,0.1)',
+                    }
+                  }}
                 >
                   <CloseIcon fontSize="small" />
                 </IconButton>
@@ -2524,7 +2990,7 @@ const Dashboard: React.FC = () => {
             <Box
               sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 0.5, flexWrap: 'wrap' }}
             >
-              <Typography sx={{ fontSize: 11, color: '#fff', opacity: 0.8, mr: 1 }}>
+              <Typography sx={{ fontSize: 11, color: 'var(--text-color)', opacity: 0.8, mr: 1 }}>
                 참여자: {users.length}명 | 온라인: {onlineUsers.length}명
               </Typography>
               {users.slice(0, 5).map((user, i) => (
@@ -2533,27 +2999,29 @@ const Dashboard: React.FC = () => {
                   sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                 >
                   <Avatar
+                    src={user.profileImage || undefined}
                     sx={{
-                      width: 20,
-                      height: 20,
-                      bgcolor: onlineUsers.includes(user.name || user.username) ? '#4CAF50' : '#666',
-                      fontSize: 11,
+                      width: 24,
+                      height: 24,
+                      bgcolor: onlineUsers.includes(user.name || user.username) ? 'var(--success-color)' : 'var(--text-secondary-color)',
+                      fontSize: 12,
+                      border: '1px solid var(--border-color)',
                     }}
                   >
                     {(user.name || user.username || '?')[0]}
                   </Avatar>
                   <Typography
-                    sx={{ fontSize: 10, color: '#fff', opacity: 0.8 }}
+                    sx={{ fontSize: 10, color: 'var(--text-color)', opacity: 0.8 }}
                   >
                     {user.name || user.username}
                   </Typography>
                   {i < Math.min(users.length, 5) - 1 && (
-                    <span style={{ color: '#fff', opacity: 0.5 }}>|</span>
+                    <span style={{ color: 'var(--text-color)', opacity: 0.5 }}>|</span>
                   )}
                 </Box>
               ))}
               {users.length > 5 && (
-                <Typography sx={{ fontSize: 10, color: '#fff', opacity: 0.6 }}>
+                <Typography sx={{ fontSize: 10, color: 'var(--text-color)', opacity: 0.6 }}>
                   +{users.length - 5}명 더
                 </Typography>
               )}
@@ -2567,49 +3035,185 @@ const Dashboard: React.FC = () => {
               flex: 1,
               overflowY: 'auto',
               p: 1.2,
-              background: 'rgba(255,255,255,0.02)',
+              background: 'var(--background-color)',
               scrollBehavior: 'smooth',
             }}
           >
-            {chatMessages.map(msg => (
+            {/* 검색 기능 */}
+            {searchOpen && (
               <Box
-                key={msg.id}
                 sx={{
-                  mb: 1.2,
+                  p: 2,
+                  mb: 2,
+                  background: 'var(--surface-color)',
+                  borderRadius: 2,
+                  border: '1px solid var(--border-color)',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                }}
+              >
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="메시지 또는 사용자 검색..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      backgroundColor: 'var(--background-color)',
+                      color: 'var(--text-color)',
+                      '& fieldset': {
+                        borderColor: 'var(--border-color)',
+                      },
+                      '&:hover fieldset': {
+                        borderColor: 'var(--primary-color)',
+                      },
+                      '&.Mui-focused fieldset': {
+                        borderColor: 'var(--primary-color)',
+                      },
+                    },
+                    '& .MuiInputBase-input': {
+                      color: 'var(--text-color)',
+                    },
+                    '& .MuiInputBase-input::placeholder': {
+                      color: 'var(--text-secondary-color)',
+                      opacity: 1,
+                    },
+                  }}
+                />
+              </Box>
+            )}
+
+            {/* 이전 메시지 숨김 상태 표시 */}
+            {!showOldMessages && chatMessages.length > maxVisibleMessages && (
+              <Box
+                sx={{
+                  textAlign: 'center',
+                  py: 2,
+                  mb: 2,
+                  background: 'var(--surface-color)',
+                  borderRadius: 2,
+                  border: '1px solid var(--border-color)',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                }}
+              >
+                <Typography sx={{ color: 'var(--text-secondary-color)', fontSize: '0.8rem' }}>
+                  이전 메시지 {chatMessages.length - maxVisibleMessages}개가 숨겨져 있습니다
+                </Typography>
+                <Button
+                  size="small"
+                  onClick={handleToggleOldMessages}
+                  sx={{
+                    mt: 1,
+                    color: 'var(--primary-color)',
+                    fontSize: '0.7rem',
+                    textTransform: 'none',
+                    '&:hover': {
+                      bgcolor: 'var(--hover-color)',
+                    }
+                  }}
+                >
+                  모든 메시지 보기
+                </Button>
+              </Box>
+            )}
+            
+                        {(showOldMessages ? chatMessages : chatMessages.slice(-maxVisibleMessages))
+              .filter(msg => {
+                if (!searchQuery) return true;
+                const query = searchQuery.toLowerCase();
+                return (
+                  msg.text?.toLowerCase().includes(query) ||
+                  msg.user?.toLowerCase().includes(query)
+                );
+              })
+              .map((msg, index, filteredMessages) => {
+                // 메시지 발신자의 프로필 사진 찾기
+                const isCurrentUser = msg.user === nickname;
+                const messageUser = users.find(user => 
+                  user.name === msg.user || user.username === msg.user || user.nickname === msg.user
+                );
+                const profileImage = isCurrentUser ? currentUserProfileImage : (messageUser?.profileImage || '');
+                
+                return (
+                  <Box key={msg.id}>
+                    {/* 날짜 구분선 */}
+                    {renderDateDivider(msg, index, filteredMessages)}
+                    
+                    {/* 사용자 이름 (자신이 아닌 경우만 표시) */}
+                    {!isCurrentUser && (
+                      <Typography
+                        sx={{
+                          fontSize: 11,
+                          color: 'var(--text-secondary-color)',
+                          mb: 0.5,
+                          ml: 1,
+                          fontWeight: 500,
+                        }}
+                      >
+                        {msg.user}
+                      </Typography>
+                    )}
+                    
+                    <Box
+                      sx={{
                   display: 'flex',
-                  flexDirection: msg.user === nickname ? 'row-reverse' : 'row',
-                  alignItems: 'flex-end',
+                        flexDirection: isCurrentUser ? 'row-reverse' : 'row',
+                        alignItems: 'flex-start',
+                        gap: 1,
+                        mb: 1,
                 }}
               >
                 <Avatar
+                    src={profileImage || undefined}
+                    onClick={() => handleAvatarClick(messageUser || { name: msg.user })}
                   sx={{
-                    width: 24,
-                    height: 24,
-                    bgcolor: msg.user === nickname ? '#FF6B9D' : '#FF4757',
-                    fontSize: 13,
-                    ml: msg.user === nickname ? 1 : 0,
-                    mr: msg.user === nickname ? 0 : 1,
+                      width: 32,
+                      height: 32,
+                      bgcolor: msg.user === nickname ? 'var(--primary-color)' : 'var(--secondary-color)',
+                      fontSize: 16,
+                      border: '2px solid var(--border-color)',
+                      flexShrink: 0,
+                      position: 'relative',
+                      '&:hover': {
+                        transform: 'scale(1.1)',
+                        transition: 'transform 0.2s ease',
+                        cursor: 'pointer',
+                      },
+                      '&::after': {
+                        content: '""',
+                        position: 'absolute',
+                        bottom: -2,
+                        right: -2,
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        backgroundColor: onlineUsers.includes(msg.user) ? 'var(--success-color)' : 'var(--text-secondary-color)',
+                        border: '2px solid var(--background-color)',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                      }
                   }}
                 >
                   {msg.user?.charAt(0) || '?'}
                 </Avatar>
                 <Box
+                  onContextMenu={(e) => handleMessageContextMenu(e, msg)}
                   sx={{
-                    maxWidth: 200,
-                    p: 1,
-                    borderRadius: 2,
+                    maxWidth: 280,
+                    p: 1.5,
+                    borderRadius: 3,
                     background:
                       msg.user === nickname
-                        ? 'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)'
-                        : 'rgba(255,255,255,0.08)',
-                    color: '#fff',
+                        ? 'var(--primary-color)'
+                        : 'var(--surface-color)',
+                    color: 'var(--text-color)',
                     fontSize: 14,
-                    boxShadow:
-                      msg.user === nickname
-                        ? '0 2px 8px rgba(255,107,157,0.10)'
-                        : 'none',
-                    ml: msg.user === nickname ? 0 : 1,
-                    mr: msg.user === nickname ? 1 : 0,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                    border: '1px solid var(--border-color)',
+                    flex: 1,
+                    cursor: 'context-menu',
+                    '&:hover': {
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    }
                   }}
                 >
                   {msg.imageUrl ? (
@@ -2630,27 +3234,122 @@ const Dashboard: React.FC = () => {
                   {msg.text && (
                     <Typography sx={{ fontWeight: 500 }}>{msg.text}</Typography>
                   )}
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
                   <Typography
                     sx={{
                       fontSize: 10,
-                      color: 'rgba(255,255,255,0.5)',
-                      mt: 0.5,
-                      textAlign: 'right',
+                        color: 'var(--text-secondary-color)',
                     }}
+                      title={msg.time} // 툴팁으로 정확한 시간 표시
                   >
-                    {msg.time}
+                      {msg.timestamp ? formatRelativeTime(msg.timestamp) : msg.time}
                   </Typography>
+                                         {msg.user === nickname && (
+                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                         {messageStatuses[msg.id] === 'sending' && (
+                           <CircularProgress size={12} sx={{ color: 'var(--text-secondary-color)' }} />
+                         )}
+                         {messageStatuses[msg.id] === 'sent' && (
+                           <CheckIcon fontSize="small" sx={{ color: 'var(--text-secondary-color)', fontSize: 14 }} />
+                         )}
+                         {messageStatuses[msg.id] === 'read' && (
+                           <DoneAllIcon fontSize="small" sx={{ color: 'var(--success-color)', fontSize: 14 }} />
+                         )}
+                </Box>
+                     )}
+              </Box>
+                   
+                                      {/* 이모지 반응 (축소된 형태) */}
+                   {messageReactions[msg.id] && Object.keys(messageReactions[msg.id]).length > 0 && (
+                     <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
+                       {Object.entries(messageReactions[msg.id]).map(([emoji, users]) => (
+                         <Chip
+                           key={emoji}
+                           label={`${emoji} ${users.length}`}
+                           size="small"
+                           onClick={() => handleAddReaction(msg.id, emoji)}
+                           sx={{ 
+                             fontSize: '0.6rem',
+                             height: 20,
+                             cursor: 'pointer',
+                             backgroundColor: users.includes(nickname || '') ? 'var(--primary-color)' : 'var(--surface-color)',
+                             color: users.includes(nickname || '') ? 'var(--text-color)' : 'var(--text-color)',
+                             '&:hover': {
+                               backgroundColor: 'var(--hover-color)',
+                             }
+                           }}
+                         />
+                       ))}
+                     </Box>
+                   )}
+                   
+                   {/* 이모지 반응 버튼 (축소/확장 가능) */}
+                   <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
+                     {expandedReactions[msg.id] ? (
+                       // 확장된 상태
+                       <>
+                         {['👍', '❤️', '😊', '🎉', '👏'].map((emoji) => (
+                           <IconButton
+                             key={emoji}
+                             size="small"
+                             onClick={() => handleAddReaction(msg.id, emoji)}
+                             sx={{
+                               fontSize: '0.7rem',
+                               p: 0.3,
+                               minWidth: 'auto',
+                               color: 'var(--text-secondary-color)',
+                               '&:hover': {
+                                 backgroundColor: 'var(--hover-color)',
+                                 transform: 'scale(1.1)',
+                               }
+                             }}
+                           >
+                             {emoji}
+                           </IconButton>
+                         ))}
+                         <IconButton
+                           size="small"
+                           onClick={() => setExpandedReactions(prev => ({ ...prev, [msg.id]: false }))}
+                           sx={{
+                             fontSize: '0.6rem',
+                             p: 0.3,
+                             color: 'var(--text-secondary-color)',
+                           }}
+                         >
+                           ×
+                         </IconButton>
+                       </>
+                     ) : (
+                       // 축소된 상태
+                       <IconButton
+                         size="small"
+                         onClick={() => setExpandedReactions(prev => ({ ...prev, [msg.id]: true }))}
+                         sx={{
+                           fontSize: '0.6rem',
+                           p: 0.3,
+                           color: 'var(--text-secondary-color)',
+                           '&:hover': {
+                             backgroundColor: 'var(--hover-color)',
+                           }
+                         }}
+                       >
+                         😊
+                       </IconButton>
+                     )}
+                   </Box>
+                  </Box>
                 </Box>
               </Box>
-            ))}
+            );
+            })}
           </Box>
           {/* 이미지 미리보기 */}
           {imagePreview && (
             <Box
               sx={{
                 p: 1,
-                borderTop: '1px solid #FF6B9D',
-                background: 'rgba(255,255,255,0.05)',
+                borderTop: '1px solid var(--border-color)',
+                background: 'var(--surface-color)',
                 position: 'relative',
               }}
             >
@@ -2674,9 +3373,9 @@ const Dashboard: React.FC = () => {
                     position: 'absolute',
                     top: -8,
                     right: -8,
-                    bgcolor: '#FF4757',
-                    color: 'white',
-                    '&:hover': { bgcolor: '#FF3742' },
+                    bgcolor: 'var(--error-color)',
+                    color: 'var(--text-color)',
+                    '&:hover': { bgcolor: 'var(--hover-color)' },
                   }}
                 >
                   <CloseIcon fontSize="small" />
@@ -2691,8 +3390,8 @@ const Dashboard: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               p: 1,
-              borderTop: '1.5px solid #FF6B9D',
-              background: 'rgba(255,255,255,0.03)',
+              borderTop: '1px solid var(--border-color)',
+              background: 'var(--surface-color)',
             }}
           >
             <input
@@ -2706,8 +3405,8 @@ const Dashboard: React.FC = () => {
               <IconButton
                 component="span"
                 sx={{
-                  color: '#FF6B9D',
-                  '&:hover': { bgcolor: 'rgba(255, 107, 157, 0.1)' },
+                  color: 'var(--primary-color)',
+                  '&:hover': { bgcolor: 'var(--hover-color)' },
                 }}
               >
                 <ImageIcon />
@@ -2716,8 +3415,8 @@ const Dashboard: React.FC = () => {
             <IconButton
               onClick={handleOpenGallery}
               sx={{
-                color: '#FF6B9D',
-                '&:hover': { bgcolor: 'rgba(255, 107, 157, 0.1)' },
+                color: 'var(--primary-color)',
+                '&:hover': { bgcolor: 'var(--hover-color)' },
               }}
             >
               <PhotoLibraryIcon />
@@ -2735,20 +3434,24 @@ const Dashboard: React.FC = () => {
                 mr: 1,
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 2,
-                  background: 'rgba(255,255,255,0.05)',
-                  color: '#fff',
+                  background: 'var(--background-color)',
+                  color: 'var(--text-color)',
                   '& fieldset': {
-                    borderColor: '#FF6B9D',
+                    borderColor: 'var(--border-color)',
                   },
                   '&:hover fieldset': {
-                    borderColor: '#FFB3D1',
+                    borderColor: 'var(--primary-color)',
                   },
                   '&.Mui-focused fieldset': {
-                    borderColor: '#FF6B9D',
+                    borderColor: 'var(--primary-color)',
                   },
                 },
                 '& .MuiInputBase-input': {
-                  color: '#fff',
+                  color: 'var(--text-color)',
+                },
+                '& .MuiInputBase-input::placeholder': {
+                  color: 'var(--text-secondary-color)',
+                  opacity: 1,
                 },
               }}
             />
@@ -2757,8 +3460,8 @@ const Dashboard: React.FC = () => {
               onClick={selectedImage ? handleImageUpload : handleSendChat}
               disabled={uploadingImage || (!chatInput.trim() && !selectedImage)}
               sx={{
-                background: 'linear-gradient(135deg, #FF6B9D 0%, #FF4757 100%)',
-                color: '#fff',
+                background: 'var(--primary-color)',
+                color: 'var(--text-color)',
                 fontWeight: 700,
                 borderRadius: 2,
                 minWidth: 48,
@@ -2767,12 +3470,11 @@ const Dashboard: React.FC = () => {
                 py: 0.5,
                 fontSize: 14,
                 '&:hover': {
-                  background:
-                    'linear-gradient(135deg, #FFB3D1 0%, #FF6B7A 100%)',
+                  background: 'var(--hover-color)',
                 },
                 '&:disabled': {
-                  background: 'rgba(255,255,255,0.1)',
-                  color: 'rgba(255,255,255,0.3)',
+                  background: 'var(--text-secondary-color)',
+                  color: 'var(--text-color)',
                 },
               }}
             >
@@ -2797,17 +3499,17 @@ const Dashboard: React.FC = () => {
         fullWidth
         PaperProps={{
           sx: {
-            backgroundColor: '#23232a',
-            color: '#e0e6ed',
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
             maxHeight: '90vh',
           },
         }}
       >
         <DialogTitle
           sx={{
-            borderBottom: '1px solid #2e3a4a',
-            backgroundColor: '#1a1f2e',
-            color: '#40c4ff',
+            borderBottom: '1px solid var(--border-color)',
+            backgroundColor: 'var(--primary-color)',
+            color: 'var(--text-color)',
             fontWeight: 'bold',
             display: 'flex',
             justifyContent: 'space-between',
