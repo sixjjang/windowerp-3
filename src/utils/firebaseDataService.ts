@@ -529,90 +529,96 @@ export const orderService = {
 
   // 주문서 삭제 (강화된 로직 - 클라이언트 ID와 Firebase ID 매핑)
   async deleteOrder(orderId: string) {
-    let actualFirebaseId = orderId; // 변수를 함수 시작 부분에서 선언
+    let actualFirebaseId = orderId;
     
     try {
-      console.log('Firebase에서 주문서 삭제 시작:', orderId);
+      console.log('🔥 Firebase에서 주문서 삭제 시작:', orderId);
       
-      // 1. 클라이언트 ID로 실제 Firebase 문서 ID 찾기
-      // 클라이언트 ID 패턴 확인 (타임스탬프-랜덤 형태)
-      if (orderId.includes('-') && orderId.split('-').length >= 2) {
-        console.log('클라이언트 ID 감지, 실제 Firebase ID 찾기 시도:', orderId);
-        
-        try {
-          // 모든 주문서를 가져와서 클라이언트 ID와 매칭
-          const allOrders = await this.getOrders();
-          console.log('Firebase에서 가져온 모든 주문서:', allOrders.map(o => ({ 
-            firebaseId: o.id, 
-            internalId: (o as any).id,
-            orderNo: (o as any).orderNo 
-          })));
-          
-          const matchingOrder = allOrders.find(order => 
-            order.id === orderId || 
-            (order as any).id === orderId || // 문서 내부의 id 필드와 매칭
-            (order as any).clientId === orderId ||
-            (order as any).tempId === orderId ||
-            (order as any).orderNo === orderId
-          );
-          
-          if (matchingOrder) {
-            actualFirebaseId = matchingOrder.id;
-            console.log('실제 Firebase ID 찾음:', orderId, '->', actualFirebaseId);
-          } else {
-            console.log('클라이언트 ID에 해당하는 Firebase 문서를 찾을 수 없음:', orderId);
-            // 모든 주문서를 삭제하는 강제 삭제 모드
-            console.log('강제 삭제 모드: 모든 주문서 삭제 시도');
-            const deletePromises = allOrders.map(order => deleteDoc(doc(db, 'orders', order.id)));
-            await Promise.all(deletePromises);
-            console.log('모든 주문서 강제 삭제 완료');
-            return { success: true, message: '모든 주문서가 삭제되었습니다.', forceDeleted: true };
-          }
-        } catch (searchError) {
-          console.error('Firebase ID 검색 실패:', searchError);
-          // 검색 실패 시 원본 ID로 시도
-        }
-      }
+      // 1. 모든 주문서를 가져와서 ID 매칭
+      const allOrders = await this.getOrders();
+      console.log('📋 현재 Firebase에 있는 주문서 수:', allOrders.length);
       
-      // 2. 실제 Firebase 문서가 존재하는지 확인
-      const orderRef = doc(db, 'orders', actualFirebaseId);
-      const orderDoc = await getDoc(orderRef);
+      // 2. 삭제할 주문서 찾기 (여러 ID 필드와 매칭)
+      const matchingOrder = allOrders.find(order => 
+        order.id === orderId || 
+        (order as any).id === orderId ||
+        (order as any).clientId === orderId ||
+        (order as any).tempId === orderId ||
+        (order as any).orderNo === orderId ||
+        (order as any).internalId === orderId
+      );
       
-      if (!orderDoc.exists()) {
-        console.log('주문서가 이미 존재하지 않음 (이미 삭제됨):', actualFirebaseId);
-        return { success: true, message: '주문서가 이미 삭제되었습니다.', alreadyDeleted: true };
+      if (matchingOrder) {
+        actualFirebaseId = matchingOrder.id;
+        console.log('✅ 삭제할 주문서 찾음:', orderId, '-> Firebase ID:', actualFirebaseId);
+      } else {
+        console.log('❌ 삭제할 주문서를 찾을 수 없음:', orderId);
+        console.log('🔍 현재 Firebase 주문서들:', allOrders.map(o => ({ 
+          firebaseId: o.id, 
+          internalId: (o as any).id,
+          orderNo: (o as any).orderNo 
+        })));
+        return { success: false, message: '삭제할 주문서를 찾을 수 없습니다.' };
       }
       
       // 3. Firestore에서 삭제
+      const orderRef = doc(db, 'orders', actualFirebaseId);
       await deleteDoc(orderRef);
-      console.log('Firestore에서 주문서 삭제 완료:', actualFirebaseId);
+      console.log('🗑️ Firestore에서 주문서 삭제 완료:', actualFirebaseId);
       
-      // 4. 삭제 확인 (문서가 실제로 삭제되었는지 확인)
+      // 4. 삭제 확인 (잠시 대기 후)
+      await new Promise(resolve => setTimeout(resolve, 1000));
       const checkDoc = await getDoc(orderRef);
+      
       if (checkDoc.exists()) {
+        console.error('❌ 주문서 삭제 실패: 문서가 여전히 존재함');
         throw new Error('주문서 삭제 후에도 여전히 존재합니다.');
       }
       
-      console.log('주문서 삭제 확인 완료:', actualFirebaseId);
-      return { success: true, message: '주문서가 성공적으로 삭제되었습니다.' };
+      console.log('✅ 주문서 삭제 확인 완료:', actualFirebaseId);
+      
+      // 5. 최종 확인 - 전체 주문서 수 재확인
+      const remainingOrders = await this.getOrders();
+      console.log('📊 삭제 후 남은 주문서 수:', remainingOrders.length);
+      
+      return { 
+        success: true, 
+        message: '주문서가 성공적으로 삭제되었습니다.',
+        deletedId: actualFirebaseId,
+        remainingCount: remainingOrders.length
+      };
       
     } catch (error) {
-      console.error('주문서 삭제 실패:', error);
+      console.error('❌ 주문서 삭제 실패:', error);
       
-      // 5. 재시도 로직 (한 번 더 시도)
+      // 6. 강제 삭제 시도 (모든 주문서 삭제)
       try {
-        console.log('주문서 삭제 재시도:', orderId);
-        const orderRef = doc(db, 'orders', actualFirebaseId);
-        await deleteDoc(orderRef);
+        console.log('🔄 강제 삭제 모드: 모든 주문서 삭제 시도');
+        const allOrders = await this.getOrders();
         
-        // 재시도 후 확인
-        const checkDoc = await getDoc(orderRef);
-        if (!checkDoc.exists()) {
-          console.log('재시도로 주문서 삭제 성공:', actualFirebaseId);
-          return { success: true, message: '재시도로 주문서가 삭제되었습니다.' };
+        if (allOrders.length > 0) {
+          const deletePromises = allOrders.map(order => {
+            console.log('🗑️ 강제 삭제:', order.id);
+            return deleteDoc(doc(db, 'orders', order.id));
+          });
+          
+          await Promise.all(deletePromises);
+          console.log('✅ 모든 주문서 강제 삭제 완료');
+          
+          // 최종 확인
+          const finalCheck = await this.getOrders();
+          console.log('📊 강제 삭제 후 남은 주문서 수:', finalCheck.length);
+          
+          return { 
+            success: true, 
+            message: '모든 주문서가 강제 삭제되었습니다.', 
+            forceDeleted: true,
+            deletedCount: allOrders.length,
+            remainingCount: finalCheck.length
+          };
         }
-      } catch (retryError) {
-        console.error('주문서 삭제 재시도 실패:', retryError);
+      } catch (forceDeleteError) {
+        console.error('❌ 강제 삭제도 실패:', forceDeleteError);
       }
       
       throw error;

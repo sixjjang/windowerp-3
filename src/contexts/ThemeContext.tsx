@@ -331,6 +331,9 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     const palette = colorPalettes[paletteName as keyof typeof colorPalettes];
     const colors = darkMode ? palette.dark : palette.light;
 
+    // data-theme 속성 설정 (CSS 변수 선택자용)
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+
     // CSS 변수 적용 (강화)
     document.documentElement.style.setProperty('--primary-color', colors.primary);
     document.documentElement.style.setProperty('--secondary-color', colors.secondary);
@@ -343,7 +346,9 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     document.documentElement.style.setProperty('--gradient-primary', `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)`);
     document.documentElement.style.setProperty('--gradient-secondary', `linear-gradient(135deg, ${colors.secondary} 0%, ${colors.primary} 100%)`);
     document.documentElement.style.setProperty('--border-color', `${colors.primary}20`);
-    document.documentElement.style.setProperty('--hover-color', `${colors.primary}10`);
+    document.documentElement.style.setProperty('--hover-color', `${colors.primary}15`); // 더 진한 hover 효과
+    document.documentElement.style.setProperty('--hover-color-strong', `${colors.primary}35`); // 더 강한 hover 효과
+    document.documentElement.style.setProperty('--hover-color-subtle', `${colors.primary}10`); // 더 미묘한 hover 효과
 
     // Material-UI 테마 업데이트
     const newTheme = createDynamicTheme(paletteName, darkMode);

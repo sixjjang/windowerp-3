@@ -7,6 +7,7 @@ html {
 
 /* CSS 변수 정의 (테마 시스템용) */
 :root {
+  /* 다크모드 기본값 */
   --primary-color: #1976d2;
   --secondary-color: #dc004e;
   --background-color: #0a0a0a;
@@ -27,6 +28,30 @@ html {
   --space-kitchen-color: #2a1a1a;
   --space-etc-color: #1a1a2a;
   --space-default-color: #1a1a2a;
+}
+
+/* 라이트모드 CSS 변수 */
+[data-theme="light"] {
+  --primary-color: #1976d2;
+  --secondary-color: #dc004e;
+  --background-color: #ffffff;
+  --surface-color: #f5f5f5;
+  --text-color: #000000;
+  --text-secondary-color: #666666;
+  --gradient-primary: linear-gradient(135deg, #1976d2 0%, #dc004e 100%);
+  --gradient-secondary: linear-gradient(135deg, #dc004e 0%, #1976d2 100%);
+  --border-color: rgba(25, 118, 210, 0.2);
+  --hover-color: rgba(25, 118, 210, 0.1);
+  
+  /* 공간별 색상 (라이트모드) */
+  --space-living-color: #e3e7ef;
+  --space-bedroom-color: #e7ece7;
+  --space-dressroom-color: #f0e7e7;
+  --space-middle-color: #e7f0ef;
+  --space-end-color: #f0efe7;
+  --space-kitchen-color: #e7eef0;
+  --space-etc-color: #ececec;
+  --space-default-color: #f7f7f7;
 }
 
 /* 폰트 로드 실패 시 대체 폰트 사용 */

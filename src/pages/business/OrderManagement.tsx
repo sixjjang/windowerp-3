@@ -199,14 +199,27 @@ const useOrderStore = create(
         }
       },
       removeOrder: async (orderId) => {
-        set(state => ({ orders: state.orders.filter(o => o.id !== orderId) }));
+        console.log('🗑️ 주문 삭제 시작:', orderId);
         
-        // Firebase에서 삭제
+        // Firebase에서 먼저 삭제
         try {
-          await orderService.deleteOrder(orderId);
-          console.log('주문 Firebase 삭제 성공:', orderId);
+          const result = await orderService.deleteOrder(orderId);
+          console.log('✅ Firebase 삭제 결과:', result);
+          
+          if (result.success) {
+            // Firebase 삭제 성공 시 로컬 상태에서도 제거
+            set(state => ({ orders: state.orders.filter(o => o.id !== orderId) }));
+            console.log('✅ 로컬 상태에서도 주문 제거 완료');
+          } else {
+            console.error('❌ Firebase 삭제 실패:', result.message);
+            // 삭제 실패 시 사용자에게 알림
+            alert(`주문 삭제 실패: ${result.message}`);
+          }
         } catch (error) {
-          console.error('주문 Firebase 삭제 실패:', error);
+          console.error('❌ 주문 Firebase 삭제 중 오류:', error);
+          // 오류 발생 시에도 로컬에서는 제거 (일관성 유지)
+          set(state => ({ orders: state.orders.filter(o => o.id !== orderId) }));
+          console.log('⚠️ 오류 발생으로 로컬에서만 제거됨');
         }
       },
       updateOrder: async (orderId, updatedFields) => {
@@ -510,7 +523,7 @@ const OrderManagement: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   
-  const { orders, addOrder, updateOrder, updateOrderItems, removeOrder } =
+  const { orders, addOrder, updateOrder, updateOrderItems, removeOrder, setOrders } =
     useOrderStore();
   const { addDelivery, deliveries } = useDeliveryStore();
   const [snackbar, setSnackbar] = useState({
@@ -573,31 +586,70 @@ const OrderManagement: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        console.log('Firebase에서 주문 데이터 로드 시작');
+        console.log('🔄 Firebase에서 주문 데이터 로드 시작');
         const data = await orderService.getOrders();
-        console.log('Firebase에서 주문 데이터 로드 완료:', data.length, '개');
+        console.log('📊 Firebase에서 주문 데이터 로드 완료:', data.length, '개');
         
-        // Firebase 데이터를 Zustand store에 설정
-        if (data.length > 0) {
-          // 기존 localStorage 데이터와 병합
-          const savedContracts = localStorage.getItem('contracts');
-          if (savedContracts) setContracts(JSON.parse(savedContracts));
-          const savedEstimates = localStorage.getItem('approvedEstimatesList');
-          if (savedEstimates) setEstimates(JSON.parse(savedEstimates));
-        } else {
-          // Firebase에 데이터가 없으면 localStorage에서 로드
-          const savedContracts = localStorage.getItem('contracts');
-          if (savedContracts) setContracts(JSON.parse(savedContracts));
-          const savedEstimates = localStorage.getItem('approvedEstimatesList');
-          if (savedEstimates) setEstimates(JSON.parse(savedEstimates));
+        // Firebase 데이터를 Order 타입으로 변환하여 Zustand store에 설정
+        const ordersData = data.map((item: any) => ({
+          id: item.id,
+          orderGroupId: item.orderGroupId || '',
+          orderNo: item.orderNo || '',
+          orderDate: item.orderDate || '',
+          contractId: item.contractId || '',
+          contractNo: item.contractNo || '',
+          projectName: item.projectName || '',
+          customerName: item.customerName || '',
+          customerContact: item.customerContact || '',
+          vendorId: item.vendorId || '',
+          vendorName: item.vendorName || '',
+          vendorContact: item.vendorContact || '',
+          vendorAddress: item.vendorAddress || '',
+          deliveryDate: item.deliveryDate || '',
+          deliveryAddress: item.deliveryAddress || '',
+          contactPerson: item.contactPerson || '',
+          contactPhone: item.contactPhone || '',
+          status: item.status || '작성중',
+          totalAmount: item.totalAmount || 0,
+          taxAmount: item.taxAmount || 0,
+          grandTotal: item.grandTotal || 0,
+          note: item.note || '',
+          items: item.items || [],
+          deliveryMethod: item.deliveryMethod || '',
+          completionDate: item.completionDate || '',
+          createdAt: item.createdAt || '',
+          updatedAt: item.updatedAt || ''
+        })) as Order[];
+        
+        setOrders(ordersData);
+        console.log('✅ Zustand store에 주문 데이터 설정 완료');
+        
+        // 계약서와 견적서 데이터 로드
+        const savedContracts = localStorage.getItem('contracts');
+        if (savedContracts) {
+          setContracts(JSON.parse(savedContracts));
+          console.log('📋 계약서 데이터 로드 완료');
         }
+        
+        const savedEstimates = localStorage.getItem('approvedEstimatesList');
+        if (savedEstimates) {
+          setEstimates(JSON.parse(savedEstimates));
+          console.log('📋 견적서 데이터 로드 완료');
+        }
+        
       } catch (error) {
-        console.error('Firebase 데이터 로드 실패, localStorage 사용:', error);
+        console.error('❌ Firebase 데이터 로드 실패, localStorage 사용:', error);
+        
         // Firebase 실패 시 localStorage에서 로드
         const savedContracts = localStorage.getItem('contracts');
         if (savedContracts) setContracts(JSON.parse(savedContracts));
+        
         const savedEstimates = localStorage.getItem('approvedEstimatesList');
         if (savedEstimates) setEstimates(JSON.parse(savedEstimates));
+        
+        // 주문 데이터는 빈 배열로 설정
+        setOrders([]);
+        console.log('⚠️ Firebase 실패로 빈 주문 데이터로 설정');
       }
     };
     

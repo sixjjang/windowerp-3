@@ -1130,9 +1130,26 @@ const EstimateManagement: React.FC = () => {
   // === UI 개선을 위한 선언 ===
   const isMobile = useMediaQuery('(max-width:600px)');
 
+  // CSS 애니메이션 스타일 추가
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.02); }
+        100% { transform: scale(1); }
+      }
+    `;
+    document.head.appendChild(style);
+    
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
+
   // 공간별 색상 함수
   function getSpaceColor(space: string, lightness = 1) {
-    // 다크모드에서는 CSS 변수를 사용하여 테마에 맞는 색상 반환
+    // CSS 변수를 사용하여 테마에 맞는 색상 반환 (다크/라이트모드 모두 지원)
     const spaceColorMap: { [key: string]: string } = {
       거실: 'var(--space-living-color)',
       안방: 'var(--space-bedroom-color)',
@@ -1144,12 +1161,12 @@ const EstimateManagement: React.FC = () => {
       '': 'var(--space-default-color)',
     };
     
-    // 공간에 해당하는 CSS 변수가 있으면 사용, 없으면 기존 로직 사용
+    // 공간에 해당하는 CSS 변수가 있으면 사용
     if (spaceColorMap[space]) {
       return spaceColorMap[space];
     }
     
-    // 기존 로직 (fallback)
+    // 기존 로직 (fallback) - 라이트모드용 색상으로 수정
     const keys = Object.keys(SPACE_COLORS);
     let idx = keys.indexOf(space);
     if (idx === -1)
@@ -1157,6 +1174,16 @@ const EstimateManagement: React.FC = () => {
         Math.abs(space.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) %
         SPACE_COLOR_LIST.length;
     let color = SPACE_COLOR_LIST[idx];
+    
+    // 라이트모드에서는 더 밝은 색상 사용
+    const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+    if (isLightMode) {
+      // 라이트모드용 밝은 색상으로 변환
+      const rgb = color.match(/\w\w/g)?.map(x => parseInt(x, 16)) || [248, 248, 255];
+      const newRgb = rgb.map(v => Math.round(v + (255 - v) * 0.3)); // 30% 더 밝게
+      color = `rgb(${newRgb.join(',')})`;
+    }
+    
     if (lightness !== 1) {
       // hex to rgb
       const rgb = color.match(/\w\w/g)?.map(x => parseInt(x, 16)) || [248, 248, 255];
@@ -1212,6 +1239,111 @@ const EstimateManagement: React.FC = () => {
     setEstimates,
   } = useEstimateStore();
 
+  // 제품 순번 관리 상태
+  const [productOrder, setProductOrder] = useState<number[]>([]);
+
+
+
+  // 제품 순번 위로 이동
+  const moveProductUp = (productIndex: number) => {
+    if (productIndex > 0) {
+      setProductOrder(prev => {
+        const newOrder = [...prev];
+        [newOrder[productIndex], newOrder[productIndex - 1]] = [newOrder[productIndex - 1], newOrder[productIndex]];
+        return newOrder;
+      });
+    }
+  };
+
+  // 제품 순번 아래로 이동
+  const moveProductDown = (productIndex: number) => {
+    if (productIndex < productOrder.length - 1) {
+      setProductOrder(prev => {
+        const newOrder = [...prev];
+        [newOrder[productIndex], newOrder[productIndex + 1]] = [newOrder[productIndex + 1], newOrder[productIndex]];
+        return newOrder;
+      });
+    }
+  };
+
+
+
+  // 제품 순번에 따른 정렬된 행들 계산
+  const getSortedRows = useCallback(() => {
+    if (!estimates[activeTab]?.rows) return [];
+    
+    const rows = estimates[activeTab].rows;
+    const productRows = rows.filter(row => row.type === 'product');
+    const optionRows = rows.filter(row => row.type === 'option');
+    
+    // 제품 순번이 초기화되지 않았다면 초기화
+    if (productOrder.length === 0 || productOrder.length !== productRows.length) {
+      // 초기화는 한 번만 수행
+      if (productRows.length > 0) {
+        const order = productRows.map((_, index) => index);
+        setProductOrder(order);
+      }
+      return rows; // 초기화 중에는 원래 순서 반환
+    }
+    
+    // 제품 순번에 따라 제품 행들을 정렬
+    const sortedProductRows = productOrder.map(index => productRows[index]);
+    
+    // 각 제품의 옵션들을 해당 제품 뒤에 배치 (레일 옵션 제외)
+    const sortedRows: any[] = [];
+    const railOptions: any[] = [];
+    
+    sortedProductRows.forEach((productRow, productIndex) => {
+      sortedRows.push(productRow);
+      
+      // 해당 제품의 옵션들 찾기 (배열 순서 기반)
+      const productOptions = optionRows.filter((optionRow, optionIndex) => {
+        // 원본 배열에서 이 옵션이 어떤 제품 바로 뒤에 있는지 확인
+        const originalRows = estimates[activeTab].rows;
+        const optionRowIndex = originalRows.findIndex(row => row.id === optionRow.id);
+        
+        if (optionRowIndex === -1) return false;
+        
+        // 이 옵션 앞의 가장 가까운 제품 찾기
+        for (let i = optionRowIndex - 1; i >= 0; i--) {
+          if (originalRows[i].type === 'product') {
+            return originalRows[i].id === productRow.id;
+          }
+        }
+        return false;
+      });
+      
+                // 레일 옵션과 일반 옵션 분리
+          productOptions.forEach(option => {
+            // 레일 옵션은 optionLabel이 "레일"이거나 details에 "레일"이 포함되어 있거나 특정 패턴을 가짐
+            if (option.optionLabel === '레일' || (option.details && (option.details.includes('레일') || option.details.includes('🚇')))) {
+              railOptions.push(option);
+            } else {
+              sortedRows.push(option);
+            }
+          });
+    });
+    
+    // 레일 옵션들을 마지막에 추가
+    sortedRows.push(...railOptions);
+    
+    return sortedRows;
+  }, [estimates, activeTab, productOrder]);
+
+  // 제품의 순번을 가져오는 함수
+  const getProductNumber = useCallback((row: any) => {
+    if (row.type !== 'product') return null;
+    
+    const productRows = estimates[activeTab]?.rows?.filter(r => r.type === 'product') || [];
+    const productIndex = productRows.findIndex(r => r.id === row.id);
+    
+    if (productIndex === -1) return null;
+    
+    // productOrder에서 해당 제품의 현재 순번 찾기
+    const currentOrderIndex = productOrder.indexOf(productIndex);
+    return currentOrderIndex !== -1 ? currentOrderIndex + 1 : productIndex + 1;
+  }, [estimates, activeTab, productOrder]);
+
   // 견적서 스토어 상태 변화 추적 (개발 환경에서만)
   // 주석 처리하여 반복 로그 방지
   // useEffect(() => {
@@ -1223,6 +1355,73 @@ const EstimateManagement: React.FC = () => {
   //     });
   //   }
   // }, [estimates, activeTab]);
+
+  // 제품 순번 초기화
+  useEffect(() => {
+    if (estimates[activeTab]?.rows) {
+      const productRows = estimates[activeTab].rows.filter(row => row.type === 'product');
+      if (productRows.length > 0 && productOrder.length === 0) {
+        const order = productRows.map((_, index) => index);
+        setProductOrder(order);
+      }
+    }
+  }, [estimates, activeTab]);
+
+  // 제품 순번 변경 시 실제 데이터 업데이트 (무한 루프 방지)
+  useEffect(() => {
+    if (productOrder.length > 0 && estimates[activeTab]?.rows) {
+      // 실제 데이터 업데이트는 제품 순번 변경 시에만 수행
+      const rows = estimates[activeTab].rows;
+      const productRows = rows.filter(row => row.type === 'product');
+      const optionRows = rows.filter(row => row.type === 'option');
+      
+      if (productOrder.length === productRows.length) {
+        // 제품 순번에 따라 제품 행들을 정렬
+        const sortedProductRows = productOrder.map(index => productRows[index]);
+        
+        // 각 제품의 옵션들을 해당 제품 뒤에 배치 (레일 옵션 제외)
+        const sortedRows: any[] = [];
+        const railOptions: any[] = [];
+        
+        sortedProductRows.forEach((productRow) => {
+          sortedRows.push(productRow);
+          
+          // 해당 제품의 옵션들 찾기 (배열 순서 기반)
+          const productOptions = optionRows.filter((optionRow) => {
+            // 원본 배열에서 이 옵션이 어떤 제품 바로 뒤에 있는지 확인
+            const originalRows = estimates[activeTab].rows;
+            const optionRowIndex = originalRows.findIndex(row => row.id === optionRow.id);
+            
+            if (optionRowIndex === -1) return false;
+            
+            // 이 옵션 앞의 가장 가까운 제품 찾기
+            for (let i = optionRowIndex - 1; i >= 0; i--) {
+              if (originalRows[i].type === 'product') {
+                return originalRows[i].id === productRow.id;
+              }
+            }
+            return false;
+          });
+          
+          // 레일 옵션과 일반 옵션 분리
+          productOptions.forEach(option => {
+            // 레일 옵션은 optionLabel이 "레일"이거나 details에 "레일"이 포함되어 있거나 특정 패턴을 가짐
+            if (option.optionLabel === '레일' || (option.details && (option.details.includes('레일') || option.details.includes('🚇')))) {
+              railOptions.push(option);
+            } else {
+              sortedRows.push(option);
+            }
+          });
+        });
+        
+        // 레일 옵션들을 마지막에 추가
+        sortedRows.push(...railOptions);
+        
+        // 실제 견적서 데이터 업데이트
+        updateEstimateRows(activeTab, sortedRows);
+      }
+    }
+  }, [productOrder]); // updateEstimateWithNewOrder 의존성 제거
 
   // 디버깅: 견적서 스토어 상태 확인 (개발 환경에서만)
   // 주석 처리하여 반복 로그 방지
@@ -2191,6 +2390,65 @@ const EstimateManagement: React.FC = () => {
       default:
         return true;
     }
+  });
+
+  // 견적번호-최신순으로 정렬 (최신 견적서가 위에 표시)
+  const sortedFilteredEstimatesList = filteredSavedEstimatesList.sort((a: any, b: any) => {
+    // 견적번호에서 날짜 부분 추출 (예: E20250728-001 -> 20250728)
+    const extractDateFromEstimateNo = (estimateNo: string) => {
+      const match = estimateNo.match(/E(\d{8})/);
+      return match ? match[1] : '';
+    };
+    
+    // 견적번호에서 시퀀스 번호 추출 (예: E20250728-001 -> 001)
+    const extractSequenceFromEstimateNo = (estimateNo: string) => {
+      const match = estimateNo.match(/E\d{8}-(\d+)/);
+      return match ? parseInt(match[1], 10) : 0;
+    };
+    
+    // Final 견적서의 기본 시퀀스 번호 추출 (예: E20250728-001-final -> 001)
+    const extractBaseSequenceFromFinal = (estimateNo: string) => {
+      const match = estimateNo.match(/E\d{8}-(\d+)-final/);
+      return match ? parseInt(match[1], 10) : 0;
+    };
+    
+    const dateA = extractDateFromEstimateNo(a.estimateNo || '');
+    const dateB = extractDateFromEstimateNo(b.estimateNo || '');
+    
+    // 1. 날짜가 다르면 날짜로 정렬 (최신 날짜가 위로)
+    if (dateA !== dateB) {
+      return dateB.localeCompare(dateA);
+    }
+    
+    // 2. 날짜가 같으면 시퀀스 번호로 정렬 (높은 번호가 위로)
+    const sequenceA = extractSequenceFromEstimateNo(a.estimateNo || '');
+    const sequenceB = extractSequenceFromEstimateNo(b.estimateNo || '');
+    
+    // Final 견적서인 경우 기본 시퀀스 번호 사용
+    const baseSequenceA = (a.estimateNo || '').includes('-final') 
+      ? extractBaseSequenceFromFinal(a.estimateNo || '') 
+      : sequenceA;
+    const baseSequenceB = (b.estimateNo || '').includes('-final') 
+      ? extractBaseSequenceFromFinal(b.estimateNo || '') 
+      : sequenceB;
+    
+    if (baseSequenceA !== baseSequenceB) {
+      return baseSequenceB - baseSequenceA; // 높은 번호가 위로
+    }
+    
+    // 3. 기본 시퀀스 번호가 같으면 Final 견적서가 위로
+    const isFinalA = (a.estimateNo || '').includes('-final');
+    const isFinalB = (b.estimateNo || '').includes('-final');
+    
+    if (isFinalA !== isFinalB) {
+      return isFinalA ? -1 : 1; // Final이 위로
+    }
+    
+    // 4. Final 여부가 같으면 저장일시로 정렬 (최신이 위로)
+    const savedAtA = a.savedAt ? new Date(a.savedAt).getTime() : 0;
+    const savedAtB = b.savedAt ? new Date(b.savedAt).getTime() : 0;
+    
+    return savedAtB - savedAtA;
   });
 
   // 디버깅 정보 출력 (개발 환경에서만)
@@ -3275,7 +3533,12 @@ const EstimateManagement: React.FC = () => {
       finalQuantity = railQuantity > 0 ? railQuantity : optionQuantity;
       console.log('레일 옵션 자동 수량 설정:', railQuantity);
     }
-    // 전동 관련 옵션은 기본값 1
+    // 전동커튼시공 옵션은 기본값 1 (자동 계산 없음)
+    else if (optionName.includes('전동커튼시공') || optionName.includes('전동커튼 시공')) {
+      finalQuantity = 1;
+      console.log('전동커튼시공 옵션 기본 수량 설정:', 1);
+    }
+    // 기타 전동 관련 옵션은 기본값 1
     else if (optionName.includes('전동') || optionName.includes('모터')) {
       finalQuantity = 1;
       console.log('전동 옵션 기본 수량 설정:', 1);
@@ -3326,6 +3589,11 @@ const EstimateManagement: React.FC = () => {
       if (!autoCalcPattern.test(optionDetails)) {
         optionDetails = `${selectedOption.details || ''} (레일 ${railQuantity}개)`;
       }
+    }
+    // 전동커튼시공 옵션은 자동 계산 정보 추가하지 않음 (기본값 1)
+    else if (optionName.includes('전동커튼시공') || optionName.includes('전동커튼 시공')) {
+      // 전동커튼시공은 자동 계산하지 않고 기본값 1 사용
+      console.log('전동커튼시공 옵션 - 자동 계산 정보 추가하지 않음');
     }
 
     const newOptionRow: EstimateRow = {
@@ -3907,7 +4175,16 @@ const EstimateManagement: React.FC = () => {
   };
 
   // 필터링된 행
-  const filteredRows = estimates[activeTab].rows.filter(row =>
+  const baseFilteredRows = estimates[activeTab].rows.filter(row =>
+    FILTER_FIELDS.every(f => {
+      if (!activeFilters[f.key]) return true;
+      const val = getRowValue(row, f.key);
+      return val !== undefined && val !== null && val !== '';
+    })
+  );
+
+  // 제품 순번에 따른 정렬된 행들
+  const filteredRows = getSortedRows().filter(row =>
     FILTER_FIELDS.every(f => {
       if (!activeFilters[f.key]) return true;
       const val = getRowValue(row, f.key);
@@ -4848,6 +5125,15 @@ const EstimateManagement: React.FC = () => {
       setDiscountAmount('');
       setDiscountRate('');
 
+      // 최근 저장된 견적서 하이라이트 설정
+      const savedEstimateId = `${currentEstimate.estimateNo}-${currentEstimate.id}`;
+      setRecentlySavedEstimateId(savedEstimateId);
+      
+      // 5초 후 하이라이트 제거
+      setTimeout(() => {
+        setRecentlySavedEstimateId(null);
+      }, 5000);
+
       console.log('견적서 입력 내용 초기화 완료');
     } catch (error) {
       console.error('견적서 저장 중 오류:', error);
@@ -5387,6 +5673,9 @@ const EstimateManagement: React.FC = () => {
   const [estimateMemos, setEstimateMemos] = useState<{ [key: string]: string }>(
     {}
   );
+  
+  // 최근 저장된 견적서 하이라이트 상태
+  const [recentlySavedEstimateId, setRecentlySavedEstimateId] = useState<string | null>(null);
 
   // 일괄 변경 관련 함수들
   const handleBulkEditModeToggle = () => {
@@ -6096,18 +6385,20 @@ const EstimateManagement: React.FC = () => {
 
       // 기존 계약 정보 확인
       const confirmUpdate = window.confirm(
-        `기존 계약을 Final 견적서로 업데이트하시겠습니까?\n\n` +
+        `기존 계약을 Final 견적서 내용으로 업데이트하시겠습니까?\n\n` +
         `기존 계약번호: ${existingContract.contractNo}\n` +
         `기존 견적번호: ${existingContract.estimateNo}\n` +
         `Final 견적번호: ${finalEstimate.estimateNo}\n\n` +
-        `실측 데이터가 반영된 최종 견적서로 업데이트됩니다.`
+        `⚠️ 주의: 견적서는 그대로 보존되고, 계약서만 Final 견적서 내용으로 업데이트됩니다.\n` +
+        `실측 전/후 견적서를 모두 확인할 수 있습니다.`
       );
 
       if (!confirmUpdate) return;
 
-      // 기존 계약을 Final 견적서로 업데이트
+      // 기존 계약을 Final 견적서 내용으로 업데이트 (견적서는 건드리지 않음)
       const updatedContract = {
         ...existingContract,
+        // 계약서에 적용될 견적 정보를 Final 견적서로 업데이트
         estimateNo: finalEstimate.estimateNo,
         totalAmount:
           finalEstimate.totalAmount ||
@@ -6116,13 +6407,23 @@ const EstimateManagement: React.FC = () => {
           finalEstimate.discountedAmount ||
           finalEstimate.totalAmount ||
           getTotalConsumerAmount(finalEstimate.rows),
-        rows: finalEstimate.rows,
+        rows: finalEstimate.rows, // Final 견적서의 상세 내역으로 계약서 업데이트
         updatedAt: new Date().toISOString(),
         measurementInfo: finalEstimate.measurementInfo,
         measurementData: finalEstimate.measurementData,
+        // 계약서 업데이트 이력 추가
+        contractUpdateHistory: [
+          ...(existingContract.contractUpdateHistory || []),
+          {
+            updatedAt: new Date().toISOString(),
+            fromEstimateNo: existingContract.estimateNo,
+            toEstimateNo: finalEstimate.estimateNo,
+            reason: '실측 후 Final 견적서로 계약서 업데이트'
+          }
+        ]
       };
 
-      // 계약 목록 업데이트
+      // 계약 목록 업데이트 (견적서는 건드리지 않음)
       const updatedContracts = contracts.map((contract: any) =>
         contract.id === existingContract.id ? updatedContract : contract
       );
@@ -6132,7 +6433,8 @@ const EstimateManagement: React.FC = () => {
         `기존 계약이 성공적으로 업데이트되었습니다!\n\n` +
         `계약번호: ${existingContract.contractNo}\n` +
         `업데이트된 견적번호: ${finalEstimate.estimateNo}\n` +
-        `실측 데이터가 반영된 최종 견적서로 계약이 업데이트되었습니다.`
+        `✅ 견적서는 그대로 보존되어 실측 전/후 비교가 가능합니다.\n` +
+        `✅ 계약서만 Final 견적서 내용으로 업데이트되었습니다.`
       );
 
       window.location.reload();
@@ -8240,12 +8542,7 @@ const EstimateManagement: React.FC = () => {
                 }}>
                   <strong>판매가:</strong> {editingOption.salePrice?.toLocaleString()}원
                 </Typography>
-                <Typography variant="body2" sx={{ 
-                  color: 'var(--text-color)', 
-                  mb: 0.5 
-                }}>
-                  <strong>원가:</strong> {editingOption.purchaseCost?.toLocaleString()}원
-                </Typography>
+
               </Box>
               
               <Box sx={{ 
@@ -8337,18 +8634,29 @@ const EstimateManagement: React.FC = () => {
         <Dialog
           open={editOpen}
           onClose={handleEditClose}
-          maxWidth="lg"
-          fullWidth
-          PaperProps={{ sx: { backgroundColor: 'var(--surface-color)', color: 'var(--text-color)' } }}
+          maxWidth="md"
+          PaperProps={{ 
+            sx: { 
+              backgroundColor: 'white', 
+              color: 'var(--text-color)',
+              width: '90%',
+              maxWidth: '800px'
+            } 
+          }}
         >
-          <DialogTitle
-            sx={{
-              color: '#e0e6ed',
-              fontWeight: 'bold',
-              backgroundColor: '#263040',
-            }}
-          >
-            제품 정보 수정
+          <DialogTitle sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            fontSize: isMobile ? '1.2rem' : '1.25rem',
+            pb: isMobile ? 1 : 2,
+            fontWeight: 'bold',
+            backgroundColor: 'var(--primary-color)',
+            color: 'white'
+          }}>
+            <Typography variant="h6" sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
+              제품 정보 수정
+            </Typography>
           </DialogTitle>
           <DialogContent sx={{ mt: 2 }}>
             <Box
@@ -8371,12 +8679,12 @@ const EstimateManagement: React.FC = () => {
                       startIcon={<SearchIcon />}
                       sx={{
                         minWidth: 100,
-                        color: '#0091ea',
-                        borderColor: '#0091ea',
+                        color: 'var(--primary-color)',
+                        borderColor: 'var(--primary-color)',
                         '&:hover': {
-                          backgroundColor: '#0091ea',
-                          color: '#fff',
-                          borderColor: '#0091ea',
+                          backgroundColor: 'var(--primary-color)',
+                          color: 'var(--on-primary-color)',
+                          borderColor: 'var(--primary-color)',
                         }
                       }}
                     >
@@ -8394,11 +8702,11 @@ const EstimateManagement: React.FC = () => {
                     fullWidth
                     size="small"
                     sx={{
-                      input: { color: '#e0e6ed' },
-                      label: { color: '#b0b8c1' },
+                      input: { color: 'var(--text-color)' },
+                      label: { color: 'var(--text-secondary-color)' },
                       '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: '#2e3a4a' },
-                        '&:hover fieldset': { borderColor: '#3a4a5a' },
+                        '& fieldset': { borderColor: 'var(--border-color)' },
+                        '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                       },
                     }}
                   />
@@ -8409,11 +8717,11 @@ const EstimateManagement: React.FC = () => {
                     size="small"
                     sx={{
                       '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: '#2e3a4a' },
-                        '&:hover fieldset': { borderColor: '#3a4a5a' },
+                        '& fieldset': { borderColor: 'var(--border-color)' },
+                        '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                       },
-                      label: { color: '#b0b8c1' },
-                      '.MuiSelect-select': { color: '#e0e6ed' },
+                      label: { color: 'var(--text-secondary-color)' },
+                      '.MuiSelect-select': { color: 'var(--text-color)' },
                     }}
                   >
                     <InputLabel>공간</InputLabel>
@@ -8425,7 +8733,13 @@ const EstimateManagement: React.FC = () => {
                       label="공간"
                     >
                       {spaceOptions.map((space) => (
-                        <MenuItem key={space} value={space}>
+                        <MenuItem key={space} value={space} sx={{
+                          color: 'var(--text-color)',
+                          backgroundColor: 'var(--background-color)',
+                          '&:hover': {
+                            backgroundColor: 'var(--hover-color)',
+                          },
+                        }}>
                           {space}
                         </MenuItem>
                       ))}
@@ -8464,11 +8778,11 @@ const EstimateManagement: React.FC = () => {
                     fullWidth
                     size="small"
                     sx={{
-                      input: { color: '#e0e6ed' },
-                      label: { color: '#b0b8c1' },
+                      input: { color: 'var(--text-color)' },
+                      label: { color: 'var(--text-secondary-color)' },
                       '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: '#2e3a4a' },
-                        '&:hover fieldset': { borderColor: '#3a4a5a' },
+                        '& fieldset': { borderColor: 'var(--border-color)' },
+                        '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                       },
                     }}
                   />
@@ -8484,11 +8798,11 @@ const EstimateManagement: React.FC = () => {
                     fullWidth
                     size="small"
                     sx={{
-                      input: { color: '#e0e6ed' },
-                      label: { color: '#b0b8c1' },
+                      input: { color: 'var(--text-color)' },
+                      label: { color: 'var(--text-secondary-color)' },
                       '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: '#2e3a4a' },
-                        '&:hover fieldset': { borderColor: '#3a4a5a' },
+                        '& fieldset': { borderColor: 'var(--border-color)' },
+                        '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                       },
                     }}
                   />
@@ -8504,11 +8818,11 @@ const EstimateManagement: React.FC = () => {
                     fullWidth
                     size="small"
                     sx={{
-                      input: { color: '#e0e6ed' },
-                      label: { color: '#b0b8c1' },
+                      input: { color: 'var(--text-color)' },
+                      label: { color: 'var(--text-secondary-color)' },
                       '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: '#2e3a4a' },
-                        '&:hover fieldset': { borderColor: '#3a4a5a' },
+                        '& fieldset': { borderColor: 'var(--border-color)' },
+                        '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                       },
                     }}
                   />
@@ -8522,11 +8836,11 @@ const EstimateManagement: React.FC = () => {
                         size="small"
                         sx={{
                           '& .MuiOutlinedInput-root': {
-                            '& fieldset': { borderColor: '#2e3a4a' },
-                            '&:hover fieldset': { borderColor: '#3a4a5a' },
+                            '& fieldset': { borderColor: 'var(--border-color)' },
+                            '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                           },
-                          label: { color: '#b0b8c1' },
-                          '.MuiSelect-select': { color: '#e0e6ed' },
+                          label: { color: 'var(--text-secondary-color)' },
+                          '.MuiSelect-select': { color: 'var(--text-color)' },
                         }}
                       >
                         <InputLabel>커튼타입</InputLabel>
@@ -8537,9 +8851,27 @@ const EstimateManagement: React.FC = () => {
                           }
                           label="커튼타입"
                         >
-                          <MenuItem value="겉커튼">겉커튼</MenuItem>
-                          <MenuItem value="속커튼">속커튼</MenuItem>
-                          <MenuItem value="일반">일반</MenuItem>
+                          <MenuItem value="겉커튼" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>겉커튼</MenuItem>
+                          <MenuItem value="속커튼" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>속커튼</MenuItem>
+                          <MenuItem value="일반" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>일반</MenuItem>
                         </Select>
                       </FormControl>
                     </Grid>
@@ -8549,11 +8881,11 @@ const EstimateManagement: React.FC = () => {
                         size="small"
                         sx={{
                           '& .MuiOutlinedInput-root': {
-                            '& fieldset': { borderColor: '#2e3a4a' },
-                            '&:hover fieldset': { borderColor: '#3a4a5a' },
+                            '& fieldset': { borderColor: 'var(--border-color)' },
+                            '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                           },
-                          label: { color: '#b0b8c1' },
-                          '.MuiSelect-select': { color: '#e0e6ed' },
+                          label: { color: 'var(--text-secondary-color)' },
+                          '.MuiSelect-select': { color: 'var(--text-color)' },
                         }}
                       >
                         <InputLabel>주름타입</InputLabel>
@@ -8564,9 +8896,27 @@ const EstimateManagement: React.FC = () => {
                           }
                           label="주름타입"
                         >
-                          <MenuItem value="민자">민자</MenuItem>
-                          <MenuItem value="나비">나비</MenuItem>
-                          <MenuItem value="3주름">3주름</MenuItem>
+                          <MenuItem value="민자" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>민자</MenuItem>
+                          <MenuItem value="나비" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>나비</MenuItem>
+                          <MenuItem value="3주름" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>3주름</MenuItem>
                         </Select>
                       </FormControl>
                     </Grid>
@@ -8581,11 +8931,11 @@ const EstimateManagement: React.FC = () => {
                         fullWidth
                         size="small"
                         sx={{
-                          input: { color: '#e0e6ed' },
-                          label: { color: '#b0b8c1' },
+                          input: { color: 'var(--text-color)' },
+                          label: { color: 'var(--text-secondary-color)' },
                           '& .MuiOutlinedInput-root': {
-                            '& fieldset': { borderColor: '#2e3a4a' },
-                            '&:hover fieldset': { borderColor: '#3a4a5a' },
+                            '& fieldset': { borderColor: 'var(--border-color)' },
+                            '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                           },
                         }}
                       />
@@ -8598,11 +8948,11 @@ const EstimateManagement: React.FC = () => {
                           size="small"
                           sx={{
                             '& .MuiOutlinedInput-root': {
-                              '& fieldset': { borderColor: '#2e3a4a' },
-                              '&:hover fieldset': { borderColor: '#3a4a5a' },
+                              '& fieldset': { borderColor: 'var(--border-color)' },
+                              '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                             },
-                            label: { color: '#b0b8c1' },
-                            '.MuiSelect-select': { color: '#e0e6ed' },
+                            label: { color: 'var(--text-secondary-color)' },
+                            '.MuiSelect-select': { color: 'var(--text-color)' },
                           }}
                         >
                           <InputLabel>주름양 배수</InputLabel>
@@ -8613,16 +8963,76 @@ const EstimateManagement: React.FC = () => {
                             }
                             label="주름양 배수"
                           >
-                            <MenuItem value="1.1">1.1배</MenuItem>
-                            <MenuItem value="1.2">1.2배</MenuItem>
-                            <MenuItem value="1.3">1.3배</MenuItem>
-                            <MenuItem value="1.4">1.4배</MenuItem>
-                            <MenuItem value="1.5">1.5배</MenuItem>
-                            <MenuItem value="1.6">1.6배</MenuItem>
-                            <MenuItem value="1.7">1.7배</MenuItem>
-                            <MenuItem value="1.8">1.8배</MenuItem>
-                            <MenuItem value="1.9">1.9배</MenuItem>
-                            <MenuItem value="2.0">2.0배</MenuItem>
+                            <MenuItem value="1.1" sx={{
+                              color: 'var(--text-color)',
+                              backgroundColor: 'var(--background-color)',
+                              '&:hover': {
+                                backgroundColor: 'var(--hover-color)',
+                              },
+                            }}>1.1배</MenuItem>
+                            <MenuItem value="1.2" sx={{
+                              color: 'var(--text-color)',
+                              backgroundColor: 'var(--background-color)',
+                              '&:hover': {
+                                backgroundColor: 'var(--hover-color)',
+                              },
+                            }}>1.2배</MenuItem>
+                            <MenuItem value="1.3" sx={{
+                              color: 'var(--text-color)',
+                              backgroundColor: 'var(--background-color)',
+                              '&:hover': {
+                                backgroundColor: 'var(--hover-color)',
+                              },
+                            }}>1.3배</MenuItem>
+                            <MenuItem value="1.4" sx={{
+                              color: 'var(--text-color)',
+                              backgroundColor: 'var(--background-color)',
+                              '&:hover': {
+                                backgroundColor: 'var(--hover-color)',
+                              },
+                            }}>1.4배</MenuItem>
+                            <MenuItem value="1.5" sx={{
+                              color: 'var(--text-color)',
+                              backgroundColor: 'var(--background-color)',
+                              '&:hover': {
+                                backgroundColor: 'var(--hover-color)',
+                              },
+                            }}>1.5배</MenuItem>
+                            <MenuItem value="1.6" sx={{
+                              color: 'var(--text-color)',
+                              backgroundColor: 'var(--background-color)',
+                              '&:hover': {
+                                backgroundColor: 'var(--hover-color)',
+                              },
+                            }}>1.6배</MenuItem>
+                            <MenuItem value="1.7" sx={{
+                              color: 'var(--text-color)',
+                              backgroundColor: 'var(--background-color)',
+                              '&:hover': {
+                                backgroundColor: 'var(--hover-color)',
+                              },
+                            }}>1.7배</MenuItem>
+                            <MenuItem value="1.8" sx={{
+                              color: 'var(--text-color)',
+                              backgroundColor: 'var(--background-color)',
+                              '&:hover': {
+                                backgroundColor: 'var(--hover-color)',
+                              },
+                            }}>1.8배</MenuItem>
+                            <MenuItem value="1.9" sx={{
+                              color: 'var(--text-color)',
+                              backgroundColor: 'var(--background-color)',
+                              '&:hover': {
+                                backgroundColor: 'var(--hover-color)',
+                              },
+                            }}>1.9배</MenuItem>
+                            <MenuItem value="2.0" sx={{
+                              color: 'var(--text-color)',
+                              backgroundColor: 'var(--background-color)',
+                              '&:hover': {
+                                backgroundColor: 'var(--hover-color)',
+                              },
+                            }}>2.0배</MenuItem>
                           </Select>
                         </FormControl>
                       ) : (
@@ -8641,11 +9051,11 @@ const EstimateManagement: React.FC = () => {
                           fullWidth
                           size="small"
                           sx={{
-                            input: { color: '#e0e6ed' },
-                            label: { color: '#b0b8c1' },
+                            input: { color: 'var(--text-color)' },
+                            label: { color: 'var(--text-secondary-color)' },
                             '& .MuiOutlinedInput-root': {
-                              '& fieldset': { borderColor: '#2e3a4a' },
-                              '&:hover fieldset': { borderColor: '#3a4a5a' },
+                              '& fieldset': { borderColor: 'var(--border-color)' },
+                              '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                             },
                           }}
                         />
@@ -8661,11 +9071,11 @@ const EstimateManagement: React.FC = () => {
                         fullWidth
                         size="small"
                         sx={{
-                          input: { color: '#e0e6ed' },
-                          label: { color: '#b0b8c1' },
+                          input: { color: 'var(--text-color)' },
+                          label: { color: 'var(--text-secondary-color)' },
                           '& .MuiOutlinedInput-root': {
-                            '& fieldset': { borderColor: '#2e3a4a' },
-                            '&:hover fieldset': { borderColor: '#3a4a5a' },
+                            '& fieldset': { borderColor: 'var(--border-color)' },
+                            '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                           },
                         }}
                       />
@@ -8686,11 +9096,11 @@ const EstimateManagement: React.FC = () => {
                             fullWidth
                             size="small"
                             sx={{
-                              input: { color: '#e0e6ed' },
-                              label: { color: '#b0b8c1' },
+                              input: { color: 'var(--text-color)' },
+                              label: { color: 'var(--text-secondary-color)' },
                               '& .MuiOutlinedInput-root': {
-                                '& fieldset': { borderColor: '#2e3a4a' },
-                                '&:hover fieldset': { borderColor: '#3a4a5a' },
+                                '& fieldset': { borderColor: 'var(--border-color)' },
+                                '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                               },
                             }}
                           />
@@ -8707,11 +9117,11 @@ const EstimateManagement: React.FC = () => {
                         size="small"
                         sx={{
                           '& .MuiOutlinedInput-root': {
-                            '& fieldset': { borderColor: '#2e3a4a' },
-                            '&:hover fieldset': { borderColor: '#3a4a5a' },
+                            '& fieldset': { borderColor: 'var(--border-color)' },
+                            '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                           },
-                          label: { color: '#b0b8c1' },
-                          '.MuiSelect-select': { color: '#e0e6ed' },
+                          label: { color: 'var(--text-secondary-color)' },
+                          '.MuiSelect-select': { color: 'var(--text-color)' },
                         }}
                       >
                         <InputLabel>줄방향</InputLabel>
@@ -8722,9 +9132,27 @@ const EstimateManagement: React.FC = () => {
                           }
                           label="줄방향"
                         >
-                          <MenuItem value="좌">좌</MenuItem>
-                          <MenuItem value="우">우</MenuItem>
-                          <MenuItem value="없음">없음</MenuItem>
+                          <MenuItem value="좌" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>좌</MenuItem>
+                          <MenuItem value="우" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>우</MenuItem>
+                          <MenuItem value="없음" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>없음</MenuItem>
                         </Select>
                       </FormControl>
                     </Grid>
@@ -8734,11 +9162,11 @@ const EstimateManagement: React.FC = () => {
                         size="small"
                         sx={{
                           '& .MuiOutlinedInput-root': {
-                            '& fieldset': { borderColor: '#2e3a4a' },
-                            '&:hover fieldset': { borderColor: '#3a4a5a' },
+                            '& fieldset': { borderColor: 'var(--border-color)' },
+                            '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                           },
-                          label: { color: '#b0b8c1' },
-                          '.MuiSelect-select': { color: '#e0e6ed' },
+                          label: { color: 'var(--text-secondary-color)' },
+                          '.MuiSelect-select': { color: 'var(--text-color)' },
                         }}
                       >
                         <InputLabel>줄길이</InputLabel>
@@ -8749,12 +9177,48 @@ const EstimateManagement: React.FC = () => {
                           }
                           label="줄길이"
                         >
-                          <MenuItem value="90cm">90cm</MenuItem>
-                          <MenuItem value="120cm">120cm</MenuItem>
-                          <MenuItem value="150cm">150cm</MenuItem>
-                          <MenuItem value="180cm">180cm</MenuItem>
-                          <MenuItem value="210cm">210cm</MenuItem>
-                          <MenuItem value="직접입력">직접입력</MenuItem>
+                          <MenuItem value="90cm" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>90cm</MenuItem>
+                          <MenuItem value="120cm" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>120cm</MenuItem>
+                          <MenuItem value="150cm" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>150cm</MenuItem>
+                          <MenuItem value="180cm" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>180cm</MenuItem>
+                          <MenuItem value="210cm" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>210cm</MenuItem>
+                          <MenuItem value="직접입력" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>직접입력</MenuItem>
                         </Select>
                       </FormControl>
                     </Grid>
@@ -8769,11 +9233,11 @@ const EstimateManagement: React.FC = () => {
                           fullWidth
                           size="small"
                           sx={{
-                            input: { color: '#e0e6ed' },
-                            label: { color: '#b0b8c1' },
+                            input: { color: 'var(--text-color)' },
+                            label: { color: 'var(--text-secondary-color)' },
                             '& .MuiOutlinedInput-root': {
-                              '& fieldset': { borderColor: '#2e3a4a' },
-                              '&:hover fieldset': { borderColor: '#3a4a5a' },
+                              '& fieldset': { borderColor: 'var(--border-color)' },
+                              '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                             },
                           }}
                         />
@@ -8793,11 +9257,11 @@ const EstimateManagement: React.FC = () => {
                     multiline
                     rows={2}
                     sx={{
-                      input: { color: '#e0e6ed' },
-                      label: { color: '#b0b8c1' },
+                      input: { color: 'var(--text-color)' },
+                      label: { color: 'var(--text-secondary-color)' },
                       '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: '#2e3a4a' },
-                        '&:hover fieldset': { borderColor: '#3a4a5a' },
+                        '& fieldset': { borderColor: 'var(--border-color)' },
+                        '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                       },
                     }}
                   />
@@ -9023,12 +9487,16 @@ const EstimateManagement: React.FC = () => {
             )}
             {(() => {
               return estimates[activeTab]?.rows.length > 0 ? (
-                <TableContainer>
-                  <Table size="small">
+                <TableContainer sx={{ backgroundColor: 'var(--surface-color)', borderRadius: 1 }}>
+                  <Table size="small" sx={{ 
+                    '& .MuiTableCell-root': {
+                      borderColor: 'var(--border-color)',
+                    }
+                  }}>
                     <TableHead>
-                      <TableRow sx={{ backgroundColor: 'var(--background-color)' }}>
+                      <TableRow sx={{ backgroundColor: 'var(--surface-color)', borderBottom: '2px solid var(--border-color)' }}>
                         {isBulkEditMode && (
-                          <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold', width: 50 }}>
+                          <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: '12pt', width: 50, textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
                             <Checkbox
                               checked={selectedRowsForBulkEdit.size === filteredRows.filter(row => row.type === 'product').length}
                               indeterminate={selectedRowsForBulkEdit.size > 0 && selectedRowsForBulkEdit.size < filteredRows.filter(row => row.type === 'product').length}
@@ -9037,19 +9505,26 @@ const EstimateManagement: React.FC = () => {
                             />
                           </TableCell>
                         )}
-                        <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>구분</TableCell>
+                                                      <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: '12pt', textShadow: '0 1px 2px rgba(0,0,0,0.1)', width: 80 }}>순번</TableCell>
                         {FILTER_FIELDS.map(
                           field =>
                             columnVisibility[field.key] && (
-                              <TableCell key={field.key} sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>
-                                {field.label}
-                              </TableCell>
+                              // 입고금액, 입고원가, 마진 컬럼은 showMarginSum이 true일 때만 표시
+                              (['cost', 'purchaseCost', 'margin'].includes(field.key) && !showMarginSum) ? null : (
+                                <TableCell 
+                                  key={field.key} 
+                                  align={['widthMM', 'heightMM', 'area', 'lineLen', 'pleatAmount', 'widthCount', 'quantity', 'totalPrice', 'salePrice', 'cost', 'purchaseCost', 'margin'].includes(field.key) ? 'right' : 'left'}
+                                  sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: '12pt', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}
+                                >
+                                  {field.label}
+                                </TableCell>
+                              )
                             )
                         )}
-                        <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>작업</TableCell>
+                        <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: '12pt', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>작업</TableCell>
                       </TableRow>
                     </TableHead>
-                    <TableBody sx={{ color: 'var(--text-color)' }}>
+                    <TableBody sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>
                       {filteredRows.map((row, idx) => {
                         const isProduct = row.type === 'product';
                         const isRail = row.optionLabel === '레일';
@@ -9084,15 +9559,15 @@ const EstimateManagement: React.FC = () => {
                               sx={{
                                 backgroundColor:
                                   selectedProductIdx === idx
-                                    ? 'var(--primary-color)'
+                                    ? 'var(--hover-color-strong)' // 테마 색상보다 밝은 배경
                                     : selectedRowsForBulkEdit.has(idx)
                                     ? 'rgba(255, 193, 7, 0.3)'
-                                    : getSpaceColor(row.space),
-                                fontSize: '11pt',
+                                    : 'var(--surface-color)', // 통일된 배경색
+                                fontSize: '12pt',
                                 cursor: 'pointer',
                                 transition: 'background 0.2s',
                                 '&:hover': {
-                                  backgroundColor: '#ffb74d',
+                                  backgroundColor: 'var(--hover-color-strong)', // 테마에 맞는 hover 색상
                                 }
                               }}
                               onClick={() => {
@@ -9109,7 +9584,7 @@ const EstimateManagement: React.FC = () => {
                               }}
                             >
                               {isBulkEditMode && (
-                                <TableCell sx={{ width: 50 }}>
+                                <TableCell sx={{ width: 50, fontSize: '12pt' }}>
                                   <Checkbox
                                     checked={selectedRowsForBulkEdit.has(idx)}
                                     onChange={() => handleRowSelectionForBulkEdit(idx)}
@@ -9118,35 +9593,105 @@ const EstimateManagement: React.FC = () => {
                                   />
                                 </TableCell>
                               )}
-                              <TableCell
-                                sx={{ 
-                                  fontWeight: 'bold', 
-                                  fontSize: '11pt',
-                                  color: 'var(--text-color)'
-                                }}
-                              >
-                                제품
+                              <TableCell sx={{ 
+                                width: 80,
+                                fontSize: '12pt',
+                                color: 'var(--text-color)',
+                                textShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                                textAlign: 'center'
+                              }}>
+                                {(() => {
+                                  const productNumber = getProductNumber(row);
+                                  if (productNumber === null) return '';
+                                  
+                                  const productRows = estimates[activeTab]?.rows?.filter(r => r.type === 'product') || [];
+                                  const canMoveUp = productNumber > 1;
+                                  const canMoveDown = productNumber < productRows.length;
+                                  
+                                  return (
+                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                                      <IconButton
+                                        size="small"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          moveProductUp(productNumber - 1);
+                                        }}
+                                        disabled={!canMoveUp}
+                                        sx={{ 
+                                          padding: '2px',
+                                          color: canMoveUp ? 'var(--primary-color)' : 'var(--text-color)',
+                                          opacity: canMoveUp ? 1 : 0.3
+                                        }}
+                                        title="위로 이동"
+                                      >
+                                        <ArrowUpIcon fontSize="small" />
+                                      </IconButton>
+                                                                              <Typography
+                                          variant="body2"
+                                          sx={{
+                                            fontWeight: 'bold',
+                                            minWidth: '20px',
+                                            textAlign: 'center',
+                                            color: 'var(--text-color)',
+                                            textShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                                          }}
+                                        >
+                                          {productNumber}
+                                        </Typography>
+                                      <IconButton
+                                        size="small"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          moveProductDown(productNumber - 1);
+                                        }}
+                                        disabled={!canMoveDown}
+                                        sx={{ 
+                                          padding: '2px',
+                                          color: canMoveDown ? 'var(--primary-color)' : 'var(--text-color)',
+                                          opacity: canMoveDown ? 1 : 0.3
+                                        }}
+                                        title="아래로 이동"
+                                      >
+                                        <ArrowDownIcon fontSize="small" />
+                                      </IconButton>
+                                    </Box>
+                                  );
+                                })()}
                               </TableCell>
+
                               {FILTER_FIELDS.map(
                                 field =>
                                   columnVisibility[field.key] && (
-                                    <TableCell
-                                      key={field.key}
-                                      sx={{ 
-                                        fontSize: '11pt',
-                                        color: 'var(--text-color)'
-                                      }}
-                                    >
-                                      {getRowValue(row, field.key)}
-                                    </TableCell>
+                                    // 입고금액, 입고원가, 마진 컬럼은 showMarginSum이 true일 때만 표시
+                                    (['cost', 'purchaseCost', 'margin'].includes(field.key) && !showMarginSum) ? null : (
+                                      <TableCell
+                                        key={field.key}
+                                        align={['widthMM', 'heightMM', 'area', 'lineLen', 'pleatAmount', 'widthCount', 'quantity', 'totalPrice', 'salePrice', 'cost', 'purchaseCost', 'margin'].includes(field.key) ? 'right' : 'left'}
+                                        sx={{ 
+                                          fontSize: '12pt',
+                                          color: 'var(--text-color)',
+                                          textShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                                        }}
+                                      >
+                                        {getRowValue(row, field.key)}
+                                      </TableCell>
+                                    )
                                   )
                               )}
-                              <TableCell>
+                              <TableCell sx={{ 
+                                display: 'flex', 
+                                flexDirection: 'row', 
+                                gap: 0.5,
+                                alignItems: 'center',
+                                padding: '4px',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden'
+                              }}>
                                 <IconButton
                                   size="small"
                                   onClick={() => handleRowClick(idx)}
                                   title="수정"
-                                  sx={{ color: '#2196f3' }}
+                                  sx={{ color: '#2196f3', padding: '2px' }}
                                 >
                                   <EditIcon fontSize="small" />
                                 </IconButton>
@@ -9154,6 +9699,7 @@ const EstimateManagement: React.FC = () => {
                                   size="small"
                                   onClick={() => handleCopyRow(row.id)}
                                   title="복사"
+                                  sx={{ padding: '2px' }}
                                 >
                                   <ContentCopyIcon fontSize="small" />
                                 </IconButton>
@@ -9172,6 +9718,7 @@ const EstimateManagement: React.FC = () => {
                                     }
                                   }}
                                   title="삭제"
+                                  sx={{ padding: '2px' }}
                                 >
                                   <DeleteIcon fontSize="small" />
                                 </IconButton>
@@ -9184,11 +9731,11 @@ const EstimateManagement: React.FC = () => {
                             <TableRow
                               key={`option-${row.id || 'no-id'}-${idx}-${row.optionLabel || 'no-label'}-${row.details || 'no-details'}`}
                               sx={{
-                                backgroundColor: getSpaceColor(row.space, 1.12),
-                                fontSize: '10.5pt',
+                                backgroundColor: 'var(--surface-color)', // 통일된 배경색
+                                fontSize: '12pt',
                                 cursor: 'pointer',
                                 '&:hover': {
-                                  backgroundColor: '#ffb74d',
+                                  backgroundColor: 'var(--hover-color-strong)', // 테마에 맞는 hover 색상
                                 }
                               }}
                                                               onContextMenu={(e) => {
@@ -9196,7 +9743,7 @@ const EstimateManagement: React.FC = () => {
                                   if (isRail) {
                                     handleRailEdit(idx);
                                   } else {
-                                    handleOpenQuantityEditModal(row);
+                                    handleEstimateOptionDoubleClick(row, idx);
                                   }
                                 }}
                               onDoubleClick={
@@ -9204,101 +9751,112 @@ const EstimateManagement: React.FC = () => {
                                 () => handleEstimateOptionDoubleClick(row, idx)
                               }
                             >
-                              <TableCell sx={{ 
-                                pl: 3, 
-                                fontSize: '10.5pt',
-                                color: 'var(--text-color)'
+                                                            <TableCell sx={{ 
+                                width: 80,
+                                fontSize: '12pt',
+                                color: 'var(--text-color)',
+                                textShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                                textAlign: 'center'
                               }}>
-                                {isRail ? (
-                                  <Box
-                                    sx={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: 1,
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        color: '#ff9800',
-                                        fontWeight: 'bold',
-                                      }}
-                                    >
-                                      🚇
-                                    </span>
-                                    <span style={{ fontWeight: 'bold' }}>
-                                      레일
-                                    </span>
-                                  </Box>
-                                ) : (
-                                  '└ 옵션'
-                                )}
+                                {/* 옵션 행은 순번 표시하지 않음 */}
                               </TableCell>
-                              <TableCell
-                                colSpan={visibleNonMonetaryCount}
-                                sx={{
-                                  whiteSpace: 'nowrap',
-                                  fontSize: '10.5pt',
-                                  color: 'var(--text-color)',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  maxWidth: '300px',
-                                }}
-                              >
-                                <Tooltip
-                                  title={isRail
-                                    ? `${row.details} (서비스 품목입니다)`
-                                    : row.details 
-                                      ? `${row.optionLabel} / ${row.details}`
-                                      : row.optionLabel}
-                                  placement="top"
-                                  arrow
-                                >
-                                  <span>
-                                    {isRail
-                                      ? `${row.details} (서비스 품목입니다)`
-                                                                              : (() => {
-                                            // 시공옵션의 경우 괄호 안의 수량 정보만 추출 (전동 제외)
-                                            if (row.details && (row.optionLabel?.includes('시공') || row.optionLabel?.includes('커튼') || row.optionLabel?.includes('블라인드'))) {
-                                              // 전동이 포함된 옵션은 전체 상세정보 표시
-                                              if (row.optionLabel?.includes('전동')) {
-                                                return row.details 
-                                                  ? `${row.optionLabel} / ${row.details}`
-                                                  : row.optionLabel;
-                                              }
-                                              // 일반 시공옵션은 괄호 안의 수량 정보만 추출
-                                              const match = row.details.match(/\(([^)]+)\)/);
-                                              if (match) {
-                                                return `${row.optionLabel} / ${match[1]}`;
-                                              }
-                                            }
-                                            // 일반적인 경우
-                                            return row.details 
-                                              ? `${row.optionLabel} / ${row.details}`
-                                              : row.optionLabel;
-                                          })()}
-                                  </span>
-                                </Tooltip>
-                              </TableCell>
-                              {monetaryFields.map(
+                              {FILTER_FIELDS.map(
                                 field =>
                                   columnVisibility[field.key] && (
-                                    <TableCell
-                                      key={field.key}
-                                      align="right"
-                                      sx={{ 
-                                        fontSize: '10.5pt',
-                                        color: 'var(--text-color)'
-                                      }}
-                                    >
-                                      {getRowValue(
-                                        row,
-                                        field.key
-                                      )?.toLocaleString()}
+                                    // 입고금액, 입고원가, 마진 컬럼은 showMarginSum이 true일 때만 표시
+                                    (['cost', 'purchaseCost', 'margin'].includes(field.key) && !showMarginSum) ? null : (
+                                      <TableCell
+                                        key={field.key}
+                                        align={['widthMM', 'heightMM', 'area', 'lineLen', 'pleatAmount', 'widthCount', 'quantity', 'totalPrice', 'salePrice', 'cost', 'purchaseCost', 'margin'].includes(field.key) ? 'right' : 'left'}
+                                        sx={{
+                                          whiteSpace: 'nowrap',
+                                          fontSize: '12pt',
+                                          color: 'var(--text-color)',
+                                          textShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis',
+                                          maxWidth: '300px',
+                                        }}
+                                      >
+                                      {field.key === 'space' ? (
+                                        // 공간 컬럼에 옵션/레일 표시
+                                        isRail ? (
+                                          <Box
+                                            sx={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: 1,
+                                              whiteSpace: 'nowrap',
+                                            }}
+                                          >
+                                            <span
+                                              style={{
+                                                color: '#ff9800',
+                                                fontWeight: 'bold',
+                                              }}
+                                            >
+                                              🚇
+                                            </span>
+                                            <span style={{ fontWeight: 'bold' }}>
+                                              레일
+                                            </span>
+                                          </Box>
+                                        ) : (
+                                          '└ 옵션'
+                                        )
+                                      ) : field.key === 'details' ? (
+                                        <Tooltip
+                                          title={isRail
+                                            ? `${row.details} (서비스 품목입니다)`
+                                            : row.details 
+                                              ? `${row.optionLabel} / ${row.details}`
+                                              : row.optionLabel}
+                                          placement="top"
+                                          arrow
+                                        >
+                                          <span>
+                                            {isRail
+                                              ? `${row.details} (서비스 품목입니다)`
+                                              : (() => {
+                                                  // 시공옵션의 경우 괄호 안의 수량 정보만 추출 (전동 제외)
+                                                  if (row.details && (row.optionLabel?.includes('시공') || row.optionLabel?.includes('커튼') || row.optionLabel?.includes('블라인드'))) {
+                                                    // 전동이 포함된 옵션은 전체 상세정보 표시
+                                                    if (row.optionLabel?.includes('전동')) {
+                                                      return row.details 
+                                                        ? `${row.optionLabel} / ${row.details}`
+                                                        : row.optionLabel;
+                                                    }
+                                                    // 일반 시공옵션은 괄호 안의 수량 정보만 추출
+                                                    const match = row.details.match(/\(([^)]+)\)/);
+                                                    if (match) {
+                                                      return `${row.optionLabel} / ${match[1]}`;
+                                                    }
+                                                  }
+                                                  // 일반적인 경우
+                                                  return row.details 
+                                                    ? `${row.optionLabel} / ${row.details}`
+                                                    : row.optionLabel;
+                                                })()}
+                                          </span>
+                                        </Tooltip>
+                                      ) : ['totalPrice', 'salePrice', 'cost', 'purchaseCost', 'margin'].includes(field.key) 
+                                        ? getRowValue(row, field.key)?.toLocaleString()
+                                        : getRowValue(row, field.key)
+                                      }
                                     </TableCell>
+                                    )
                                   )
                               )}
-                              <TableCell>
+
+                              <TableCell sx={{ 
+                                display: 'flex', 
+                                flexDirection: 'row', 
+                                gap: 0.5,
+                                alignItems: 'center',
+                                padding: '4px',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden'
+                              }}>
                                 <IconButton
                                   size="small"
                                   onClick={() => {
@@ -9314,7 +9872,10 @@ const EstimateManagement: React.FC = () => {
                                     }
                                   }}
                                   title={isRail ? '레일 삭제' : '옵션 삭제'}
-                                  sx={{ color: isRail ? '#ff5722' : '#ff6b6b' }}
+                                  sx={{ 
+                                    color: isRail ? '#ff5722' : '#ff6b6b',
+                                    padding: '2px'
+                                  }}
                                 >
                                   <DeleteIcon fontSize="small" />
                                 </IconButton>
@@ -10105,8 +10666,8 @@ const EstimateManagement: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredSavedEstimatesList.length > 0 ? (
-                      filteredSavedEstimatesList.map((est: any, index: number) => {
+                                            {sortedFilteredEstimatesList.length > 0 ? (
+                          sortedFilteredEstimatesList.map((est: any, index: number) => {
                         const discountedAmount =
                           est.discountedAmount ??
                           est.totalAmount - est.discountAmount;
@@ -10116,43 +10677,28 @@ const EstimateManagement: React.FC = () => {
 
                         // 그룹 정보 가져오기
                         const { colorIndex, isLatest, isFinal } =
-                          getEstimateGroupInfo(est, filteredSavedEstimatesList);
+                          getEstimateGroupInfo(est, sortedFilteredEstimatesList);
                         
                         // 발주완료 상태 확인
                         const isOrderCompleted = status === '발주완료' || status === '납품완료';
                         
-                        // 배경색 결정: 발주완료 > Final > 일반 순서로 우선순위
-                        let backgroundColor;
+                        // 배경색 결정: 라이트모드에 맞게 한 컬러로 통일
+                        let backgroundColor = 'var(--surface-color)'; // 라이트모드용 통일 배경색
                         let specialStyle = {};
                         
-                        if (isOrderCompleted) {
-                          // 발주완료된 견적서는 초록색 배경
-                          backgroundColor = '#1b5e20';
+                        // 최근 저장된 견적서 하이라이트 확인
+                        const currentEstimateId = `${est.estimateNo}-${est.id}`;
+                        const isRecentlySaved = recentlySavedEstimateId === currentEstimateId;
+                        
+                        if (isRecentlySaved) {
+                          backgroundColor = '#fff3cd'; // 노란색 하이라이트
                           specialStyle = {
-                            backgroundColor: '#1b5e20',
-                            border: '2px solid #4caf50',
-                            '&:hover': {
-                              backgroundColor: '#2e7d32',
-                              border: '2px solid #66bb6a',
-                            },
+                            animation: 'pulse 1s ease-in-out',
+                            boxShadow: '0 0 10px rgba(255, 193, 7, 0.5)',
                           };
-                        } else if (isFinal) {
-                          // Final 견적서는 파란색 배경
-                          backgroundColor = '#1a237e';
-                          specialStyle = {
-                            backgroundColor: '#1a237e',
-                            border: '2px solid #3f51b5',
-                            '&:hover': {
-                              backgroundColor: '#283593',
-                              border: '2px solid #5c6bc0',
-                            },
-                          };
-                        } else {
-                          // 일반 견적서는 그룹별 색상
-                          backgroundColor = isLatest
-                            ? groupColors[colorIndex].dark
-                            : groupColors[colorIndex].light;
                         }
+                        
+                        // Final 견적서는 뱃지만으로 구분하므로 배경색은 동일하게 유지
 
                         return (
                           <TableRow
@@ -10162,15 +10708,16 @@ const EstimateManagement: React.FC = () => {
                             sx={{
                               cursor: 'pointer',
                               backgroundColor: backgroundColor,
+                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', // 부드러운 전환 효과
                               '&:hover': {
-                                backgroundColor: isOrderCompleted
-                                  ? '#2e7d32'
-                                  : isFinal
-                                    ? '#283593'
-                                    : isLatest
-                                      ? groupColors[colorIndex].light
-                                      : groupColors[colorIndex].dark,
-                                transition: 'background-color 0.2s ease',
+                                backgroundColor: 'var(--hover-color-strong)', // 테마에 맞는 진한 hover 색상 (25% 투명도)
+                                transform: 'translateY(-2px)', // 살짝 위로 올라가는 효과
+                                boxShadow: '0 6px 20px rgba(0,0,0,0.12)', // 부드러운 그림자 효과
+                                borderColor: 'var(--primary-color)', // 테두리 색상도 primary로 변경
+                              },
+                              '&:active': {
+                                transform: 'translateY(0px)', // 클릭 시 원래 위치로
+                                transition: 'all 0.1s ease',
                               },
                               ...specialStyle,
                             }}
@@ -10178,8 +10725,8 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showEstimateNo && (
                               <TableCell
                                 sx={{
-                                  color: isOrderCompleted ? '#4caf50' : isFinal ? '#ffd700' : '#e0e6ed',
-                                  borderColor: '#2e3a4a',
+                                  color: 'var(--text-color)', // 라이트모드용 텍스트 색상
+                                  borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
                                 }}
                               >
@@ -10190,8 +10737,8 @@ const EstimateManagement: React.FC = () => {
                                     size="small"
                                     sx={{
                                       ml: 1,
-                                      backgroundColor: '#4caf50',
-                                      color: '#fff',
+                                      backgroundColor: 'var(--success-color)', // 라이트모드용 발주완료 뱃지 색상
+                                      color: 'var(--on-success-color)', // 라이트모드용 발주완료 뱃지 텍스트 색상
                                       fontSize: '0.7rem',
                                       height: '20px',
                                       fontWeight: 'bold',
@@ -10204,8 +10751,8 @@ const EstimateManagement: React.FC = () => {
                                     size="small"
                                     sx={{
                                       ml: 1,
-                                      backgroundColor: '#ffd700',
-                                      color: '#1a237e',
+                                      backgroundColor: 'var(--primary-color)', // 라이트모드용 Final 뱃지 색상
+                                      color: 'var(--on-primary-color)', // 라이트모드용 Final 뱃지 텍스트 색상
                                       fontSize: '0.7rem',
                                       height: '20px',
                                     }}
@@ -10216,8 +10763,8 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showEstimateDate && (
                               <TableCell
                                 sx={{
-                                  color: '#e0e6ed',
-                                  borderColor: '#2e3a4a',
+                                  color: 'var(--text-color)', // 라이트모드용 텍스트 색상
+                                  borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
                                 }}
                               >
                                 {est.estimateDate}
@@ -10226,8 +10773,8 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showSavedDate && (
                               <TableCell
                                 sx={{
-                                  color: '#e0e6ed',
-                                  borderColor: '#2e3a4a',
+                                  color: 'var(--text-color)', // 라이트모드용 텍스트 색상
+                                  borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
                                 }}
                               >
                                 {est.savedAt
@@ -10238,8 +10785,8 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showCustomerName && (
                               <TableCell
                                 sx={{
-                                  color: '#e0e6ed',
-                                  borderColor: '#2e3a4a',
+                                  color: 'var(--text-color)', // 라이트모드용 텍스트 색상
+                                  borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
                                 }}
                               >
                                 {est.customerName}
@@ -10248,8 +10795,8 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showContact && (
                               <TableCell
                                 sx={{
-                                  color: '#e0e6ed',
-                                  borderColor: '#2e3a4a',
+                                  color: 'var(--text-color)', // 라이트모드용 텍스트 색상
+                                  borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
                                 }}
                               >
                                 {est.contact}
@@ -10258,8 +10805,8 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showProjectName && (
                               <TableCell
                                 sx={{
-                                  color: '#e0e6ed',
-                                  borderColor: '#2e3a4a',
+                                  color: 'var(--text-color)', // 라이트모드용 텍스트 색상
+                                  borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
                                 }}
                               >
                                 {est.projectName}
@@ -10268,8 +10815,8 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showProducts && (
                               <TableCell
                                 sx={{
-                                  color: '#e0e6ed',
-                                  borderColor: '#2e3a4a',
+                                  color: 'var(--text-color)', // 라이트모드용 텍스트 색상
+                                  borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
                                 }}
                               >
                                 <Tooltip
@@ -10292,8 +10839,8 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showTotalAmount && (
                               <TableCell
                                 sx={{
-                                  color: '#e0e6ed',
-                                  borderColor: '#2e3a4a',
+                                  color: 'var(--text-color)', // 라이트모드용 텍스트 색상
+                                  borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
                                 }}
                               >
                                 {est.totalAmount?.toLocaleString()}원
@@ -10302,8 +10849,8 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showDiscountedAmount && (
                               <TableCell
                                 sx={{
-                                  color: '#e0e6ed',
-                                  borderColor: '#2e3a4a',
+                                  color: 'var(--text-color)', // 라이트모드용 텍스트 색상
+                                  borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
                                 }}
                               >
                                 {discountedAmount.toLocaleString()} 원
@@ -10312,8 +10859,8 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showDiscountAmount && (
                               <TableCell
                                 sx={{
-                                  color: '#e0e6ed',
-                                  borderColor: '#2e3a4a',
+                                  color: 'var(--text-color)', // 라이트모드용 텍스트 색상
+                                  borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
                                 }}
                               >
                                 {est.discountAmount?.toLocaleString()}원
@@ -10322,8 +10869,8 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showDiscountRate && (
                               <TableCell
                                 sx={{
-                                  color: '#e0e6ed',
-                                  borderColor: '#2e3a4a',
+                                  color: 'var(--text-color)', // 라이트모드용 텍스트 색상
+                                  borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
                                 }}
                               >
                                 {est.totalAmount > 0 && est.discountAmount > 0
@@ -10337,8 +10884,8 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showMargin && (
                               <TableCell
                                 sx={{
-                                  color: '#e0e6ed',
-                                  borderColor: '#2e3a4a',
+                                  color: 'var(--text-color)', // 라이트모드용 텍스트 색상
+                                  borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
                                 }}
                               >
                                 {est.margin?.toLocaleString()}원
@@ -10346,7 +10893,7 @@ const EstimateManagement: React.FC = () => {
                             )}
 
                             {estimateListDisplay.showActions && (
-                              <TableCell sx={{ borderColor: '#2e3a4a' }}>
+                              <TableCell sx={{ borderColor: 'var(--border-color)' }}> {/* 라이트모드용 테두리 색상 */}
                                 {/* final 견적서인 경우 특별한 버튼 표시 */}
                                 {isFinal && (
                                   <>
