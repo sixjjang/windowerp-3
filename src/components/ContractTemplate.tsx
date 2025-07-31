@@ -75,8 +75,6 @@ const OUTPUT_FIELDS = [
   { key: 'space', label: '공간' },
   { key: 'productCode', label: '제품코드' },
   { key: 'productType', label: '제품종류' },
-  { key: 'curtainType', label: '커튼종류' },
-  { key: 'pleatType', label: '주름방식' },
   { key: 'productName', label: '제품명' },
   { key: 'width', label: '폭' },
   { key: 'details', label: '세부내용' },
@@ -764,10 +762,6 @@ const ContractTemplate: React.FC<ContractTemplateProps> = ({
         return row.productCode || '-';
       case 'productType':
         return row.productType || '-';
-      case 'curtainType':
-        return row.curtainType || '-';
-      case 'pleatType':
-        return row.pleatType || '-';
       case 'productName':
         return row.productName || '-';
       case 'width':

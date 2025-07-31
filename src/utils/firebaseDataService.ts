@@ -177,17 +177,40 @@ export const estimateService = {
   },
 
   // 견적서 수정 (Firebase Functions를 통한 수정)
-  async updateEstimate(estimateId: string, estimateData: any) {
+  async updateEstimate(estimateId: string | number, estimateData: any) {
     try {
-      console.log('Firebase Functions를 통한 견적서 수정 시작:', estimateId, estimateData);
+      // 견적서 ID 검증 (문자열 또는 숫자 허용)
+      if (!estimateId || (typeof estimateId !== 'string' && typeof estimateId !== 'number')) {
+        throw new Error('유효하지 않은 견적서 ID입니다.');
+      }
+
+      // ID를 문자열로 변환
+      const estimateIdString = String(estimateId);
+      if (estimateIdString.trim() === '') {
+        throw new Error('유효하지 않은 견적서 ID입니다.');
+      }
+
+      console.log('Firebase Functions를 통한 견적서 수정 시작:', estimateIdString, estimateData);
       
       // Firebase Functions를 통해 수정
-      const result = await callFirebaseFunction(`updateEstimate/${estimateId}`, estimateData, 'PUT');
+      const result = await callFirebaseFunction(`updateEstimate/${estimateIdString}`, estimateData, 'PUT');
       
       console.log('Firebase Functions를 통한 견적서 수정 성공:', result);
       return result;
     } catch (error) {
       console.error('Firebase Functions를 통한 견적서 수정 실패:', error);
+      
+      // 더 구체적인 오류 정보 제공
+      if (error instanceof Error) {
+        if (error.message.includes('404')) {
+          throw new Error(`견적서를 찾을 수 없습니다. (ID: ${estimateId})`);
+        } else if (error.message.includes('401')) {
+          throw new Error('인증이 필요합니다. 다시 로그인해주세요.');
+        } else if (error.message.includes('500')) {
+          throw new Error('서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+        }
+      }
+      
       throw error;
     }
   },

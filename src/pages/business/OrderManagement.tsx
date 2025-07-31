@@ -2775,7 +2775,7 @@ const OrderManagement: React.FC = () => {
                 sx={{
                   mb: 2,
                   p: 1.5,
-                  bgcolor: 'var(--background-color)',
+                  bgcolor: 'var(--surface-color)',
                   borderRadius: 1,
                   border: '1px solid var(--primary-color)',
                   boxShadow: '0 2px 8px rgba(64, 196, 255, 0.1)',
@@ -2820,9 +2820,9 @@ const OrderManagement: React.FC = () => {
                   <Box
                     sx={{
                       p: 1,
-                      bgcolor: '#1a1f2e',
+                      bgcolor: 'var(--surface-color)',
                       borderRadius: 0.5,
-                      border: '1px solid #2e3a4a',
+                      border: '1px solid var(--border-color)',
                     }}
                   >
                     <Typography
@@ -2854,15 +2854,15 @@ const OrderManagement: React.FC = () => {
                   <Box
                     sx={{
                       p: 1,
-                      bgcolor: '#1a1f2e',
+                      bgcolor: 'var(--surface-color)',
                       borderRadius: 0.5,
-                      border: '1px solid #2e3a4a',
+                      border: '1px solid var(--border-color)',
                     }}
                   >
                     <Typography
                       variant="caption"
                       sx={{
-                        color: '#b0b8c1',
+                        color: 'var(--secondary-text-color)',
                         mb: 0.5,
                         fontSize: '0.7rem',
                         fontWeight: 500,
@@ -2888,15 +2888,15 @@ const OrderManagement: React.FC = () => {
                   <Box
                     sx={{
                       p: 1,
-                      bgcolor: '#1a1f2e',
+                      bgcolor: 'var(--surface-color)',
                       borderRadius: 0.5,
-                      border: '1px solid #2e3a4a',
+                      border: '1px solid var(--border-color)',
                     }}
                   >
                     <Typography
                       variant="caption"
                       sx={{
-                        color: '#b0b8c1',
+                        color: 'var(--secondary-text-color)',
                         mb: 0.5,
                         fontSize: '0.7rem',
                         fontWeight: 500,
@@ -2922,15 +2922,15 @@ const OrderManagement: React.FC = () => {
                   <Box
                     sx={{
                       p: 1,
-                      bgcolor: '#1a1f2e',
+                      bgcolor: 'var(--surface-color)',
                       borderRadius: 0.5,
-                      border: '1px solid #2e3a4a',
+                      border: '1px solid var(--border-color)',
                     }}
                   >
                     <Typography
                       variant="caption"
                       sx={{
-                        color: '#b0b8c1',
+                        color: 'var(--secondary-text-color)',
                         mb: 0.5,
                         fontSize: '0.7rem',
                         fontWeight: 500,
@@ -2958,15 +2958,15 @@ const OrderManagement: React.FC = () => {
                   <Box
                     sx={{
                       p: 1,
-                      bgcolor: '#1a1f2e',
+                      bgcolor: 'var(--surface-color)',
                       borderRadius: 0.5,
-                      border: '1px solid #2e3a4a',
+                      border: '1px solid var(--border-color)',
                     }}
                   >
                     <Typography
                       variant="caption"
                       sx={{
-                        color: '#b0b8c1',
+                        color: 'var(--secondary-text-color)',
                         mb: 0.5,
                         fontSize: '0.7rem',
                         fontWeight: 500,
@@ -2979,7 +2979,7 @@ const OrderManagement: React.FC = () => {
                       variant="body2"
                       sx={{
                         fontWeight: 'bold',
-                        color: '#e0e6ed',
+                        color: 'var(--text-color)',
                         fontSize: '0.8rem',
                       }}
                     >
@@ -2992,15 +2992,15 @@ const OrderManagement: React.FC = () => {
                   <Box
                     sx={{
                       p: 1,
-                      bgcolor: '#1a1f2e',
+                      bgcolor: 'var(--surface-color)',
                       borderRadius: 0.5,
-                      border: '1px solid #2e3a4a',
+                      border: '1px solid var(--border-color)',
                     }}
                   >
                     <Typography
                       variant="caption"
                       sx={{
-                        color: '#b0b8c1',
+                        color: 'var(--secondary-text-color)',
                         mb: 0.5,
                         fontSize: '0.7rem',
                         fontWeight: 500,
@@ -3012,7 +3012,7 @@ const OrderManagement: React.FC = () => {
                     <Typography
                       variant="body2"
                       sx={{
-                        color: selectedContract.type ? '#e0e6ed' : '#666',
+                        color: selectedContract.type ? 'var(--text-color)' : 'var(--secondary-text-color)',
                         fontWeight: 500,
                         fontSize: '0.8rem',
                       }}
@@ -3026,15 +3026,15 @@ const OrderManagement: React.FC = () => {
                   <Box
                     sx={{
                       p: 1,
-                      bgcolor: '#1a1f2e',
+                      bgcolor: 'var(--surface-color)',
                       borderRadius: 0.5,
-                      border: '1px solid #2e3a4a',
+                      border: '1px solid var(--border-color)',
                     }}
                   >
                     <Typography
                       variant="caption"
                       sx={{
-                        color: '#b0b8c1',
+                        color: 'var(--secondary-text-color)',
                         mb: 0.5,
                         fontSize: '0.7rem',
                         fontWeight: 500,
@@ -3046,7 +3046,7 @@ const OrderManagement: React.FC = () => {
                     <Typography
                       variant="body2"
                       sx={{
-                        color: '#e0e6ed',
+                        color: 'var(--text-color)',
                         fontWeight: 500,
                         lineHeight: 1.3,
                         fontSize: '0.8rem',
@@ -3070,8 +3070,8 @@ const OrderManagement: React.FC = () => {
                     setExpandedGroupKey(isExpanded ? key : false)
                   }
                   sx={{
-                    backgroundColor: '#263040',
-                    color: '#e0e6ed',
+                    backgroundColor: 'var(--surface-color)',
+                    color: 'var(--text-color)',
                     '&:before': { display: 'none' },
                     mb: 1,
                   }}
@@ -3087,13 +3087,13 @@ const OrderManagement: React.FC = () => {
                       },
                     }}
                   >
-                    <Typography sx={{ fontWeight: 'bold' }}>
+                    <Typography sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}>
                       {selectedContract
                         ? selectedContract.address
                         : (group as Order[])[0].deliveryAddress}
                       <Box
                         component="span"
-                        sx={{ color: '#b0b8c1', fontSize: '0.875rem' }}
+                        sx={{ color: 'var(--secondary-text-color)', fontSize: '0.875rem' }}
                       >
                         ({(group as Order[])[0].orderDate})
                       </Box>
@@ -3149,13 +3149,13 @@ const OrderManagement: React.FC = () => {
                             <Box>
                               <Typography
                                 variant="body1"
-                                sx={{ fontWeight: 'bold' }}
+                                sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}
                               >
                                 {order.vendorName}
                               </Typography>
                               <Typography
                                 variant="caption"
-                                sx={{ display: 'block' }}
+                                sx={{ display: 'block', color: 'var(--secondary-text-color)' }}
                               >
                                 {order.orderNo}
                               </Typography>
@@ -3208,9 +3208,9 @@ const OrderManagement: React.FC = () => {
                   sx={{
                     p: 2,
                     mt: 2,
-                    backgroundColor: '#263040',
-                    color: '#e0e6ed',
-                    border: '1px solid #40c4ff',
+                    backgroundColor: 'var(--surface-color)',
+                    color: 'var(--text-color)',
+                    border: '1px solid var(--primary-color)',
                   }}
                 >
                   <Box
@@ -3221,36 +3221,38 @@ const OrderManagement: React.FC = () => {
                       mb: 2,
                       p: 1,
                       borderRadius: 1,
-                      bgcolor: '#1a1f2e',
+                      bgcolor: 'var(--background-color)',
                     }}
                   >
-                    <Typography variant="h6">
+                    <Typography variant="h6" sx={{ color: 'var(--text-color)' }}>
                       {selectedOrder.orderNo}
                     </Typography>
                     <Typography
                       variant="h6"
-                      sx={{ color: '#40c4ff', fontWeight: 'bold' }}
+                      sx={{ color: 'var(--primary-color)', fontWeight: 'bold' }}
                     >
                       {selectedOrder.vendorName}
                     </Typography>
-                    <Typography variant="body2" sx={{ ml: 'auto' }}>
+                    <Typography variant="body2" sx={{ ml: 'auto', color: 'var(--secondary-text-color)' }}>
                       발주일: {selectedOrder.orderDate}
                     </Typography>
                     <FormControl size="small" sx={{ minWidth: 120 }}>
+                      <InputLabel sx={{ color: 'var(--text-color)' }}>상태</InputLabel>
                       <Select
                         value={selectedOrder.status}
-                        onChange={e =>
-                          handleUpdateSelectedOrderField(
-                            'status',
-                            e.target.value as OrderStatus
-                          )
-                        }
+                        onChange={e => handleUpdateSelectedOrderField('status', e.target.value as OrderStatus)}
+                        sx={{ color: 'var(--text-color)' }}
+                        MenuProps={{
+                          PaperProps: {
+                            sx: { color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }
+                          }
+                        }}
                       >
-                        <MenuItem value="작성중">작성중</MenuItem>
-                        <MenuItem value="발주완료">발주완료</MenuItem>
-                        <MenuItem value="입고대기">입고대기</MenuItem>
-                        <MenuItem value="입고완료">입고완료</MenuItem>
-                        <MenuItem value="취소">취소</MenuItem>
+                        <MenuItem value="작성중" sx={{ color: 'var(--text-color)' }}>작성중</MenuItem>
+                        <MenuItem value="발주완료" sx={{ color: 'var(--text-color)' }}>발주완료</MenuItem>
+                        <MenuItem value="입고대기" sx={{ color: 'var(--text-color)' }}>입고대기</MenuItem>
+                        <MenuItem value="입고완료" sx={{ color: 'var(--text-color)' }}>입고완료</MenuItem>
+                        <MenuItem value="취소" sx={{ color: 'var(--text-color)' }}>취소</MenuItem>
                       </Select>
                     </FormControl>
                     <ButtonGroup>
@@ -3545,7 +3547,7 @@ const OrderManagement: React.FC = () => {
 
                   {/* 요청사항을 거래처별로 하나씩만 표시 */}
                   <Box
-                    sx={{ mt: 2, p: 2, bgcolor: '#1a1f2e', borderRadius: 1 }}
+                    sx={{ mt: 2, p: 2, bgcolor: 'var(--surface-color)', borderRadius: 1 }}
                   >
                     <Typography
                       variant="h6"
@@ -3568,7 +3570,7 @@ const OrderManagement: React.FC = () => {
                         variant="body2"
                         sx={{
                           minWidth: 120,
-                          color: '#b0b8c1',
+                          color: 'var(--secondary-text-color)',
                           fontWeight: 'bold',
                         }}
                       >
@@ -3586,9 +3588,9 @@ const OrderManagement: React.FC = () => {
                         placeholder="거래처별 요청사항을 입력하세요..."
                         sx={{
                           '& .MuiOutlinedInput-root': {
-                            backgroundColor: '#232a36',
+                            backgroundColor: 'var(--surface-color)',
                             '&:hover': {
-                              backgroundColor: '#263040',
+                              backgroundColor: 'var(--hover-color)',
                             },
                           },
                         }}
@@ -3598,20 +3600,21 @@ const OrderManagement: React.FC = () => {
                   <Grid container spacing={2} sx={{ mt: 2 }}>
                     <Grid item xs={3}>
                       <FormControl fullWidth size="small">
-                        <InputLabel>납품방법</InputLabel>
+                        <InputLabel sx={{ color: 'var(--text-color)' }}>납품방법</InputLabel>
                         <Select
                           value={selectedOrder.deliveryMethod || '택배'}
-                          onChange={e =>
-                            handleUpdateSelectedOrderField(
-                              'deliveryMethod',
-                              e.target.value
-                            )
-                          }
+                          onChange={e => handleUpdateSelectedOrderField('deliveryMethod', e.target.value)}
                           label="납품방법"
+                          sx={{ color: 'var(--text-color)' }}
+                          MenuProps={{
+                            PaperProps: {
+                              sx: { color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }
+                            }
+                          }}
                         >
-                          <MenuItem value="매장배송">매장배송</MenuItem>
-                          <MenuItem value="택배">택배</MenuItem>
-                          <MenuItem value="직접입력">직접입력</MenuItem>
+                          <MenuItem value="매장배송" sx={{ color: 'var(--text-color)' }}>매장배송</MenuItem>
+                          <MenuItem value="택배" sx={{ color: 'var(--text-color)' }}>택배</MenuItem>
+                          <MenuItem value="직접입력" sx={{ color: 'var(--text-color)' }}>직접입력</MenuItem>
                         </Select>
                       </FormControl>
                       {selectedOrder.deliveryMethod === '직접입력' && (
@@ -3632,24 +3635,26 @@ const OrderManagement: React.FC = () => {
                     </Grid>
                     <Grid item xs={3}>
                       <FormControl fullWidth size="small">
-                        <InputLabel>납품일(발송일)</InputLabel>
+                        <InputLabel sx={{ color: 'var(--text-color)' }}>납품일(발송일)</InputLabel>
                         <Select
                           value={selectedOrder.deliveryDate || ''}
-                          onChange={e =>
-                            handleUpdateSelectedOrderField(
-                              'deliveryDate',
-                              e.target.value
-                            )
-                          }
+                          onChange={e => handleUpdateSelectedOrderField('deliveryDate', e.target.value)}
                           label="납품일(발송일)"
+                          sx={{ color: 'var(--text-color)' }}
+                          MenuProps={{
+                            PaperProps: {
+                              sx: { color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }
+                            }
+                          }}
                         >
-                          <MenuItem value="">직접입력</MenuItem>
+                          <MenuItem value="" sx={{ color: 'var(--text-color)' }}>직접입력</MenuItem>
+                          {/* 날짜 MenuItem도 동일하게 sx 적용 */}
                           {Array.from({ length: 9 }, (_, i) => {
                             const date = new Date(selectedOrder.orderDate);
-                            date.setDate(date.getDate() + i + 2); // 발주일 이후 2일부터
+                            date.setDate(date.getDate() + i + 2);
                             return date.toISOString().split('T')[0];
                           }).map(date => (
-                            <MenuItem key={date} value={date}>
+                            <MenuItem key={date} value={date} sx={{ color: 'var(--text-color)' }}>
                               {new Date(date).toLocaleDateString('ko-KR', {
                                 month: 'long',
                                 day: 'numeric',
@@ -3669,16 +3674,16 @@ const OrderManagement: React.FC = () => {
                           InputProps={{
                             sx: {
                               borderRadius: 2,
-                              background: '#232a36',
-                              border: '1px solid #2e3a4a',
-                              color: '#e0e6ed',
+                              background: 'var(--surface-color)',
+                              border: '1px solid var(--border-color)',
+                              color: 'var(--text-color)',
                               cursor: 'pointer',
                               '&:hover': {
-                                backgroundColor: '#2e3a4a',
-                                borderColor: '#40c4ff',
+                                backgroundColor: 'var(--hover-color)',
+                                borderColor: 'var(--primary-color)',
                               },
                               '&:focus': {
-                                borderColor: '#40c4ff',
+                                borderColor: 'var(--primary-color)',
                                 boxShadow: '0 0 0 2px rgba(64, 196, 255, 0.2)',
                               },
                             },
@@ -3764,7 +3769,7 @@ const OrderManagement: React.FC = () => {
         disableAutoFocus
         PaperProps={{
           sx: {
-            backgroundColor: '#1e2633',
+            backgroundColor: 'var(--background-color)',
             ...(isMobile && {
               margin: 0,
               borderRadius: 0,
@@ -3774,9 +3779,9 @@ const OrderManagement: React.FC = () => {
         }}
       >
         <DialogTitle sx={{ 
-          backgroundColor: '#1e2633',
+          backgroundColor: 'var(--surface-color)',
           borderBottom: 1,
-          borderColor: '#2e3a4a',
+          borderColor: 'var(--border-color)',
           position: 'relative'
         }}>
           {isMobile && (
@@ -3786,7 +3791,7 @@ const OrderManagement: React.FC = () => {
                 position: 'absolute',
                 left: 8,
                 top: 8,
-                color: '#b0b8c1',
+                color: 'var(--secondary-text-color)',
                 zIndex: 1,
               }}
             >
@@ -3798,7 +3803,7 @@ const OrderManagement: React.FC = () => {
             sx={{ 
               flex: 1, 
               textAlign: isMobile ? 'center' : 'left',
-              color: '#e0e6ed',
+              color: 'var(--text-color)',
               fontSize: isMobile ? '1.2rem' : '1.25rem',
               fontWeight: 600,
             }}
@@ -3808,9 +3813,9 @@ const OrderManagement: React.FC = () => {
         </DialogTitle>
         <DialogContent sx={{ 
           p: isMobile ? 2 : 3,
-          backgroundColor: '#1e2633',
+          backgroundColor: 'var(--background-color)',
           '& .MuiDialogContent-root': {
-            backgroundColor: '#1e2633',
+            backgroundColor: 'var(--background-color)',
           }
         }}>
           <Box sx={{ mb: 3 }}>
@@ -3818,7 +3823,7 @@ const OrderManagement: React.FC = () => {
               variant="h6" 
               sx={{ 
                 mb: 2,
-                color: '#e0e6ed',
+                color: 'var(--text-color)',
                 fontSize: isMobile ? '1.1rem' : '1.25rem',
                 fontWeight: 600,
               }}
@@ -3832,21 +3837,21 @@ const OrderManagement: React.FC = () => {
               sx={{ 
                 mb: 2,
                 '& .MuiToggleButton-root': {
-                  color: '#b0b8c1',
-                  borderColor: '#2e3a4a',
-                  backgroundColor: '#232a36',
+                  color: 'var(--secondary-text-color)',
+                  borderColor: 'var(--border-color)',
+                  backgroundColor: 'var(--surface-color)',
                   fontSize: isMobile ? '0.9rem' : '0.875rem',
                   minHeight: isMobile ? '44px' : 'auto',
                   '&.Mui-selected': {
-                    backgroundColor: '#40c4ff',
+                    backgroundColor: 'var(--primary-color)',
                     color: '#fff',
                     '&:hover': {
-                      backgroundColor: '#33a3cc',
+                      backgroundColor: 'var(--primary-color)',
                     }
                   },
                   '&:hover': {
-                    backgroundColor: '#263040',
-                    borderColor: '#40c4ff',
+                    backgroundColor: 'var(--hover-color)',
+                    borderColor: 'var(--primary-color)',
                   }
                 }
               }}
@@ -4088,8 +4093,8 @@ const OrderManagement: React.FC = () => {
         fullWidth
         PaperProps={{
           sx: {
-            backgroundColor: '#232a36',
-            color: '#e0e6ed',
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
             maxHeight: '80vh',
           },
         }}
@@ -4114,9 +4119,9 @@ const OrderManagement: React.FC = () => {
               sx={{
                 mb: 3,
                 p: 2,
-                bgcolor: '#1a1f2e',
+                bgcolor: 'var(--surface-color)',
                 borderRadius: 1,
-                border: '1px solid #2e3a4a',
+                border: '1px solid var(--border-color)',
               }}
             >
               <Typography
@@ -4256,10 +4261,10 @@ const OrderManagement: React.FC = () => {
                   sx={{
                     mb: 1,
                     borderRadius: 1,
-                    backgroundColor: '#1a1f2e',
+                    backgroundColor: 'var(--surface-color)',
                     cursor: 'pointer',
                     '&:hover': {
-                      backgroundColor: '#263040',
+                      backgroundColor: 'var(--hover-color)',
                       transform: 'translateY(-1px)',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
                     },
@@ -4321,8 +4326,8 @@ const OrderManagement: React.FC = () => {
         fullWidth
         PaperProps={{
           sx: {
-            backgroundColor: '#232a36',
-            color: '#e0e6ed',
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
             maxHeight: '90vh',
           },
         }}
@@ -4345,9 +4350,9 @@ const OrderManagement: React.FC = () => {
                 sx={{
                   mb: 3,
                   p: 2,
-                  bgcolor: '#1a1f2e',
+                  bgcolor: 'var(--surface-color)',
                   borderRadius: 1,
-                  border: '1px solid #2e3a4a',
+                  border: '1px solid var(--border-color)',
                 }}
               >
                 <Typography
@@ -4359,64 +4364,64 @@ const OrderManagement: React.FC = () => {
                 </Typography>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6} md={3}>
-                    <Box sx={{ p: 1, bgcolor: '#263040', borderRadius: 0.5 }}>
+                    <Box sx={{ p: 1, bgcolor: 'var(--surface-color)', borderRadius: 0.5 }}>
                       <Typography
                         variant="caption"
-                        sx={{ color: '#b0b8c1', display: 'block' }}
+                        sx={{ color: 'var(--secondary-text-color)', display: 'block' }}
                       >
                         계약번호
                       </Typography>
                       <Typography
                         variant="body2"
-                        sx={{ fontWeight: 'bold', color: '#e0e6ed' }}
+                        sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}
                       >
                         {selectedCompletedGroup[0].contractNo}
                       </Typography>
                     </Box>
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
-                    <Box sx={{ p: 1, bgcolor: '#263040', borderRadius: 0.5 }}>
+                    <Box sx={{ p: 1, bgcolor: 'var(--surface-color)', borderRadius: 0.5 }}>
                       <Typography
                         variant="caption"
-                        sx={{ color: '#b0b8c1', display: 'block' }}
+                        sx={{ color: 'var(--secondary-text-color)', display: 'block' }}
                       >
                         고객명
                       </Typography>
                       <Typography
                         variant="body2"
-                        sx={{ fontWeight: 'bold', color: '#e0e6ed' }}
+                        sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}
                       >
                         {selectedCompletedGroup[0].customerName}
                       </Typography>
                     </Box>
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
-                    <Box sx={{ p: 1, bgcolor: '#263040', borderRadius: 0.5 }}>
+                    <Box sx={{ p: 1, bgcolor: 'var(--surface-color)', borderRadius: 0.5 }}>
                       <Typography
                         variant="caption"
-                        sx={{ color: '#b0b8c1', display: 'block' }}
+                        sx={{ color: 'var(--secondary-text-color)', display: 'block' }}
                       >
                         발주일
                       </Typography>
                       <Typography
                         variant="body2"
-                        sx={{ fontWeight: 'bold', color: '#e0e6ed' }}
+                        sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}
                       >
                         {selectedCompletedGroup[0].orderDate}
                       </Typography>
                     </Box>
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
-                    <Box sx={{ p: 1, bgcolor: '#263040', borderRadius: 0.5 }}>
+                    <Box sx={{ p: 1, bgcolor: 'var(--surface-color)', borderRadius: 0.5 }}>
                       <Typography
                         variant="caption"
-                        sx={{ color: '#b0b8c1', display: 'block' }}
+                        sx={{ color: 'var(--secondary-text-color)', display: 'block' }}
                       >
                         거래처 수
                       </Typography>
                       <Typography
                         variant="body2"
-                        sx={{ fontWeight: 'bold', color: '#e0e6ed' }}
+                        sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}
                       >
                         {selectedCompletedGroup.length}개
                       </Typography>
@@ -4429,7 +4434,7 @@ const OrderManagement: React.FC = () => {
               <Typography
                 variant="h6"
                 gutterBottom
-                sx={{ color: '#40c4ff', mb: 2 }}
+                sx={{ color: 'var(--primary-color)', mb: 2 }}
               >
                 거래처별 발주내용
               </Typography>
@@ -4440,9 +4445,9 @@ const OrderManagement: React.FC = () => {
                   sx={{
                     mb: 3,
                     p: 2,
-                    bgcolor: '#1a1f2e',
+                    bgcolor: 'var(--surface-color)',
                     borderRadius: 1,
-                    border: '1px solid #2e3a4a',
+                    border: '1px solid var(--border-color)',
                   }}
                 >
                   {/* 거래처 헤더 */}
@@ -4450,16 +4455,16 @@ const OrderManagement: React.FC = () => {
                     sx={{
                       mb: 2,
                       p: 1.5,
-                      bgcolor: '#263040',
+                      bgcolor: 'var(--surface-color)',
                       borderRadius: 1,
-                      border: '1px solid #40c4ff',
+                      border: '1px solid var(--primary-color)',
                     }}
                   >
                     <Grid container spacing={2} alignItems="center">
                       <Grid item xs={12} sm={4}>
                         <Typography
                           variant="subtitle1"
-                          sx={{ fontWeight: 'bold', color: '#40c4ff' }}
+                          sx={{ fontWeight: 'bold', color: 'var(--primary-color)' }}
                         >
                           {order.vendorName}
                         </Typography>
@@ -4488,14 +4493,14 @@ const OrderManagement: React.FC = () => {
                   {/* 발주 품목 테이블 */}
                   <TableContainer
                     component={Paper}
-                    sx={{ bgcolor: '#232a36', mb: 2 }}
+                    sx={{ bgcolor: 'var(--surface-color)', mb: 2 }}
                   >
                     <Table size="small">
                       <TableHead>
-                        <TableRow sx={{ bgcolor: '#1a1f2e' }}>
+                        <TableRow sx={{ bgcolor: 'var(--primary-color)' }}>
                           <TableCell
                             sx={{
-                              color: '#b0b8c1',
+                              color: 'white',
                               fontWeight: 'bold',
                               fontSize: '0.75rem',
                               minWidth: 80,
@@ -4505,7 +4510,7 @@ const OrderManagement: React.FC = () => {
                           </TableCell>
                           <TableCell
                             sx={{
-                              color: '#b0b8c1',
+                              color: 'white',
                               fontWeight: 'bold',
                               fontSize: '0.75rem',
                               minWidth: 100,
@@ -4515,7 +4520,7 @@ const OrderManagement: React.FC = () => {
                           </TableCell>
                           <TableCell
                             sx={{
-                              color: '#b0b8c1',
+                              color: 'white',
                               fontWeight: 'bold',
                               fontSize: '0.75rem',
                               minWidth: 120,
@@ -4525,7 +4530,7 @@ const OrderManagement: React.FC = () => {
                           </TableCell>
                           <TableCell
                             sx={{
-                              color: '#b0b8c1',
+                              color: 'white',
                               fontWeight: 'bold',
                               fontSize: '0.75rem',
                               minWidth: 100,
@@ -4535,7 +4540,7 @@ const OrderManagement: React.FC = () => {
                           </TableCell>
                           <TableCell
                             sx={{
-                              color: '#b0b8c1',
+                              color: 'white',
                               fontWeight: 'bold',
                               fontSize: '0.75rem',
                               minWidth: 60,
@@ -4545,7 +4550,7 @@ const OrderManagement: React.FC = () => {
                           </TableCell>
                           <TableCell
                             sx={{
-                              color: '#b0b8c1',
+                              color: 'white',
                               fontWeight: 'bold',
                               fontSize: '0.75rem',
                               minWidth: 60,
@@ -4555,7 +4560,7 @@ const OrderManagement: React.FC = () => {
                           </TableCell>
                           <TableCell
                             sx={{
-                              color: '#b0b8c1',
+                              color: 'white',
                               fontWeight: 'bold',
                               fontSize: '0.75rem',
                               minWidth: 80,
@@ -4565,7 +4570,7 @@ const OrderManagement: React.FC = () => {
                           </TableCell>
                           <TableCell
                             sx={{
-                              color: '#b0b8c1',
+                              color: 'white',
                               fontWeight: 'bold',
                               fontSize: '0.75rem',
                               minWidth: 80,
@@ -4575,7 +4580,7 @@ const OrderManagement: React.FC = () => {
                           </TableCell>
                           <TableCell
                             sx={{
-                              color: '#b0b8c1',
+                              color: 'white',
                               fontWeight: 'bold',
                               fontSize: '0.75rem',
                               minWidth: 80,
@@ -4600,7 +4605,7 @@ const OrderManagement: React.FC = () => {
                           <TableRow
                             key={item.id}
                             sx={{
-                              '&:nth-of-type(odd)': { bgcolor: '#263040' },
+                              '&:nth-of-type(odd)': { bgcolor: 'var(--hover-color)' },
                             }}
                           >
                             <TableCell
@@ -4626,7 +4631,7 @@ const OrderManagement: React.FC = () => {
                                 {item.brand && (
                                   <Typography
                                     variant="caption"
-                                    sx={{ color: '#b0b8c1' }}
+                                    sx={{ color: 'var(--secondary-text-color)' }}
                                   >
                                     {item.brand}
                                   </Typography>
@@ -4666,7 +4671,7 @@ const OrderManagement: React.FC = () => {
                             </TableCell>
                             <TableCell
                               sx={{
-                                color: '#e0e6ed',
+                                color: 'var(--text-color)',
                                 fontSize: '0.75rem',
                                 fontWeight: 'bold',
                               }}
@@ -4681,11 +4686,11 @@ const OrderManagement: React.FC = () => {
                           </TableRow>
                         ))}
                         {/* 합계 행 */}
-                        <TableRow sx={{ bgcolor: '#1a1f2e' }}>
+                        <TableRow sx={{ bgcolor: 'var(--surface-color)' }}>
                           <TableCell
                             colSpan={8}
                             sx={{
-                              color: '#b0b8c1',
+                              color: 'var(--secondary-text-color)',
                               fontWeight: 'bold',
                               textAlign: 'right',
                             }}
@@ -4693,7 +4698,7 @@ const OrderManagement: React.FC = () => {
                             합계
                           </TableCell>
                           <TableCell
-                            sx={{ color: '#40c4ff', fontWeight: 'bold' }}
+                            sx={{ color: 'var(--primary-color)', fontWeight: 'bold' }}
                           >
                             {order.items
                               .reduce(
@@ -4705,11 +4710,11 @@ const OrderManagement: React.FC = () => {
                           </TableCell>
                           <TableCell></TableCell>
                         </TableRow>
-                        <TableRow sx={{ bgcolor: '#1a1f2e' }}>
+                        <TableRow sx={{ bgcolor: 'var(--surface-color)' }}>
                           <TableCell
                             colSpan={8}
                             sx={{
-                              color: '#b0b8c1',
+                              color: 'var(--secondary-text-color)',
                               fontWeight: 'bold',
                               textAlign: 'right',
                             }}
@@ -4717,7 +4722,7 @@ const OrderManagement: React.FC = () => {
                             부가세 (10%)
                           </TableCell>
                           <TableCell
-                            sx={{ color: '#40c4ff', fontWeight: 'bold' }}
+                            sx={{ color: 'var(--primary-color)', fontWeight: 'bold' }}
                           >
                             {Math.round(
                               order.items.reduce(
@@ -4729,11 +4734,11 @@ const OrderManagement: React.FC = () => {
                           </TableCell>
                           <TableCell></TableCell>
                         </TableRow>
-                        <TableRow sx={{ bgcolor: '#263040' }}>
+                        <TableRow sx={{ bgcolor: 'var(--hover-color)' }}>
                           <TableCell
                             colSpan={8}
                             sx={{
-                              color: '#40c4ff',
+                              color: 'var(--primary-color)',
                               fontWeight: 'bold',
                               textAlign: 'right',
                             }}
@@ -4742,7 +4747,7 @@ const OrderManagement: React.FC = () => {
                           </TableCell>
                           <TableCell
                             sx={{
-                              color: '#40c4ff',
+                              color: 'var(--primary-color)',
                               fontWeight: 'bold',
                               fontSize: '1.1rem',
                             }}
@@ -4766,18 +4771,18 @@ const OrderManagement: React.FC = () => {
                     <Box
                       sx={{
                         p: 1.5,
-                        bgcolor: '#263040',
+                        bgcolor: 'var(--surface-color)',
                         borderRadius: 1,
-                        border: '1px solid #2e3a4a',
+                        border: '1px solid var(--border-color)',
                       }}
                     >
                       <Typography
                         variant="subtitle2"
-                        sx={{ color: '#b0b8c1', mb: 1 }}
+                        sx={{ color: 'var(--secondary-text-color)', mb: 1 }}
                       >
                         요청사항
                       </Typography>
-                      <Typography variant="body2" sx={{ color: '#e0e6ed' }}>
+                      <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
                         {order.note}
                       </Typography>
                     </Box>

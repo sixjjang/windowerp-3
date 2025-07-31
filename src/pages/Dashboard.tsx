@@ -67,7 +67,7 @@ import {
 } from '@mui/icons-material';
 import { UserContext } from '../components/Layout';
 import { API_BASE } from '../utils/auth';
-import { db } from '../firebase/config';
+import { db, auth } from '../firebase/config';
 import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, updateDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { storage } from '../firebase/config';
 import { ref, uploadBytes, getDownloadURL, listAll } from 'firebase/storage';
@@ -278,44 +278,265 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // 사진 업로드 함수
+  // 이미지 압축 함수
+  const compressImage = (file: File, maxWidth: number = 1200, maxHeight: number = 1200, quality: number = 0.8): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        // 원본 크기
+        const originalWidth = img.width;
+        const originalHeight = img.height;
+        
+        // 새로운 크기 계산 (비율 유지)
+        let newWidth = originalWidth;
+        let newHeight = originalHeight;
+        
+        if (originalWidth > maxWidth || originalHeight > maxHeight) {
+          const ratio = Math.min(maxWidth / originalWidth, maxHeight / originalHeight);
+          newWidth = originalWidth * ratio;
+          newHeight = originalHeight * ratio;
+        }
+        
+        // 캔버스 크기 설정
+        canvas.width = newWidth;
+        canvas.height = newHeight;
+        
+        // 이미지 그리기
+        ctx?.drawImage(img, 0, 0, newWidth, newHeight);
+        
+        // 압축된 이미지를 Blob으로 변환
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              // 원본 파일명 유지하면서 압축된 파일 생성
+              const compressedFile = new File([blob], file.name, {
+                type: file.type,
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            } else {
+              reject(new Error('이미지 압축 실패'));
+            }
+          },
+          file.type,
+          quality
+        );
+      };
+      
+      img.onerror = () => reject(new Error('이미지 로드 실패'));
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  // 사진 업로드 함수 (Firebase Functions 사용)
   const handleImageUpload = async () => {
     if (!selectedImage) return;
 
     try {
       setUploadingImage(true);
+      console.log('이미지 업로드 시작:', selectedImage.name, selectedImage.size);
       
-      // Firebase Auth 확인 및 인증
-      const firebaseUser = await ensureFirebaseAuth();
-      if (!firebaseUser) {
-        throw new Error('Firebase Auth 인증이 필요합니다. 다시 로그인해주세요.');
+      // JWT 토큰 확인
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('로그인이 필요합니다. 다시 로그인해주세요.');
+        setUploadingImage(false);
+        return;
       }
       
-      console.log('Firebase Auth 인증 완료:', firebaseUser.uid);
+      // 이미지 압축
+      let imageToUpload = selectedImage;
+      if (selectedImage.size > 1024 * 1024) { // 1MB 이상인 경우 압축
+        console.log('이미지 압축 시작...');
+        try {
+          imageToUpload = await compressImage(selectedImage);
+          console.log('압축 후 크기:', imageToUpload.size, 'bytes');
+          console.log('압축률:', ((selectedImage.size - imageToUpload.size) / selectedImage.size * 100).toFixed(1) + '%');
+          
+          // 압축된 이미지 유효성 확인
+          if (imageToUpload.size === 0) {
+            throw new Error('압축된 이미지 크기가 0입니다');
+          }
+          if (!imageToUpload.type.startsWith('image/')) {
+            throw new Error('압축된 이미지 타입이 유효하지 않습니다');
+          }
+        } catch (compressError) {
+          console.warn('이미지 압축 실패, 원본 사용:', compressError);
+          imageToUpload = selectedImage;
+        }
+      }
       
-      const imageRef = ref(storage, `employeeChat/${Date.now()}_${selectedImage.name}`);
-      const snapshot = await uploadBytes(imageRef, selectedImage);
-      const downloadURL = await getDownloadURL(snapshot.ref);
-
-      // Firebase에 이미지 메시지 저장
-      await addDoc(collection(db, 'employeeChat'), {
-        user: nickname || '사용자',
-        text: '',
-        imageUrl: downloadURL,
-        imageName: selectedImage.name,
-        timestamp: serverTimestamp(),
-        userId: userId || 'current_user',
-        messageType: 'image'
+      // 최종 이미지 유효성 확인
+      console.log('최종 업로드 이미지 정보:', {
+        name: imageToUpload.name,
+        size: imageToUpload.size,
+        type: imageToUpload.type,
+        lastModified: imageToUpload.lastModified
       });
+      
+      // 압축 후 크기 확인
+      if (imageToUpload.size > 5 * 1024 * 1024) { // 5MB 제한
+        alert('이미지 크기가 너무 큽니다. 더 작은 이미지를 선택해주세요.');
+        setUploadingImage(false);
+        return;
+      }
+      
+      // FormData 생성 및 검증
+      const formData = new FormData();
+      
+      // 필수 필드만 추가 (서버가 기대하는 형식에 맞춤)
+      formData.append('file', imageToUpload); // 'image' 대신 'file' 사용
+      formData.append('userName', nickname || '사용자'); // 'user' 대신 'userName' 사용
+      formData.append('userId', userId || 'current_user');
+      
+      // FormData 내용 확인
+      console.log('=== FormData 상세 정보 ===');
+      console.log('FormData 지원 여부:', typeof FormData !== 'undefined' ? '지원' : '미지원');
+      
+      // FormData 내용을 배열로 변환하여 확인
+      const formDataArray: Array<[string, any]> = [];
+      formData.forEach((value, key) => {
+        formDataArray.push([key, value]);
+        if (value instanceof File) {
+          console.log(`✅ ${key}:`, {
+            name: value.name,
+            size: value.size,
+            type: value.type,
+            lastModified: value.lastModified
+          });
+        } else {
+          console.log(`✅ ${key}:`, value);
+        }
+      });
+      
+      console.log('FormData 항목 수:', formDataArray.length);
+      console.log('FormData 키 목록:', formDataArray.map(([key]) => key));
+      
+      // 이미지 파일 유효성 재확인
+      if (!(imageToUpload instanceof File)) {
+        throw new Error('업로드할 이미지가 유효한 File 객체가 아닙니다');
+      }
+      
+      if (imageToUpload.size === 0) {
+        throw new Error('업로드할 이미지 크기가 0입니다');
+      }
+      
+      console.log('=== 업로드 준비 완료 ===');
+      
+      console.log('Firebase Functions로 이미지 업로드 요청 (크기:', imageToUpload.size, 'bytes)');
+      
+      // Firebase Functions로 이미지 업로드 (FormData 방식)
+      let response;
+      try {
+        response = await fetch(`${API_BASE}/uploadChatImage`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+            // Content-Type은 FormData가 자동으로 설정하도록 제거
+          },
+          body: formData
+        });
+        
+        // FormData 방식이 실패하면 JSON 방식으로 재시도
+        if (!response.ok && response.status === 400) {
+          console.log('FormData 방식 실패, JSON 방식으로 재시도...');
+          
+          // 이미지를 base64로 변환
+          const base64Image = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(imageToUpload);
+          });
+          
+          const jsonData = {
+            image: base64Image,
+            user: nickname || '사용자',
+            userId: userId || 'current_user',
+            fileName: imageToUpload.name,
+            fileType: imageToUpload.type
+          };
+          
+          response = await fetch(`${API_BASE}/uploadChatImage`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(jsonData)
+          });
+        }
+      } catch (fetchError) {
+        console.error('Fetch 오류:', fetchError);
+        const errorMessage = fetchError instanceof Error ? fetchError.message : '알 수 없는 네트워크 오류';
+        throw new Error(`네트워크 오류: ${errorMessage}`);
+      }
+      
+      if (!response.ok) {
+        console.error('=== 서버 응답 오류 상세 분석 ===');
+        console.error('HTTP 상태:', response.status, response.statusText);
+        console.error('응답 헤더:', Object.fromEntries(response.headers.entries()));
+        
+        let errorData: any = {};
+        try {
+          const responseText = await response.text();
+          console.error('응답 본문 (텍스트):', responseText);
+          
+          if (responseText) {
+            try {
+              errorData = JSON.parse(responseText);
+              console.error('응답 본문 (JSON):', errorData);
+            } catch (parseError) {
+              console.error('JSON 파싱 실패:', parseError);
+              errorData = { rawResponse: responseText };
+            }
+          }
+        } catch (textError) {
+          console.error('응답 텍스트 읽기 실패:', textError);
+        }
+        
+        const errorMessage = errorData.message || errorData.error || errorData.rawResponse || `서버 오류: ${response.status}`;
+        console.error('최종 에러 메시지:', errorMessage);
+        throw new Error(errorMessage);
+      }
+      
+      const result = await response.json();
+      console.log('이미지 업로드 성공:', result);
 
       // 상태 초기화
       setSelectedImage(null);
       setImagePreview(null);
       setUploadingImage(false);
+      console.log('이미지 업로드 성공 완료');
     } catch (error) {
       console.error('이미지 업로드 오류:', error);
       setUploadingImage(false);
-      alert('이미지 업로드에 실패했습니다: ' + (error as Error).message);
+      
+      // 더 구체적인 에러 메시지
+      let errorMessage = '이미지 업로드에 실패했습니다.';
+      
+      if (error instanceof Error) {
+        console.error('에러 상세:', error.message, error.stack);
+        
+        if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+          errorMessage = '인증이 만료되었습니다. 다시 로그인해주세요.';
+        } else if (error.message.includes('413') || error.message.includes('Payload too large')) {
+          errorMessage = '이미지 크기가 너무 큽니다. 더 작은 이미지를 선택해주세요.';
+        } else if (error.message.includes('400') || error.message.includes('Bad Request')) {
+          errorMessage = '잘못된 요청입니다. 이미지 형식을 확인해주세요.';
+        } else if (error.message.includes('network') || error.message.includes('Network')) {
+          errorMessage = '네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요.';
+        } else if (error.message.includes('서버 오류')) {
+          errorMessage = '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+        } else {
+          errorMessage = `오류: ${error.message}`;
+        }
+      }
+      
+      alert(errorMessage);
     }
   };
 
@@ -325,7 +546,9 @@ const Dashboard: React.FC = () => {
       // Firebase Auth 확인 및 인증
       const firebaseUser = await ensureFirebaseAuth();
       if (!firebaseUser) {
-        throw new Error('Firebase Auth 인증이 필요합니다. 다시 로그인해주세요.');
+        const errorMessage = 'Firebase 인증이 필요합니다.\n\n해결 방법:\n1. 페이지를 새로고침해주세요\n2. 그래도 안 되면 다시 로그인해주세요\n3. 브라우저 캐시를 삭제해주세요';
+        alert(errorMessage);
+        return;
       }
       
       console.log('Firebase Auth 인증 완료 (갤러리):', firebaseUser.uid);
@@ -348,7 +571,23 @@ const Dashboard: React.FC = () => {
       setGalleryModalOpen(true);
     } catch (error) {
       console.error('갤러리 로드 오류:', error);
-      alert('갤러리를 불러오는데 실패했습니다: ' + (error as Error).message);
+      
+      // 더 구체적인 에러 메시지
+      let errorMessage = '갤러리를 불러오는데 실패했습니다.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Firebase Auth')) {
+          errorMessage = '인증 오류가 발생했습니다. 페이지를 새로고침하거나 다시 로그인해주세요.';
+        } else if (error.message.includes('storage')) {
+          errorMessage = '저장소 접근 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+        } else if (error.message.includes('network')) {
+          errorMessage = '네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요.';
+        } else {
+          errorMessage = `오류: ${error.message}`;
+        }
+      }
+      
+      alert(errorMessage);
     }
   };
 
@@ -1345,6 +1584,9 @@ const Dashboard: React.FC = () => {
         };
       }
     });
+    
+    // 이모티콘 선택 후 자동으로 닫기
+    setExpandedReactions(prev => ({ ...prev, [messageId]: false }));
   };
 
   // 날짜 구분선 렌더링 함수
@@ -2656,24 +2898,28 @@ const Dashboard: React.FC = () => {
                         },
                       }}
                     />
-                    <IconButton
-                      onClick={handleScheduleCommentSubmit}
-                      disabled={!newScheduleComment.trim()}
-                      sx={{
-                        color: 'var(--primary-color)',
-                        backgroundColor: 'var(--hover-color)',
-                        '&:hover': {
-                          backgroundColor: 'var(--primary-color)',
-                          color: 'white',
-                        },
-                        '&.Mui-disabled': {
-                          color: 'var(--text-secondary-color)',
-                          backgroundColor: 'var(--background-color)',
-                        },
-                      }}
-                    >
-                      <SendIcon />
-                    </IconButton>
+                    <Tooltip title={!newScheduleComment.trim() ? "댓글을 입력해주세요" : "댓글 전송"}>
+                      <span>
+                        <IconButton
+                          onClick={handleScheduleCommentSubmit}
+                          disabled={!newScheduleComment.trim()}
+                          sx={{
+                            color: 'var(--primary-color)',
+                            backgroundColor: 'var(--hover-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--primary-color)',
+                              color: 'white',
+                            },
+                            '&.Mui-disabled': {
+                              color: 'var(--text-secondary-color)',
+                              backgroundColor: 'var(--background-color)',
+                            },
+                          }}
+                        >
+                          <SendIcon />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
                   </Box>
                 </CardContent>
               </Card>
@@ -2851,8 +3097,8 @@ const Dashboard: React.FC = () => {
             right: { xs: 8, md: 32 },
             bottom: { xs: 8, md: 32 },
             zIndex: 1300,
-            width: { xs: '95vw', sm: 450 },
-            maxWidth: 500,
+            width: { xs: '95vw', sm: 550 },
+            maxWidth: 600,
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
             borderRadius: 4,
             background: 'var(--surface-color)',
@@ -2888,9 +3134,11 @@ const Dashboard: React.FC = () => {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 mb: 0.5,
+                flexWrap: 'nowrap',
+                minWidth: 0,
               }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
                 <GroupIcon sx={{ fontSize: 18, mr: 0.5 }} />
                 <span>전체채팅({users.length}명)</span>
                 <Chip
@@ -2906,7 +3154,7 @@ const Dashboard: React.FC = () => {
                   }}
                 />
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
                 {/* 메시지 관리 버튼들 */}
                 <Tooltip title="이전 메시지 숨김/표시">
                   <IconButton
@@ -3143,9 +3391,9 @@ const Dashboard: React.FC = () => {
                     {!isCurrentUser && (
                       <Typography
                         sx={{
-                          fontSize: 11,
+                          fontSize: 10,
                           color: 'var(--text-secondary-color)',
-                          mb: 0.5,
+                          mb: 0.3,
                           ml: 1,
                           fontWeight: 500,
                         }}
@@ -3159,18 +3407,18 @@ const Dashboard: React.FC = () => {
                   display: 'flex',
                         flexDirection: isCurrentUser ? 'row-reverse' : 'row',
                         alignItems: 'flex-start',
-                        gap: 1,
-                        mb: 1,
+                        gap: 0.8,
+                        mb: 0.8,
                 }}
               >
                 <Avatar
                     src={profileImage || undefined}
                     onClick={() => handleAvatarClick(messageUser || { name: msg.user })}
                   sx={{
-                      width: 32,
-                      height: 32,
+                      width: 28,
+                      height: 28,
                       bgcolor: msg.user === nickname ? 'var(--primary-color)' : 'var(--secondary-color)',
-                      fontSize: 16,
+                      fontSize: 14,
                       border: '2px solid var(--border-color)',
                       flexShrink: 0,
                       position: 'relative',
@@ -3184,8 +3432,8 @@ const Dashboard: React.FC = () => {
                         position: 'absolute',
                         bottom: -2,
                         right: -2,
-                        width: 10,
-                        height: 10,
+                        width: 8,
+                        height: 8,
                         borderRadius: '50%',
                         backgroundColor: onlineUsers.includes(msg.user) ? 'var(--success-color)' : 'var(--text-secondary-color)',
                         border: '2px solid var(--background-color)',
@@ -3198,15 +3446,15 @@ const Dashboard: React.FC = () => {
                 <Box
                   onContextMenu={(e) => handleMessageContextMenu(e, msg)}
                   sx={{
-                    maxWidth: 280,
-                    p: 1.5,
-                    borderRadius: 3,
+                    maxWidth: 200,
+                    p: 1,
+                    borderRadius: 2,
                     background:
                       msg.user === nickname
                         ? 'var(--primary-color)'
-                        : 'var(--surface-color)',
-                    color: 'var(--text-color)',
-                    fontSize: 14,
+                        : '#1B365D',
+                    color: msg.user === nickname ? 'var(--text-color)' : '#000000',
+                    fontSize: 12,
                     boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
                     border: '1px solid var(--border-color)',
                     flex: 1,
@@ -3237,8 +3485,8 @@ const Dashboard: React.FC = () => {
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
                   <Typography
                     sx={{
-                      fontSize: 10,
-                        color: 'var(--text-secondary-color)',
+                      fontSize: 9,
+                        color: msg.user === nickname ? 'var(--text-secondary-color)' : 'var(--text-secondary-color)',
                     }}
                       title={msg.time} // 툴팁으로 정확한 시간 표시
                   >
@@ -3247,96 +3495,99 @@ const Dashboard: React.FC = () => {
                                          {msg.user === nickname && (
                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
                          {messageStatuses[msg.id] === 'sending' && (
-                           <CircularProgress size={12} sx={{ color: 'var(--text-secondary-color)' }} />
+                           <CircularProgress size={10} sx={{ color: msg.user === nickname ? 'var(--text-secondary-color)' : 'var(--text-secondary-color)' }} />
                          )}
                          {messageStatuses[msg.id] === 'sent' && (
-                           <CheckIcon fontSize="small" sx={{ color: 'var(--text-secondary-color)', fontSize: 14 }} />
+                           <CheckIcon fontSize="small" sx={{ color: msg.user === nickname ? 'var(--text-secondary-color)' : 'var(--text-secondary-color)', fontSize: 12 }} />
                          )}
                          {messageStatuses[msg.id] === 'read' && (
-                           <DoneAllIcon fontSize="small" sx={{ color: 'var(--success-color)', fontSize: 14 }} />
+                           <DoneAllIcon fontSize="small" sx={{ color: msg.user === nickname ? 'var(--success-color)' : 'var(--success-color)', fontSize: 12 }} />
                          )}
                 </Box>
                      )}
               </Box>
                    
-                                      {/* 이모지 반응 (축소된 형태) */}
-                   {messageReactions[msg.id] && Object.keys(messageReactions[msg.id]).length > 0 && (
-                     <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
-                       {Object.entries(messageReactions[msg.id]).map(([emoji, users]) => (
-                         <Chip
-                           key={emoji}
-                           label={`${emoji} ${users.length}`}
-                           size="small"
-                           onClick={() => handleAddReaction(msg.id, emoji)}
-                           sx={{ 
-                             fontSize: '0.6rem',
-                             height: 20,
-                             cursor: 'pointer',
-                             backgroundColor: users.includes(nickname || '') ? 'var(--primary-color)' : 'var(--surface-color)',
-                             color: users.includes(nickname || '') ? 'var(--text-color)' : 'var(--text-color)',
-                             '&:hover': {
-                               backgroundColor: 'var(--hover-color)',
-                             }
-                           }}
-                         />
-                       ))}
-                     </Box>
-                   )}
-                   
-                   {/* 이모지 반응 버튼 (축소/확장 가능) */}
-                   <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
-                     {expandedReactions[msg.id] ? (
-                       // 확장된 상태
-                       <>
-                         {['👍', '❤️', '😊', '🎉', '👏'].map((emoji) => (
-                           <IconButton
-                             key={emoji}
-                             size="small"
-                             onClick={() => handleAddReaction(msg.id, emoji)}
-                             sx={{
-                               fontSize: '0.7rem',
-                               p: 0.3,
-                               minWidth: 'auto',
-                               color: 'var(--text-secondary-color)',
-                               '&:hover': {
-                                 backgroundColor: 'var(--hover-color)',
-                                 transform: 'scale(1.1)',
-                               }
-                             }}
-                           >
-                             {emoji}
-                           </IconButton>
-                         ))}
-                         <IconButton
-                           size="small"
-                           onClick={() => setExpandedReactions(prev => ({ ...prev, [msg.id]: false }))}
-                           sx={{
-                             fontSize: '0.6rem',
-                             p: 0.3,
-                             color: 'var(--text-secondary-color)',
-                           }}
-                         >
-                           ×
-                         </IconButton>
-                       </>
-                     ) : (
-                       // 축소된 상태
-                       <IconButton
-                         size="small"
-                         onClick={() => setExpandedReactions(prev => ({ ...prev, [msg.id]: true }))}
-                         sx={{
-                           fontSize: '0.6rem',
-                           p: 0.3,
-                           color: 'var(--text-secondary-color)',
-                           '&:hover': {
-                             backgroundColor: 'var(--hover-color)',
-                           }
-                         }}
-                       >
-                         😊
-                       </IconButton>
-                     )}
-                   </Box>
+                                     </Box>
+                  
+                  {/* 이모지 반응 (버블 밖에 배치) */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                    {messageReactions[msg.id] && Object.keys(messageReactions[msg.id]).length > 0 && (
+                      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                        {Object.entries(messageReactions[msg.id]).map(([emoji, users]) => (
+                          <Chip
+                            key={emoji}
+                            label={`${emoji} ${users.length}`}
+                            size="small"
+                            onClick={() => handleAddReaction(msg.id, emoji)}
+                            sx={{ 
+                              fontSize: '0.7rem',
+                              height: 22,
+                              cursor: 'pointer',
+                              backgroundColor: users.includes(nickname || '') ? 'var(--primary-color)' : 'var(--surface-color)',
+                              color: users.includes(nickname || '') ? 'var(--text-color)' : 'var(--text-color)',
+                              '&:hover': {
+                                backgroundColor: 'var(--hover-color)',
+                              }
+                            }}
+                          />
+                        ))}
+                      </Box>
+                    )}
+                    
+                    {/* 이모지 반응 버튼 (축소/확장 가능) */}
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      {expandedReactions[msg.id] ? (
+                        // 확장된 상태
+                        <>
+                          {['👍', '❤️', '😊', '🎉', '👏'].map((emoji) => (
+                            <IconButton
+                              key={emoji}
+                              size="small"
+                              onClick={() => handleAddReaction(msg.id, emoji)}
+                              sx={{
+                                fontSize: '1rem',
+                                p: 0.5,
+                                minWidth: 'auto',
+                                color: 'var(--text-secondary-color)',
+                                '&:hover': {
+                                  backgroundColor: 'var(--hover-color)',
+                                  transform: 'scale(1.1)',
+                                }
+                              }}
+                            >
+                              {emoji}
+                            </IconButton>
+                          ))}
+                          <IconButton
+                            size="small"
+                            onClick={() => setExpandedReactions(prev => ({ ...prev, [msg.id]: false }))}
+                            sx={{
+                              fontSize: '0.8rem',
+                              p: 0.4,
+                              color: 'var(--text-secondary-color)',
+                            }}
+                          >
+                            ×
+                          </IconButton>
+                        </>
+                      ) : (
+                        // 축소된 상태
+                        <IconButton
+                          size="small"
+                          onClick={() => setExpandedReactions(prev => ({ ...prev, [msg.id]: true }))}
+                          sx={{
+                            fontSize: '1rem',
+                            p: 0.4,
+                            color: 'var(--text-secondary-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            }
+                          }}
+                        >
+                          😊
+                        </IconButton>
+                      )}
+                    </Box>
                   </Box>
                 </Box>
               </Box>
@@ -3455,31 +3706,43 @@ const Dashboard: React.FC = () => {
                 },
               }}
             />
-            <Button
-              variant="contained"
-              onClick={selectedImage ? handleImageUpload : handleSendChat}
-              disabled={uploadingImage || (!chatInput.trim() && !selectedImage)}
-              sx={{
-                background: 'var(--primary-color)',
-                color: 'var(--text-color)',
-                fontWeight: 700,
-                borderRadius: 2,
-                minWidth: 48,
-                ml: 1,
-                px: 1.5,
-                py: 0.5,
-                fontSize: 14,
-                '&:hover': {
-                  background: 'var(--hover-color)',
-                },
-                '&:disabled': {
-                  background: 'var(--text-secondary-color)',
-                  color: 'var(--text-color)',
-                },
-              }}
-            >
-              {uploadingImage ? '업로드중...' : selectedImage ? '사진전송' : '전송'}
-            </Button>
+            <Tooltip title={
+              uploadingImage 
+                ? "이미지 업로드 중..." 
+                : (!chatInput.trim() && !selectedImage) 
+                  ? "메시지나 이미지를 입력해주세요" 
+                  : selectedImage 
+                    ? "이미지 전송" 
+                    : "메시지 전송"
+            }>
+              <span>
+                <Button
+                  variant="contained"
+                  onClick={selectedImage ? handleImageUpload : handleSendChat}
+                  disabled={uploadingImage || (!chatInput.trim() && !selectedImage)}
+                  sx={{
+                    background: 'var(--primary-color)',
+                    color: 'var(--text-color)',
+                    fontWeight: 700,
+                    borderRadius: 2,
+                    minWidth: 48,
+                    ml: 1,
+                    px: 1.5,
+                    py: 0.5,
+                    fontSize: 14,
+                    '&:hover': {
+                      background: 'var(--hover-color)',
+                    },
+                    '&:disabled': {
+                      background: 'var(--text-secondary-color)',
+                      color: 'var(--text-color)',
+                    },
+                  }}
+                >
+                  {uploadingImage ? '업로드중...' : selectedImage ? '사진전송' : '전송'}
+                </Button>
+              </span>
+            </Tooltip>
           </Box>
         </Box>
       </Collapse>

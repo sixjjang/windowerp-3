@@ -93,9 +93,9 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   >
     <DialogTitle
       sx={{
-        borderBottom: '1px solid #2e3a4a',
-        backgroundColor: '#1a1f2e',
-        color: '#40c4ff',
+        borderBottom: '1px solid var(--border-color)',
+        backgroundColor: 'var(--surface-color)',
+        color: 'var(--primary-color)',
         fontWeight: 'bold',
       }}
     >
@@ -109,78 +109,78 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
             sx={{
               mb: 3,
               p: 2,
-              bgcolor: '#1a1f2e',
+              bgcolor: 'var(--surface-color)',
               borderRadius: 1,
-              border: '1px solid #2e3a4a',
+              border: '1px solid var(--border-color)',
             }}
           >
             <Typography
               variant="h6"
               gutterBottom
-              sx={{ color: '#40c4ff', mb: 2 }}
+              sx={{ color: 'var(--primary-color)', mb: 2 }}
             >
               프로젝트 정보
             </Typography>
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6} md={3}>
-                <Box sx={{ p: 1, bgcolor: '#263040', borderRadius: 0.5 }}>
+                <Box sx={{ p: 1, bgcolor: 'var(--surface-color)', borderRadius: 0.5 }}>
                   <Typography
                     variant="caption"
-                    sx={{ color: '#b0b8c1', display: 'block' }}
+                    sx={{ color: 'var(--secondary-text-color)', display: 'block' }}
                   >
                     계약번호
                   </Typography>
                   <Typography
                     variant="body2"
-                    sx={{ fontWeight: 'bold', color: '#e0e6ed' }}
+                    sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}
                   >
                     {group[0].contractNo}
                   </Typography>
                 </Box>
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
-                <Box sx={{ p: 1, bgcolor: '#263040', borderRadius: 0.5 }}>
+                <Box sx={{ p: 1, bgcolor: 'var(--surface-color)', borderRadius: 0.5 }}>
                   <Typography
                     variant="caption"
-                    sx={{ color: '#b0b8c1', display: 'block' }}
+                    sx={{ color: 'var(--secondary-text-color)', display: 'block' }}
                   >
                     고객명
                   </Typography>
                   <Typography
                     variant="body2"
-                    sx={{ fontWeight: 'bold', color: '#e0e6ed' }}
+                    sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}
                   >
                     {group[0].customerName}
                   </Typography>
                 </Box>
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
-                <Box sx={{ p: 1, bgcolor: '#263040', borderRadius: 0.5 }}>
+                <Box sx={{ p: 1, bgcolor: 'var(--surface-color)', borderRadius: 0.5 }}>
                   <Typography
                     variant="caption"
-                    sx={{ color: '#b0b8c1', display: 'block' }}
+                    sx={{ color: 'var(--secondary-text-color)', display: 'block' }}
                   >
                     발주일
                   </Typography>
                   <Typography
                     variant="body2"
-                    sx={{ fontWeight: 'bold', color: '#e0e6ed' }}
+                    sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}
                   >
                     {group[0].orderDate}
                   </Typography>
                 </Box>
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
-                <Box sx={{ p: 1, bgcolor: '#263040', borderRadius: 0.5 }}>
+                <Box sx={{ p: 1, bgcolor: 'var(--surface-color)', borderRadius: 0.5 }}>
                   <Typography
                     variant="caption"
-                    sx={{ color: '#b0b8c1', display: 'block' }}
+                    sx={{ color: 'var(--secondary-text-color)', display: 'block' }}
                   >
                     거래처 수
                   </Typography>
                   <Typography
                     variant="body2"
-                    sx={{ fontWeight: 'bold', color: '#e0e6ed' }}
+                    sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}
                   >
                     {group.length}개
                   </Typography>
@@ -192,7 +192,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
           <Typography
             variant="h6"
             gutterBottom
-            sx={{ color: '#40c4ff', mb: 2 }}
+            sx={{ color: 'var(--primary-color)', mb: 2 }}
           >
             거래처별 발주내용
           </Typography>
@@ -202,9 +202,9 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               sx={{
                 mb: 3,
                 p: 2,
-                bgcolor: '#1a1f2e',
+                bgcolor: 'var(--surface-color)',
                 borderRadius: 1,
-                border: '1px solid #2e3a4a',
+                border: '1px solid var(--border-color)',
               }}
             >
               {/* 거래처 헤더 */}
@@ -212,27 +212,27 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                 sx={{
                   mb: 2,
                   p: 1.5,
-                  bgcolor: '#263040',
+                  bgcolor: 'var(--surface-color)',
                   borderRadius: 1,
-                  border: '1px solid #40c4ff',
+                  border: '1px solid var(--primary-color)',
                 }}
               >
                 <Grid container spacing={2} alignItems="center">
                   <Grid item xs={12} sm={4}>
                     <Typography
                       variant="subtitle1"
-                      sx={{ fontWeight: 'bold', color: '#40c4ff' }}
+                      sx={{ fontWeight: 'bold', color: 'var(--primary-color)' }}
                     >
                       {order.vendorName}
                     </Typography>
                   </Grid>
                   <Grid item xs={12} sm={3}>
-                    <Typography variant="body2" sx={{ color: '#b0b8c1' }}>
+                    <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)' }}>
                       발주번호: {order.orderNo}
                     </Typography>
                   </Grid>
                   <Grid item xs={12} sm={3}>
-                    <Typography variant="body2" sx={{ color: '#b0b8c1' }}>
+                    <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)' }}>
                       납품일: {order.deliveryDate || '-'}
                     </Typography>
                   </Grid>
@@ -245,33 +245,33 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                     width: '100%',
                     borderCollapse: 'collapse',
                     background: 'var(--surface-color)',
-                    color: '#e0e6ed',
+                    color: 'var(--text-color)',
                   }}
                 >
                   <thead>
-                    <tr style={{ background: '#263040' }}>
-                      <th style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                    <tr style={{ background: 'var(--surface-color)' }}>
+                      <th style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                         공간
                       </th>
-                      <th style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                      <th style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                         제품코드
                       </th>
-                      <th style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                      <th style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                         제작사이즈
                       </th>
-                      <th style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                      <th style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                         m²
                       </th>
-                      <th style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                      <th style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                         폭수
                       </th>
-                      <th style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                      <th style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                         입고단가
                       </th>
-                      <th style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                      <th style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                         입고원가
                       </th>
-                      <th style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                      <th style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                         제품별메모
                       </th>
                     </tr>
@@ -284,34 +284,34 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                           background: idx % 2 === 0 ? 'var(--surface-color)' : 'var(--background-color)',
                         }}
                       >
-                        <td style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                        <td style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                           {item.space === '직접입력' && item.spaceCustom ? item.spaceCustom : (item.space || '-')}
                         </td>
-                        <td style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                        <td style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                           {item.productCode || '-'}
                         </td>
-                        <td style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                        <td style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                           {item.productionWidth && item.productionHeight
                             ? `${item.productionWidth} x ${item.productionHeight}`
                             : '-'}
                         </td>
-                        <td style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                        <td style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                           {item.area ? item.area.toFixed(2) : '-'}
                         </td>
-                        <td style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                        <td style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                           {item.widthCount || '-'}
                         </td>
-                        <td style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                        <td style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                           {item.unitPrice
                             ? item.unitPrice.toLocaleString()
                             : '-'}
                         </td>
-                        <td style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                        <td style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                           {item.totalPrice
                             ? item.totalPrice.toLocaleString()
                             : '-'}
                         </td>
-                        <td style={{ border: '1px solid #2e3a4a', padding: 6 }}>
+                        <td style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                           {item.note || '-'}
                         </td>
                       </tr>
@@ -326,11 +326,11 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
         <Typography color="error">발주내역이 없습니다.</Typography>
       )}
     </DialogContent>
-    <DialogActions sx={{ p: 2, borderTop: '1px solid #2e3a4a' }}>
+    <DialogActions sx={{ p: 2, borderTop: '1px solid var(--border-color)' }}>
       <Button
         onClick={onClose}
         sx={{
-          color: '#b0b8c1',
+          color: 'var(--secondary-text-color)',
           '&:hover': { backgroundColor: 'rgba(176, 184, 193, 0.1)' },
         }}
       >
@@ -1271,7 +1271,7 @@ const DeliveryManagement: React.FC = () => {
               address: selectedDeliveryForMemo.address,
               contact: selectedDeliveryForMemo.contact,
               deliveryId: selectedDeliveryForMemo.id,
-              color: '#40c4ff',
+              color: 'var(--primary-color)',
               priority: '높음',
               status: '예정',
               memos: [newMemo], // 메모 배열에 추가
@@ -2263,8 +2263,8 @@ const DeliveryManagement: React.FC = () => {
                 variant="outlined"
                 size="small"
                 sx={{
-                  borderColor: '#40c4ff',
-                  color: '#40c4ff',
+                  borderColor: 'var(--primary-color)',
+                  color: 'var(--primary-color)',
                   fontWeight: 'bold',
                   fontSize: '0.75rem',
                   height: '24px',
@@ -2359,7 +2359,7 @@ const DeliveryManagement: React.FC = () => {
                 }
               }}
               sx={{
-                backgroundColor: '#40c4ff',
+                backgroundColor: 'var(--primary-color)',
                 '&:hover': { backgroundColor: '#33a3cc' },
                 height: '100%',
                 fontSize: '0.8rem',
@@ -2484,7 +2484,7 @@ const DeliveryManagement: React.FC = () => {
               sx={{
                 mb: 3,
                 backgroundColor: '#2d2d2d',
-                color: '#e0e6ed',
+                color: 'var(--text-color)',
                 '&:before': { display: 'none' },
                 borderRadius: 3,
                 overflow: 'hidden',
@@ -2566,7 +2566,7 @@ const DeliveryManagement: React.FC = () => {
                     <Typography
                       variant="h6"
                       sx={{
-                        color: '#e0e6ed',
+                        color: 'var(--text-color)',
                         mb: 1,
                         fontSize: 'calc(1.25rem + 1.5px)',
                       }}
@@ -2576,7 +2576,7 @@ const DeliveryManagement: React.FC = () => {
                     <Typography
                       variant="body2"
                       sx={{
-                        color: '#b0b8c1',
+                        color: 'var(--secondary-text-color)',
                         fontSize: 'calc(0.875rem + 1.5px)',
                       }}
                     >
@@ -2594,7 +2594,7 @@ const DeliveryManagement: React.FC = () => {
 
                   {/* 좌측: 시공정보 */}
                   <Grid item xs={12} md={2.5}>
-                    <Typography variant="h6" sx={{ color: '#e0e6ed', mb: 1 }}>
+                    <Typography variant="h6" sx={{ color: 'var(--text-color)', mb: 1 }}>
                       시공정보
                     </Typography>
                     {/* Firebase 시공자 데이터 상태 표시 */}
@@ -2813,7 +2813,7 @@ const DeliveryManagement: React.FC = () => {
                               }
                             }}
                             sx={{ 
-                              backgroundColor: '#40c4ff',
+                              backgroundColor: 'var(--primary-color)',
                               '&:hover': { backgroundColor: '#33a3cc' }
                             }}
                           >
@@ -2956,14 +2956,14 @@ const DeliveryManagement: React.FC = () => {
                             setExpandedDelivery(expandedDelivery === delivery.id ? null : delivery.id);
                           }}
                           sx={{
-                            color: '#e0e6ed',
+                            color: 'var(--text-color)',
                             backgroundColor: 'rgba(255,255,255,0.05)',
                             border: '1px solid rgba(255,255,255,0.1)',
                             borderRadius: '50%',
                             width: 64,
                             height: 64,
                             '&:hover': {
-                              color: '#40c4ff',
+                              color: 'var(--primary-color)',
                               backgroundColor: 'rgba(64, 196, 255, 0.1)',
                               border: '1px solid rgba(64, 196, 255, 0.3)',
                               transform: 'scale(1.05)',
@@ -2988,7 +2988,7 @@ const DeliveryManagement: React.FC = () => {
                     <Typography
                       variant="h6"
                       sx={{
-                        color: '#e0e6ed',
+                        color: 'var(--text-color)',
                         mb: 1,
                         fontSize: 'calc(1.25rem + 1.5px)',
                       }}
@@ -2998,7 +2998,7 @@ const DeliveryManagement: React.FC = () => {
                     <Typography
                       variant="body2"
                       sx={{
-                        color: '#b0b8c1',
+                        color: 'var(--secondary-text-color)',
                         fontSize: 'calc(0.875rem + 1.5px)',
                         mb: 1,
                       }}
@@ -3055,7 +3055,7 @@ const DeliveryManagement: React.FC = () => {
                         <Typography
                           variant="subtitle2"
                           sx={{
-                            color: '#40c4ff',
+                            color: 'var(--primary-color)',
                             mb: 1,
                             fontSize: '0.8rem',
                             fontWeight: 'bold',
@@ -3091,7 +3091,7 @@ const DeliveryManagement: React.FC = () => {
                               data-clickable="true"
                               sx={{
                                 background: '#222',
-                                color: '#e0e6ed',
+                                color: 'var(--text-color)',
                                 borderRadius: 1,
                               }}
                             />
@@ -3099,7 +3099,7 @@ const DeliveryManagement: React.FC = () => {
                             <Typography
                               variant="body2"
                               sx={{
-                                color: delivery.memo ? '#e0e6ed' : '#666',
+                                color: delivery.memo ? 'var(--text-color)' : 'var(--text-secondary-color)',
                                 fontSize: '0.75rem',
                                 lineHeight: 1.4,
                                 wordBreak: 'break-word',
@@ -3115,7 +3115,7 @@ const DeliveryManagement: React.FC = () => {
                           <Typography
                             variant="caption"
                             sx={{
-                              color: '#888',
+                              color: 'var(--text-secondary-color)',
                               fontSize: '0.65rem',
                               display: 'block',
                             }}
@@ -3251,7 +3251,7 @@ const DeliveryManagement: React.FC = () => {
                         mb: 2,
                       }}
                     >
-                      <Typography variant="subtitle1" sx={{ color: '#40c4ff' }}>
+                      <Typography variant="subtitle1" sx={{ color: 'var(--primary-color)' }}>
                         📦 제품 상세 정보 (견적서 양식)
                       </Typography>
 
@@ -3264,11 +3264,11 @@ const DeliveryManagement: React.FC = () => {
                           setColumnSettingsOpen(!columnSettingsOpen)
                         }
                         sx={{
-                          color: '#40c4ff',
+                          color: 'var(--primary-color)',
                           borderColor: 'rgba(255,255,255,0.2)',
                           fontSize: '0.75rem',
                           '&:hover': {
-                            borderColor: '#40c4ff',
+                            borderColor: 'var(--primary-color)',
                             backgroundColor: 'rgba(64, 196, 255, 0.1)',
                           },
                         }}
@@ -3292,7 +3292,7 @@ const DeliveryManagement: React.FC = () => {
                         <Typography
                           variant="subtitle2"
                           sx={{
-                            color: '#40c4ff',
+                            color: 'var(--primary-color)',
                             mb: 1,
                             fontSize: 'calc(0.875rem + 1px)',
                           }}
@@ -3313,9 +3313,9 @@ const DeliveryManagement: React.FC = () => {
                                       }))
                                     }
                                     sx={{
-                                      color: '#40c4ff',
+                                      color: 'var(--primary-color)',
                                       '&.Mui-checked': {
-                                        color: '#40c4ff',
+                                        color: 'var(--primary-color)',
                                       },
                                     }}
                                   />
@@ -3323,7 +3323,7 @@ const DeliveryManagement: React.FC = () => {
                                 label={
                                   <Typography
                                     sx={{
-                                      color: '#e0e6ed',
+                                      color: 'var(--text-color)',
                                       fontSize: '0.8rem',
                                       textDecoration: visibleColumns[field.key]
                                         ? 'none'
@@ -3353,11 +3353,11 @@ const DeliveryManagement: React.FC = () => {
                                   setVisibleColumns(allVisible);
                                 }}
                                 sx={{
-                                  color: '#40c4ff',
+                                  color: 'var(--primary-color)',
                                   borderColor: 'rgba(255,255,255,0.2)',
                                   fontSize: '0.75rem',
                                   '&:hover': {
-                                    borderColor: '#40c4ff',
+                                    borderColor: 'var(--primary-color)',
                                   },
                                 }}
                               >
@@ -3407,7 +3407,7 @@ const DeliveryManagement: React.FC = () => {
                             <TableCell
                               sx={{
                                 backgroundColor: 'rgba(0,0,0,0.8)',
-                                color: '#fff',
+                                color: 'var(--text-color)',
                                 fontWeight: 'bold',
                                 borderBottom: '1px solid rgba(255,255,255,0.1)',
                                 minWidth: '80px',
@@ -3443,7 +3443,7 @@ const DeliveryManagement: React.FC = () => {
                                   key={field.key}
                                   sx={{
                                     fontSize: '10.5pt',
-                                    color: '#e0e6ed',
+                                    color: 'var(--text-color)',
                                     padding: '4px 8px',
                                     width: width ? `${width}px` : undefined,
                                     minWidth: width ? `${width}px` : undefined,
@@ -3510,7 +3510,7 @@ const DeliveryManagement: React.FC = () => {
                                         sx={{
                                           fontWeight: 'bold',
                                           fontSize: '11pt',
-                                          color: '#e0e6ed',
+                                          color: 'var(--text-color)',
                                         }}
                                       >
                                         제품
@@ -3522,7 +3522,7 @@ const DeliveryManagement: React.FC = () => {
                                           key={field.key}
                                           sx={{
                                             fontSize: '11pt',
-                                            color: '#e0e6ed',
+                                            color: 'var(--text-color)',
                                           }}
                                         >
                                           {getRowValue(item, field.key)}
@@ -3548,7 +3548,7 @@ const DeliveryManagement: React.FC = () => {
                                         sx={{
                                           pl: 3,
                                           fontSize: '10.5pt',
-                                          color: '#e0e6ed',
+                                          color: 'var(--text-color)',
                                           minWidth: '80px',
                                           whiteSpace: 'nowrap',
                                           padding: '4px 8px',
@@ -3588,7 +3588,7 @@ const DeliveryManagement: React.FC = () => {
                                           key={field.key}
                                           sx={{
                                             fontSize: '10.5pt',
-                                            color: '#e0e6ed',
+                                            color: 'var(--text-color)',
                                             padding: '4px 8px',
                                           }}
                                         >
@@ -3608,7 +3608,7 @@ const DeliveryManagement: React.FC = () => {
                                   ).length + 1
                                 }
                                 align="center"
-                                sx={{ color: '#666' }}
+                                sx={{ color: 'var(--text-secondary-color)' }}
                               >
                                 제품 정보가 없습니다
                               </TableCell>
@@ -3635,7 +3635,7 @@ const DeliveryManagement: React.FC = () => {
                     <Box
                       sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}
                     >
-                      <Typography variant="body2" sx={{ color: '#b0b8c1' }}>
+                      <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)' }}>
                         소비자금액:{' '}
                         {(delivery.items || [])
                           .reduce((sum, item) => {
@@ -3704,7 +3704,7 @@ const DeliveryManagement: React.FC = () => {
                           .toLocaleString()}
                         원
                       </Typography>
-                      <Typography variant="body2" sx={{ color: '#b0b8c1' }}>
+                      <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)' }}>
                         할인금액:{' '}
                         {(delivery.discountAmount || 0).toLocaleString()}원
                       </Typography>
@@ -3714,12 +3714,12 @@ const DeliveryManagement: React.FC = () => {
                     >
                       <Typography
                         variant="body2"
-                        sx={{ color: '#40c4ff', fontWeight: 'bold' }}
+                        sx={{ color: 'var(--primary-color)', fontWeight: 'bold' }}
                       >
                         할인후금액:{' '}
                         {(delivery.finalAmount || 0).toLocaleString()}원
                       </Typography>
-                      <Typography variant="body2" sx={{ color: '#b0b8c1' }}>
+                      <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)' }}>
                         결제상태: {delivery.paymentStatus}
                       </Typography>
                     </Box>
@@ -3822,7 +3822,7 @@ const DeliveryManagement: React.FC = () => {
                                   >
                                     <TableCell
                                       sx={{
-                                        color: '#e0e6ed',
+                                        color: 'var(--text-color)',
                                         fontSize: '0.8rem',
                                         py: 0.5,
                                       }}
@@ -3833,7 +3833,7 @@ const DeliveryManagement: React.FC = () => {
                                     </TableCell>
                                     <TableCell
                                       sx={{
-                                        color: '#e0e6ed',
+                                        color: 'var(--text-color)',
                                         fontSize: '0.8rem',
                                         py: 0.5,
                                       }}
@@ -3842,7 +3842,7 @@ const DeliveryManagement: React.FC = () => {
                                     </TableCell>
                                     <TableCell
                                       sx={{
-                                        color: '#e0e6ed',
+                                        color: 'var(--text-color)',
                                         fontSize: '0.8rem',
                                         py: 0.5,
                                       }}
@@ -3851,7 +3851,7 @@ const DeliveryManagement: React.FC = () => {
                                     </TableCell>
                                     <TableCell
                                       sx={{
-                                        color: '#e0e6ed',
+                                        color: 'var(--text-color)',
                                         fontSize: '0.8rem',
                                         py: 0.5,
                                         fontWeight: 'bold',
@@ -3887,7 +3887,7 @@ const DeliveryManagement: React.FC = () => {
                   <Grid item xs={12}>
                     <Typography
                       variant="subtitle1"
-                      sx={{ color: '#40c4ff', mb: 1 }}
+                      sx={{ color: 'var(--primary-color)', mb: 1 }}
                     >
                       💰 수금기록
                     </Typography>
@@ -3910,12 +3910,12 @@ const DeliveryManagement: React.FC = () => {
                             },
                           }}
                         >
-                          <Typography variant="body2" sx={{ color: '#b0b8c1' }}>
+                          <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)' }}>
                             {record.date} {record.time} -{' '}
                             {record.amount.toLocaleString()}원 ({record.method})
                             {record.note && <br />}
                             {record.note && (
-                              <span style={{ color: '#888' }}>
+                              <span style={{ color: 'var(--text-secondary-color)' }}>
                                 메모: {record.note}
                               </span>
                             )}
@@ -3923,7 +3923,7 @@ const DeliveryManagement: React.FC = () => {
                         </Box>
                       ))
                     ) : (
-                      <Typography variant="body2" sx={{ color: '#666' }}>
+                      <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)' }}>
                         수금기록이 없습니다.
                       </Typography>
                     )}
@@ -3933,7 +3933,7 @@ const DeliveryManagement: React.FC = () => {
                   <Grid item xs={12}>
                     <Typography
                       variant="subtitle1"
-                      sx={{ color: '#40c4ff', mb: 1 }}
+                      sx={{ color: 'var(--primary-color)', mb: 1 }}
                     >
                       📄 서류기록
                     </Typography>
@@ -4007,32 +4007,32 @@ const DeliveryManagement: React.FC = () => {
                           >
                             <Typography
                               variant="body2"
-                              sx={{ color: '#b0b8c1' }}
+                              sx={{ color: 'var(--secondary-text-color)' }}
                             >
                               <b>견적일자:</b> {estimate?.estimateDate || '-'}
                             </Typography>
                             <Typography
                               variant="body2"
-                              sx={{ color: '#b0b8c1' }}
+                              sx={{ color: 'var(--secondary-text-color)' }}
                             >
                               <b>견적번호:</b> {estimate?.estimateNo || '-'}
                             </Typography>
                             <Typography
                               variant="body2"
-                              sx={{ color: '#b0b8c1' }}
+                              sx={{ color: 'var(--secondary-text-color)' }}
                             >
                               <b>계약일자:</b> {contract?.contractDate || '-'}
                             </Typography>
                             <Typography
                               variant="body2"
-                              sx={{ color: '#b0b8c1' }}
+                              sx={{ color: 'var(--secondary-text-color)' }}
                             >
                               <b>계약번호:</b> {contract?.contractNo || '-'}
                             </Typography>
                             <Typography
                               variant="body2"
                               sx={{
-                                color: '#b0b8c1',
+                                color: 'var(--secondary-text-color)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: 1,
@@ -4053,8 +4053,8 @@ const DeliveryManagement: React.FC = () => {
                                   sx={{
                                     ml: 1,
                                     fontSize: '0.75rem',
-                                    color: '#40c4ff',
-                                    borderColor: '#40c4ff',
+                                    color: 'var(--primary-color)',
+                                    borderColor: 'var(--primary-color)',
                                     whiteSpace: 'nowrap',
                                   }}
                                   onClick={() =>
@@ -4107,7 +4107,7 @@ const DeliveryManagement: React.FC = () => {
                           >
                             <Typography
                               variant="body2"
-                              sx={{ color: '#b0b8c1', flex: 1 }}
+                              sx={{ color: 'var(--secondary-text-color)', flex: 1 }}
                             >
                               {asRecord.date} - {asRecord.productName}
                               <br />
@@ -4125,7 +4125,7 @@ const DeliveryManagement: React.FC = () => {
                                 `비용: ${asRecord.cost.toLocaleString()}원`}
                               {asRecord.note && <br />}
                               {asRecord.note && (
-                                <span style={{ color: '#888' }}>
+                                <span style={{ color: 'var(--text-secondary-color)' }}>
                                   메모: {asRecord.note}
                                 </span>
                               )}
@@ -4140,7 +4140,7 @@ const DeliveryManagement: React.FC = () => {
                             >
                               <FormControl size="small" sx={{ width: '200px' }}>
                                 <InputLabel
-                                  sx={{ color: '#b0b8c1', fontSize: '0.75rem' }}
+                                  sx={{ color: 'var(--secondary-text-color)', fontSize: '0.75rem' }}
                                 >
                                   처리방법
                                 </InputLabel>
@@ -4191,9 +4191,9 @@ const DeliveryManagement: React.FC = () => {
                                     '&:hover .MuiOutlinedInput-notchedOutline':
                                       { borderColor: '#4d4d4d' },
                                     '&.Mui-focused .MuiOutlinedInput-notchedOutline':
-                                      { borderColor: '#40c4ff' },
+                                      { borderColor: 'var(--primary-color)' },
                                     '& .MuiSelect-select': {
-                                      color: '#e0e6ed',
+                                      color: 'var(--text-color)',
                                       fontSize: '0.75rem',
                                     },
                                   }}
@@ -4249,15 +4249,15 @@ const DeliveryManagement: React.FC = () => {
                                       borderColor: '#4d4d4d',
                                     },
                                     '&.Mui-focused fieldset': {
-                                      borderColor: '#40c4ff',
+                                      borderColor: 'var(--primary-color)',
                                     },
                                   },
                                   '& .MuiInputLabel-root': {
-                                    color: '#b0b8c1',
+                                    color: 'var(--secondary-text-color)',
                                     fontSize: '0.75rem',
                                   },
                                   '& .MuiInputBase-input': {
-                                    color: '#e0e6ed',
+                                    color: 'var(--text-color)',
                                     fontSize: '0.75rem',
                                   },
                                 }}
@@ -4359,16 +4359,16 @@ const DeliveryManagement: React.FC = () => {
       >
         <DialogTitle
           sx={{
-            color: '#e0e6ed',
+            color: 'var(--text-color)',
             backgroundColor: '#2d2d2d',
-            borderBottom: '1px solid #3d3d3d',
+            borderBottom: '1px solid var(--border-color)',
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {isMobile && (
               <IconButton
                 onClick={() => setDeleteDialogOpen(false)}
-                sx={{ color: '#e0e6ed', mr: 1 }}
+                sx={{ color: 'var(--text-color)', mr: 1 }}
               >
                 <ArrowBackIcon />
               </IconButton>
@@ -4379,19 +4379,19 @@ const DeliveryManagement: React.FC = () => {
           </Box>
         </DialogTitle>
         <DialogContent
-          sx={{ backgroundColor: '#2d2d2d', color: '#e0e6ed', p: 3 }}
+          sx={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-color)', p: 3 }}
         >
           <Typography sx={{ lineHeight: 1.6 }}>
             정말로 이 납품 건을 삭제하시겠습니까?
             <br />
             <br />
             <Box
-              sx={{ backgroundColor: '#1a1a1a', p: 2, borderRadius: 1, mb: 2 }}
+              sx={{ backgroundColor: 'var(--background-color)', p: 2, borderRadius: 1, mb: 2 }}
             >
-              <strong style={{ color: '#40c4ff' }}>프로젝트:</strong>{' '}
+              <strong style={{ color: 'var(--primary-color)' }}>프로젝트:</strong>{' '}
               {deliveryToDelete?.projectName}
               <br />
-              <strong style={{ color: '#40c4ff' }}>고객명:</strong>{' '}
+              <strong style={{ color: 'var(--primary-color)' }}>고객명:</strong>{' '}
               {deliveryToDelete?.customerName}
             </Box>
             ⚠️ 이 작업은 되돌릴 수 없습니다.
@@ -4399,9 +4399,9 @@ const DeliveryManagement: React.FC = () => {
         </DialogContent>
         <DialogActions
           sx={{
-            backgroundColor: '#2d2d2d',
+            backgroundColor: 'var(--surface-color)',
             p: isMobile ? 3 : 2,
-            borderTop: '1px solid #3d3d3d',
+            borderTop: '1px solid var(--border-color)',
             gap: isMobile ? 2 : 1,
           }}
         >
@@ -4409,7 +4409,7 @@ const DeliveryManagement: React.FC = () => {
             onClick={() => setDeleteDialogOpen(false)}
             size={isMobile ? "large" : "medium"}
             sx={{
-              color: '#b0b8c1',
+              color: 'var(--secondary-text-color)',
               minWidth: isMobile ? 100 : 80,
               fontSize: isMobile ? 16 : 14,
               '&:hover': { backgroundColor: 'rgba(176, 184, 193, 0.1)' },
@@ -4449,7 +4449,7 @@ const DeliveryManagement: React.FC = () => {
         disableAutoFocus
         PaperProps={{
           sx: {
-            backgroundColor: '#2d2d2d',
+            backgroundColor: 'var(--surface-color)',
             borderRadius: 2,
             boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
             transition: 'all 0.3s ease-in-out',
@@ -4458,16 +4458,16 @@ const DeliveryManagement: React.FC = () => {
       >
         <DialogTitle
           sx={{
-            color: '#e0e6ed',
-            backgroundColor: '#2d2d2d',
-            borderBottom: '1px solid #3d3d3d',
+            color: 'var(--text-color)',
+            backgroundColor: 'var(--surface-color)',
+            borderBottom: '1px solid var(--border-color)',
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {isMobile && (
               <IconButton
                 onClick={() => setAsDialogOpen(false)}
-                sx={{ color: '#e0e6ed', mr: 1 }}
+                sx={{ color: 'var(--text-color)', mr: 1 }}
               >
                 <ArrowBackIcon />
               </IconButton>
@@ -4478,13 +4478,13 @@ const DeliveryManagement: React.FC = () => {
           </Box>
         </DialogTitle>
         <DialogContent
-          sx={{ backgroundColor: '#2d2d2d', color: '#e0e6ed', p: 3 }}
+          sx={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-color)', p: 3 }}
         >
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <Box
                 sx={{
-                  backgroundColor: '#1a1a1a',
+                  backgroundColor: 'var(--background-color)',
                   p: 2,
                   borderRadius: 1,
                   mb: 2,
@@ -4492,7 +4492,7 @@ const DeliveryManagement: React.FC = () => {
               >
                 <Typography
                   variant="subtitle2"
-                  sx={{ color: '#40c4ff', mb: 1 }}
+                  sx={{ color: 'var(--primary-color)', mb: 1 }}
                 >
                   📋 프로젝트 정보
                 </Typography>
@@ -4500,50 +4500,50 @@ const DeliveryManagement: React.FC = () => {
                   <Grid item xs={12} md={6}>
                     <Typography
                       variant="body2"
-                      sx={{ color: '#b0b8c1', mb: 0.5 }}
+                      sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}
                     >
-                      <strong style={{ color: '#40c4ff' }}>프로젝트:</strong>{' '}
+                      <strong style={{ color: 'var(--primary-color)' }}>프로젝트:</strong>{' '}
                       {selectedDeliveryForAS?.projectName}
                     </Typography>
                     <Typography
                       variant="body2"
-                      sx={{ color: '#b0b8c1', mb: 0.5 }}
+                      sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}
                     >
-                      <strong style={{ color: '#40c4ff' }}>고객명:</strong>{' '}
+                      <strong style={{ color: 'var(--primary-color)' }}>고객명:</strong>{' '}
                       {selectedDeliveryForAS?.customerName}
                     </Typography>
                     <Typography
                       variant="body2"
-                      sx={{ color: '#b0b8c1', mb: 0.5 }}
+                      sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}
                     >
-                      <strong style={{ color: '#40c4ff' }}>연락처:</strong>{' '}
+                      <strong style={{ color: 'var(--primary-color)' }}>연락처:</strong>{' '}
                       {selectedDeliveryForAS?.contact}
                     </Typography>
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <Typography
                       variant="body2"
-                      sx={{ color: '#b0b8c1', mb: 0.5 }}
+                      sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}
                     >
-                      <strong style={{ color: '#40c4ff' }}>
+                      <strong style={{ color: 'var(--primary-color)' }}>
                         시공/납품일자:
                       </strong>{' '}
                       {selectedDeliveryForAS?.constructionDate}
                     </Typography>
                     <Typography
                       variant="body2"
-                      sx={{ color: '#b0b8c1', mb: 0.5 }}
+                      sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}
                     >
-                      <strong style={{ color: '#40c4ff' }}>AS 장소:</strong>{' '}
+                      <strong style={{ color: 'var(--primary-color)' }}>AS 장소:</strong>{' '}
                       {selectedDeliveryForAS?.projectName
                         ? `${selectedDeliveryForAS.projectName} (고객 주소)`
                         : selectedDeliveryForAS?.address}
                     </Typography>
                     <Typography
                       variant="body2"
-                      sx={{ color: '#b0b8c1', mb: 0.5 }}
+                      sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}
                     >
-                      <strong style={{ color: '#40c4ff' }}>거래처:</strong>{' '}
+                      <strong style={{ color: 'var(--primary-color)' }}>거래처:</strong>{' '}
                       {asForm.vendor || '-'}
                     </Typography>
                   </Grid>
@@ -4552,7 +4552,7 @@ const DeliveryManagement: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <FormControl fullWidth size="small">
-                <InputLabel sx={{ color: '#b0b8c1' }}>제품 선택 *</InputLabel>
+                <InputLabel sx={{ color: 'var(--secondary-text-color)' }}>제품 선택 *</InputLabel>
                 <Select
                   value={asForm.productName}
                   onChange={e => {
@@ -4586,7 +4586,7 @@ const DeliveryManagement: React.FC = () => {
                   }}
                   label="제품 선택 *"
                   sx={{
-                    color: '#e0e6ed',
+                    color: 'var(--text-color)',
                     '& .MuiOutlinedInput-notchedOutline': {
                       borderColor: '#3d3d3d',
                     },
@@ -4594,7 +4594,7 @@ const DeliveryManagement: React.FC = () => {
                       borderColor: '#4d4d4d',
                     },
                     '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                      borderColor: '#40c4ff',
+                      borderColor: 'var(--primary-color)',
                     },
                   }}
                 >
@@ -4614,7 +4614,7 @@ const DeliveryManagement: React.FC = () => {
 
             <Grid item xs={12} md={6}>
               <FormControl fullWidth size="small">
-                <InputLabel sx={{ color: '#b0b8c1' }}>처리방법 *</InputLabel>
+                <InputLabel sx={{ color: 'var(--secondary-text-color)' }}>처리방법 *</InputLabel>
                 <Select
                   value={asForm.processMethod}
                   onChange={e =>
@@ -4628,7 +4628,7 @@ const DeliveryManagement: React.FC = () => {
                   }
                   label="처리방법 *"
                   sx={{
-                    color: '#e0e6ed',
+                    color: 'var(--text-color)',
                     '& .MuiOutlinedInput-notchedOutline': {
                       borderColor: '#3d3d3d',
                     },
@@ -4636,7 +4636,7 @@ const DeliveryManagement: React.FC = () => {
                       borderColor: '#4d4d4d',
                     },
                     '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                      borderColor: '#40c4ff',
+                      borderColor: 'var(--primary-color)',
                     },
                   }}
                 >
@@ -4660,7 +4660,7 @@ const DeliveryManagement: React.FC = () => {
                 >
                   <Typography
                     variant="subtitle2"
-                    sx={{ color: '#40c4ff', mb: 1 }}
+                    sx={{ color: 'var(--primary-color)', mb: 1 }}
                   >
                     📋 선택된 제품 정보
                   </Typography>
@@ -4668,27 +4668,27 @@ const DeliveryManagement: React.FC = () => {
                     <Grid item xs={12} md={4}>
                       <Typography
                         variant="body2"
-                        sx={{ color: '#b0b8c1', mb: 0.5 }}
+                        sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}
                       >
-                        <strong style={{ color: '#40c4ff' }}>공간:</strong>{' '}
+                        <strong style={{ color: 'var(--primary-color)' }}>공간:</strong>{' '}
                         {asForm.space}
                       </Typography>
                     </Grid>
                     <Grid item xs={12} md={4}>
                       <Typography
                         variant="body2"
-                        sx={{ color: '#b0b8c1', mb: 0.5 }}
+                        sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}
                       >
-                        <strong style={{ color: '#40c4ff' }}>제품코드:</strong>{' '}
+                        <strong style={{ color: 'var(--primary-color)' }}>제품코드:</strong>{' '}
                         {asForm.productCode}
                       </Typography>
                     </Grid>
                     <Grid item xs={12} md={4}>
                       <Typography
                         variant="body2"
-                        sx={{ color: '#b0b8c1', mb: 0.5 }}
+                        sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}
                       >
-                        <strong style={{ color: '#40c4ff' }}>
+                        <strong style={{ color: 'var(--primary-color)' }}>
                           제작사이즈:
                         </strong>{' '}
                         {asForm.productionDimensions}
@@ -4707,11 +4707,11 @@ const DeliveryManagement: React.FC = () => {
                 multiline
                 rows={3}
                 sx={{
-                  color: '#e0e6ed',
+                  color: 'var(--text-color)',
                   '& .MuiOutlinedInput-root': {
                     '& fieldset': { borderColor: '#3d3d3d' },
                     '&:hover fieldset': { borderColor: '#4d4d4d' },
-                    '&.Mui-focused fieldset': { borderColor: '#40c4ff' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
                   },
                 }}
               />
@@ -4727,11 +4727,11 @@ const DeliveryManagement: React.FC = () => {
                 multiline
                 rows={3}
                 sx={{
-                  color: '#e0e6ed',
+                  color: 'var(--text-color)',
                   '& .MuiOutlinedInput-root': {
                     '& fieldset': { borderColor: '#3d3d3d' },
                     '&:hover fieldset': { borderColor: '#4d4d4d' },
-                    '&.Mui-focused fieldset': { borderColor: '#40c4ff' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
                   },
                 }}
               />
@@ -4744,11 +4744,11 @@ const DeliveryManagement: React.FC = () => {
                 value={asForm.cost}
                 onChange={e => setAsForm({ ...asForm, cost: e.target.value })}
                 sx={{
-                  color: '#e0e6ed',
+                  color: 'var(--text-color)',
                   '& .MuiOutlinedInput-root': {
                     '& fieldset': { borderColor: '#3d3d3d' },
                     '&:hover fieldset': { borderColor: '#4d4d4d' },
-                    '&.Mui-focused fieldset': { borderColor: '#40c4ff' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
                   },
                 }}
               />
@@ -4762,11 +4762,11 @@ const DeliveryManagement: React.FC = () => {
                 multiline
                 rows={2}
                 sx={{
-                  color: '#e0e6ed',
+                  color: 'var(--text-color)',
                   '& .MuiOutlinedInput-root': {
                     '& fieldset': { borderColor: '#3d3d3d' },
                     '&:hover fieldset': { borderColor: '#4d4d4d' },
-                    '&.Mui-focused fieldset': { borderColor: '#40c4ff' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
                   },
                 }}
               />
@@ -4775,9 +4775,9 @@ const DeliveryManagement: React.FC = () => {
         </DialogContent>
         <DialogActions
           sx={{
-            backgroundColor: '#2d2d2d',
+            backgroundColor: 'var(--surface-color)',
             p: isMobile ? 3 : 2,
-            borderTop: '1px solid #3d3d3d',
+            borderTop: '1px solid var(--border-color)',
             gap: isMobile ? 2 : 1,
           }}
         >
@@ -4785,7 +4785,7 @@ const DeliveryManagement: React.FC = () => {
             onClick={() => setAsDialogOpen(false)}
             size={isMobile ? "large" : "medium"}
             sx={{
-              color: '#b0b8c1',
+              color: 'var(--secondary-text-color)',
               minWidth: isMobile ? 100 : 80,
               fontSize: isMobile ? 16 : 14,
               '&:hover': { backgroundColor: 'rgba(176, 184, 193, 0.1)' },
@@ -4824,7 +4824,7 @@ const DeliveryManagement: React.FC = () => {
         PaperProps={{
           sx: {
             backgroundColor: '#2d2d2d',
-            color: '#e0e6ed',
+            color: 'var(--text-color)',
             border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: 2,
           },
@@ -4840,7 +4840,7 @@ const DeliveryManagement: React.FC = () => {
             {isMobile && (
               <IconButton
                 onClick={handlePaymentClose}
-                sx={{ color: '#e0e6ed', mr: 1 }}
+                sx={{ color: 'var(--text-color)', mr: 1 }}
               >
                 <ArrowBackIcon />
               </IconButton>
@@ -4860,26 +4860,26 @@ const DeliveryManagement: React.FC = () => {
                 borderRadius: 1,
               }}
             >
-              <Typography variant="subtitle2" sx={{ color: '#40c4ff', mb: 1 }}>
+              <Typography variant="subtitle2" sx={{ color: 'var(--primary-color)', mb: 1 }}>
                 납품 정보
               </Typography>
-              <Typography variant="body2" sx={{ color: '#b0b8c1', mb: 0.5 }}>
+              <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}>
                 고객명: {selectedDeliveryForPayment.customerName}
               </Typography>
-              <Typography variant="body2" sx={{ color: '#b0b8c1', mb: 0.5 }}>
+              <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}>
                 프로젝트: {selectedDeliveryForPayment.projectName}
               </Typography>
-              <Typography variant="body2" sx={{ color: '#b0b8c1', mb: 0.5 }}>
+              <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}>
                 할인후금액:{' '}
                 {(selectedDeliveryForPayment.finalAmount || 0).toLocaleString()}
                 원
               </Typography>
-              <Typography variant="body2" sx={{ color: '#b0b8c1', mb: 0.5 }}>
+              <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}>
                 현재입금액:{' '}
                 {(selectedDeliveryForPayment.paidAmount || 0).toLocaleString()}
                 원
               </Typography>
-              <Typography variant="body2" sx={{ color: '#b0b8c1' }}>
+              <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
                 잔액:{' '}
                 {(
                   selectedDeliveryForPayment.remainingAmount || 0
@@ -4902,21 +4902,21 @@ const DeliveryManagement: React.FC = () => {
                 placeholder="수금할 금액을 입력하세요"
                 sx={{
                   '& .MuiOutlinedInput-root': {
-                    color: '#e0e6ed',
+                    color: 'var(--text-color)',
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
                     '&:hover fieldset': {
                       borderColor: 'rgba(255,255,255,0.3)',
                     },
-                    '&.Mui-focused fieldset': { borderColor: '#40c4ff' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
                   },
-                  '& .MuiInputLabel-root': { color: '#b0b8c1' },
-                  '& .MuiInputBase-input::placeholder': { color: '#666' },
+                  '& .MuiInputLabel-root': { color: 'var(--secondary-text-color)' },
+                  '& .MuiInputBase-input::placeholder': { color: 'var(--text-secondary-color)' },
                 }}
               />
             </Grid>
             <Grid item xs={12}>
               <FormControl fullWidth>
-                <InputLabel sx={{ color: '#b0b8c1' }}>결제 방법</InputLabel>
+                <InputLabel sx={{ color: 'var(--secondary-text-color)' }}>결제 방법</InputLabel>
                 <Select
                   value={paymentForm.method}
                   onChange={e =>
@@ -4926,7 +4926,7 @@ const DeliveryManagement: React.FC = () => {
                     })
                   }
                   sx={{
-                    color: '#e0e6ed',
+                    color: 'var(--text-color)',
                     '& .MuiOutlinedInput-notchedOutline': {
                       borderColor: 'rgba(255,255,255,0.2)',
                     },
@@ -4934,7 +4934,7 @@ const DeliveryManagement: React.FC = () => {
                       borderColor: 'rgba(255,255,255,0.3)',
                     },
                     '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                      borderColor: '#40c4ff',
+                      borderColor: 'var(--primary-color)',
                     },
                   }}
                 >
@@ -4957,15 +4957,15 @@ const DeliveryManagement: React.FC = () => {
                 placeholder="수금 관련 메모를 입력하세요"
                 sx={{
                   '& .MuiOutlinedInput-root': {
-                    color: '#e0e6ed',
+                    color: 'var(--text-color)',
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
                     '&:hover fieldset': {
                       borderColor: 'rgba(255,255,255,0.3)',
                     },
-                    '&.Mui-focused fieldset': { borderColor: '#40c4ff' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
                   },
-                  '& .MuiInputLabel-root': { color: '#b0b8c1' },
-                  '& .MuiInputBase-input::placeholder': { color: '#666' },
+                  '& .MuiInputLabel-root': { color: 'var(--secondary-text-color)' },
+                  '& .MuiInputBase-input::placeholder': { color: 'var(--text-secondary-color)' },
                 }}
               />
             </Grid>
@@ -4983,7 +4983,7 @@ const DeliveryManagement: React.FC = () => {
             onClick={handlePaymentClose}
             size={isMobile ? "large" : "medium"}
             sx={{
-              color: '#b0b8c1',
+              color: 'var(--secondary-text-color)',
               minWidth: isMobile ? 100 : 80,
               fontSize: isMobile ? 16 : 14,
               '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' },
@@ -4997,11 +4997,11 @@ const DeliveryManagement: React.FC = () => {
             size={isMobile ? "large" : "medium"}
             disabled={!paymentForm.amount}
             sx={{
-              backgroundColor: '#40c4ff',
+              backgroundColor: 'var(--primary-color)',
               minWidth: isMobile ? 100 : 80,
               fontSize: isMobile ? 16 : 14,
               '&:hover': { backgroundColor: '#2196f3' },
-              '&:disabled': { backgroundColor: '#666' },
+              '&:disabled': { backgroundColor: 'var(--text-secondary-color)' },
             }}
           >
             수금 입력
@@ -5019,7 +5019,7 @@ const DeliveryManagement: React.FC = () => {
         PaperProps={{
           sx: {
             backgroundColor: '#2d2d2d',
-            color: '#e0e6ed',
+            color: 'var(--text-color)',
             border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: 2,
           },
@@ -5035,7 +5035,7 @@ const DeliveryManagement: React.FC = () => {
             {isMobile && (
               <IconButton
                 onClick={() => setAsPrintDialogOpen(false)}
-                sx={{ color: '#e0e6ed', mr: 1 }}
+                sx={{ color: 'var(--text-color)', mr: 1 }}
               >
                 <ArrowBackIcon />
               </IconButton>
@@ -5055,22 +5055,22 @@ const DeliveryManagement: React.FC = () => {
                 borderRadius: 1,
               }}
             >
-              <Typography variant="subtitle2" sx={{ color: '#40c4ff', mb: 1 }}>
+              <Typography variant="subtitle2" sx={{ color: 'var(--primary-color)', mb: 1 }}>
                 선택된 AS 정보
               </Typography>
-              <Typography variant="body2" sx={{ color: '#b0b8c1', mb: 0.5 }}>
+              <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}>
                 제품: {selectedASForPrint.productName}
               </Typography>
-              <Typography variant="body2" sx={{ color: '#b0b8c1', mb: 0.5 }}>
+              <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}>
                 문제: {selectedASForPrint.issue}
               </Typography>
-              <Typography variant="body2" sx={{ color: '#b0b8c1' }}>
+              <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
                 상태: {selectedASForPrint.status}
               </Typography>
             </Box>
           )}
 
-          <Typography variant="body2" sx={{ color: '#b0b8c1', mb: 2 }}>
+          <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 2 }}>
             출력 방식을 선택하세요:
           </Typography>
 
@@ -5082,8 +5082,8 @@ const DeliveryManagement: React.FC = () => {
                 startIcon={<PrintIcon />}
                 onClick={handlePrintAS}
                 sx={{
-                  color: '#40c4ff',
-                  borderColor: '#40c4ff',
+                  color: 'var(--primary-color)',
+                  borderColor: 'var(--primary-color)',
                   py: 2,
                   '&:hover': {
                     borderColor: '#2196f3',
@@ -5146,7 +5146,7 @@ const DeliveryManagement: React.FC = () => {
             onClick={() => setAsPrintDialogOpen(false)}
             size={isMobile ? "large" : "medium"}
             sx={{
-              color: '#b0b8c1',
+              color: 'var(--secondary-text-color)',
               minWidth: isMobile ? 100 : 80,
               fontSize: isMobile ? 16 : 14,
               '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' },
@@ -5167,7 +5167,7 @@ const DeliveryManagement: React.FC = () => {
         PaperProps={{
           sx: {
             backgroundColor: '#2d2d2d',
-            color: '#e0e6ed',
+            color: 'var(--text-color)',
             border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: 2,
           },
@@ -5186,7 +5186,7 @@ const DeliveryManagement: React.FC = () => {
             {isMobile && (
               <IconButton
                 onClick={() => setAsDeleteDialogOpen(false)}
-                sx={{ color: '#e0e6ed', mr: 1 }}
+                sx={{ color: 'var(--text-color)', mr: 1 }}
               >
                 <ArrowBackIcon />
               </IconButton>
@@ -5200,7 +5200,7 @@ const DeliveryManagement: React.FC = () => {
         <DialogContent sx={{ pt: 3 }}>
           {asRecordToDelete && (
             <Box>
-              <Typography variant="body1" sx={{ color: '#e0e6ed', mb: 2 }}>
+              <Typography variant="body1" sx={{ color: 'var(--text-color)', mb: 2 }}>
                 다음 AS 기록을 삭제하시겠습니까?
               </Typography>
               <Box
@@ -5211,21 +5211,21 @@ const DeliveryManagement: React.FC = () => {
                   border: '1px solid rgba(244, 67, 54, 0.3)',
                 }}
               >
-                <Typography variant="body2" sx={{ color: '#b0b8c1', mb: 1 }}>
+                <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 1 }}>
                   <strong>고객명:</strong>{' '}
                   {asRecordToDelete.delivery.customerName}
                 </Typography>
-                <Typography variant="body2" sx={{ color: '#b0b8c1', mb: 1 }}>
+                <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 1 }}>
                   <strong>제품:</strong> {asRecordToDelete.asRecord.productName}
                 </Typography>
-                <Typography variant="body2" sx={{ color: '#b0b8c1', mb: 1 }}>
+                <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 1 }}>
                   <strong>문제:</strong> {asRecordToDelete.asRecord.issue}
                 </Typography>
-                <Typography variant="body2" sx={{ color: '#b0b8c1', mb: 1 }}>
+                <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 1 }}>
                   <strong>접수일:</strong> {asRecordToDelete.asRecord.date}
                 </Typography>
                 {asRecordToDelete.asRecord.visitDate && (
-                  <Typography variant="body2" sx={{ color: '#b0b8c1' }}>
+                  <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)' }}>
                     <strong>방문일:</strong>{' '}
                     {asRecordToDelete.asRecord.visitDate}
                   </Typography>
@@ -5253,7 +5253,7 @@ const DeliveryManagement: React.FC = () => {
             onClick={() => setAsDeleteDialogOpen(false)}
             size={isMobile ? "large" : "medium"}
             sx={{
-              color: '#b0b8c1',
+              color: 'var(--secondary-text-color)',
               minWidth: isMobile ? 100 : 80,
               fontSize: isMobile ? 16 : 14,
               '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' },

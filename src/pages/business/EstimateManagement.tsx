@@ -787,7 +787,6 @@ const saveSpaceOptions = (options: string[]) => {
     console.error('공간 옵션 저장 실패:', error);
   }
 };
-
 const SPACE_OPTIONS = loadSpaceOptions();
 const CURTAIN_TYPE_OPTIONS = ['겉커튼', '속커튼', '기타'];
 const PLEAT_TYPE_OPTIONS = ['민자', '나비', '기타'];
@@ -800,7 +799,6 @@ const LINE_LEN_OPTIONS = [
   '210cm',
   '직접입력',
 ];
-
 const calculatePleatCount = (
   width: number,
   productWidth: number,
@@ -879,12 +877,12 @@ const getPleatAmount = (
   
   // 겉커튼 주름양 계산
   if (curtainType === '겉커튼' && pleatCount && pleatCount > 0) {
-    if (widthMM <= 0 || productWidth <= 0) return '';
+    if (widthMM <= 0) return '';
 
     let result = 0;
     if (pleatType === '민자' || pleatType === '나비') {
-      // 제품폭이 2000mm 이상이면 1370mm 기준으로 계산
-      const standardWidth = productWidth > 2000 ? 1370 : productWidth;
+      // productWidth가 없으면 표준값 1370mm 사용
+      const standardWidth = productWidth > 0 ? (productWidth > 2000 ? 1370 : productWidth) : 1370;
       result = (standardWidth * pleatCount) / widthMM;
     } else {
       return '';
@@ -897,6 +895,22 @@ const getPleatAmount = (
   }
   
   return '';
+};
+
+// 겉커튼 민자 주름양 계산 함수
+const calculatePleatAmountForGgeotCurtain = (widthMM: number, pleatCount: number): string => {
+  if (widthMM <= 0 || pleatCount <= 0) return '';
+  
+  // 겉커튼 주름양 계산식: (제품폭 × 폭수) ÷ 실측가로
+  // 제품폭이 없는 경우 표준값 1370mm 사용
+  const productWidth = 1370; // 표준 제품폭
+  const calculatedPleatAmount = (productWidth * pleatCount) / widthMM;
+  
+  // Infinity나 NaN 체크
+  if (!isFinite(calculatedPleatAmount) || isNaN(calculatedPleatAmount)) return '';
+  
+  // 소수점 둘째자리까지 반올림
+  return calculatedPleatAmount.toFixed(2);
 };
 
 // 면적 계산 함수 추가
@@ -921,7 +935,8 @@ const getArea = (
     } else {
       pleat = Number(pleatAmount) || 0;
     }
-    const area = widthMM * pleat * 0.001;
+    // 속커튼 민자는 주름양배수 기반 계산: (가로 ÷ 1000) × 주름양배수
+    const area = (widthMM / 1000) * pleat;
     return area > 0 ? (Math.ceil(area * 10) / 10).toFixed(1) : '';
   }
   if (curtainType === '속커튼' && pleatType === '나비') {
@@ -951,78 +966,131 @@ const getTotalPrice = (row: any, area: number) => {
       ? Math.round(row.salePrice * row.quantity)
       : '';
   }
-  // 1. 겉커튼 민자, 나비: 제품등록 판매단가 * 폭수
+  // 1. 겉커튼 민자, 나비: 제품등록 판매단가 * 폭수 * 수량
   if (
     row.curtainType === '겉커튼' &&
     (row.pleatType === '민자' || row.pleatType === '나비')
   ) {
-    return row.salePrice && row.widthCount
+    const basePrice = row.salePrice && row.widthCount
       ? Math.round(row.salePrice * row.widthCount)
+      : 0;
+    return basePrice && row.quantity
+      ? Math.round(basePrice * row.quantity)
       : '';
   }
-  // 3. 속커튼 민자: 대폭민자단가 * 면적(m2)
+  // 3. 속커튼 민자: 대폭민자단가 * 면적(m2) * 수량
   if (row.curtainType === '속커튼' && row.pleatType === '민자') {
     const areaNum = Number(area);
     let priceToUse = row.largePlainPrice;
     
-    // 대폭민자단가가 없으면 판매단가의 70% 사용
+    // 대폭민자단가가 없으면 판매단가의 63% 사용
     if (!priceToUse) {
-      priceToUse = row.salePrice ? row.salePrice * 0.7 : 0;
+      priceToUse = row.salePrice ? row.salePrice * 0.63 : 0;
     }
     
-    return priceToUse && areaNum
+    const basePrice = priceToUse && areaNum
       ? Math.round(priceToUse * areaNum)
+      : 0;
+    return basePrice && row.quantity
+      ? Math.round(basePrice * row.quantity)
       : '';
   }
-  // 4. 속커튼 나비: 제품등록 판매단가 * 면적(m2)
+  // 4. 속커튼 나비: 제품등록 판매단가 * 면적(m2) * 수량
   if (row.curtainType === '속커튼' && row.pleatType === '나비') {
     const areaNum = Number(area);
-    return row.salePrice && areaNum ? Math.round(row.salePrice * areaNum) : '';
+    const basePrice = row.salePrice && areaNum 
+      ? Math.round(row.salePrice * areaNum) 
+      : 0;
+    return basePrice && row.quantity
+      ? Math.round(basePrice * row.quantity)
+      : '';
   }
-  // 5. 블라인드: 제품등록 판매단가 * m2
+  // 5. 블라인드: 제품등록 판매단가 * m2 * 수량
   if (row.productType === '블라인드') {
     const areaNum = Number(area);
-    return row.salePrice && areaNum ? Math.round(row.salePrice * areaNum) : '';
+    const basePrice = row.salePrice && areaNum 
+      ? Math.round(row.salePrice * areaNum) 
+      : 0;
+    return basePrice && row.quantity
+      ? Math.round(basePrice * row.quantity)
+      : '';
+  }
+  // 6. 출장비, 시공 등 기타 제품: 판매단가 * 수량
+  if (row.productType === '출장비' || row.productType === '시공' || row.productType === '서비스') {
+    return row.salePrice && row.quantity
+      ? Math.round(row.salePrice * row.quantity)
+      : '';
+  }
+  // 7. 기타 제품: 판매단가 * 수량 (기본 계산)
+  if (row.salePrice && row.quantity) {
+    return Math.round(row.salePrice * row.quantity);
   }
   return row.totalPrice || '';
 };
 
 // 입고금액 계산 함수
 const getPurchaseTotal = (row: any, area: number) => {
-  if (row.brand?.toLowerCase() === 'hunterdouglas')
-    return row.salePrice ? Math.round((row.salePrice * 0.6) / 1.1) : '';
+  if (row.brand?.toLowerCase() === 'hunterdouglas') {
+    const baseCost = row.salePrice ? Math.round((row.salePrice * 0.6) / 1.1) : 0;
+    return baseCost && row.quantity
+      ? Math.round(baseCost * row.quantity)
+      : '';
+  }
   if (row.productType === '블라인드') {
     const areaNum = Number(area);
-    return row.purchaseCost && areaNum
+    const baseCost = row.purchaseCost && areaNum
       ? Math.round(row.purchaseCost * areaNum)
+      : 0;
+    return baseCost && row.quantity
+      ? Math.round(baseCost * row.quantity)
       : '';
   }
   if (
     row.curtainType === '겉커튼' &&
     (row.pleatType === '민자' || row.pleatType === '나비')
-  )
-    return row.purchaseCost && row.widthCount
+  ) {
+    const baseCost = row.purchaseCost && row.widthCount
       ? Math.round(row.purchaseCost * row.widthCount)
+      : 0;
+    return baseCost && row.quantity
+      ? Math.round(baseCost * row.quantity)
       : '';
-  // 속커튼-민자: 대폭민자원가 * 면적(m2)
+  }
+  // 속커튼-민자: 대폭민자원가 * 면적(m2) * 수량
   if (row.curtainType === '속커튼' && row.pleatType === '민자') {
     const areaNum = Number(area);
     let costToUse = row.largePlainCost;
     
-    // 대폭민자원가가 없으면 입고원가의 70% 사용
+    // 대폭민자원가가 없으면 입고원가의 63% 사용
     if (!costToUse) {
-      costToUse = row.purchaseCost ? row.purchaseCost * 0.7 : 0;
+      costToUse = row.purchaseCost ? row.purchaseCost * 0.63 : 0;
     }
     
-    return costToUse && areaNum
+    const baseCost = costToUse && areaNum
       ? Math.round(costToUse * areaNum)
+      : 0;
+    return baseCost && row.quantity
+      ? Math.round(baseCost * row.quantity)
       : '';
   }
   if (row.curtainType === '속커튼' && row.pleatType === '나비') {
     const areaNum = Number(area);
-    return row.purchaseCost && areaNum
+    const baseCost = row.purchaseCost && areaNum
       ? Math.round(row.purchaseCost * areaNum)
+      : 0;
+    return baseCost && row.quantity
+      ? Math.round(baseCost * row.quantity)
       : '';
+  }
+  // 출장비, 시공 등 기타 제품: 입고원가 * 수량
+  if (row.productType === '출장비' || row.productType === '시공' || row.productType === '서비스') {
+    return row.purchaseCost && row.quantity
+      ? Math.round(row.purchaseCost * row.quantity)
+      : '';
+  }
+  // 기타 제품: 입고원가 * 수량 (기본 계산)
+  if (row.purchaseCost && row.quantity) {
+    return Math.round(row.purchaseCost * row.quantity);
   }
   return row.purchaseCost || '';
 };
@@ -1038,23 +1106,23 @@ interface FilterState {
 }
 
 const FILTER_FIELDS: FilterField[] = [
-  { key: 'vendor', label: '거래처', visible: true },
-  { key: 'brand', label: '브랜드', visible: true },
+  { key: 'vendor', label: '거래처', visible: false },
+  { key: 'brand', label: '브랜드', visible: false },
   { key: 'space', label: '공간', visible: true },
   { key: 'productCode', label: '제품코드', visible: true },
-  { key: 'productType', label: '제품종류', visible: true },
-  { key: 'curtainType', label: '커튼종류', visible: true },
-  { key: 'pleatType', label: '주름방식', visible: true },
+  { key: 'productType', label: '제품종류', visible: false },
+  // { key: 'curtainType', label: '커튼종류', visible: true }, // 사용자 요청에 따라 숨김 처리
+  // { key: 'pleatType', label: '주름방식', visible: true }, // 사용자 요청에 따라 숨김 처리
   { key: 'productName', label: '제품명', visible: true },
-  { key: 'width', label: '폭', visible: true },
+  { key: 'width', label: '폭', visible: false },
   { key: 'details', label: '세부내용', visible: true },
   { key: 'widthMM', label: '가로(mm)', visible: true },
   { key: 'heightMM', label: '세로(mm)', visible: true },
   { key: 'area', label: '면적(㎡)', visible: true },
   { key: 'lineDir', label: '줄방향', visible: true },
   { key: 'lineLen', label: '줄길이', visible: true },
-  { key: 'pleatAmount', label: '주름양', visible: true },
-  { key: 'widthCount', label: '폭수', visible: true },
+  { key: 'pleatAmount', label: '주름양', visible: false },
+  { key: 'widthCount', label: '폭수', visible: false },
   { key: 'quantity', label: '수량', visible: true },
   { key: 'totalPrice', label: '판매금액', visible: true },
   { key: 'salePrice', label: '판매단가', visible: true },
@@ -1146,6 +1214,8 @@ const EstimateManagement: React.FC = () => {
       document.head.removeChild(style);
     };
   }, []);
+
+
 
   // 공간별 색상 함수
   function getSpaceColor(space: string, lightness = 1) {
@@ -1244,27 +1314,165 @@ const EstimateManagement: React.FC = () => {
 
 
 
-  // 제품 순번 위로 이동
-  const moveProductUp = (productIndex: number) => {
+  // 공간명의 기본 부분 추출 (예: "거실2" -> "거실", "중간방1" -> "중간방")
+  const getBaseSpaceName = useCallback((spaceName: string): string => {
+    if (!spaceName) return '';
+    // 숫자로 끝나는 부분 제거 (거실2 -> 거실, 중간방1 -> 중간방)
+    return spaceName.replace(/[0-9]+$/, '');
+  }, []);
+
+  // 동일한 공간명을 가진 제품들의 인덱스 범위 찾기 (연속된 그룹만)
+  const findSpaceGroupRange = useCallback((productIndex: number): { start: number; end: number } => {
+    const productRows = estimates[activeTab]?.rows?.filter(r => r.type === 'product') || [];
+    
+    // 안전장치: 유효한 인덱스인지 확인
+    if (productIndex < 0 || productIndex >= productOrder.length) {
+      return { start: productIndex, end: productIndex };
+    }
+    
+    if (productOrder.length === 0 || productRows.length === 0) {
+      return { start: productIndex, end: productIndex };
+    }
+
+    // 안전한 인덱스 매핑
+    const currentProductIndex = productOrder[productIndex];
+    if (currentProductIndex < 0 || currentProductIndex >= productRows.length) {
+      return { start: productIndex, end: productIndex };
+    }
+
+    const currentProduct = productRows[currentProductIndex];
+    const currentSpace = currentProduct?.space || '';
+    const baseSpaceName = getBaseSpaceName(currentSpace);
+
+    if (!baseSpaceName) return { start: productIndex, end: productIndex };
+
+    let start = productIndex;
+    let end = productIndex;
+
+    // 앞쪽으로 연속된 같은 공간명 찾기
+    for (let i = productIndex - 1; i >= 0; i--) {
+      const orderIndex = productOrder[i];
+      if (orderIndex < 0 || orderIndex >= productRows.length) {
+        break; // 유효하지 않은 인덱스면 중단
+      }
+      
+      const product = productRows[orderIndex];
+      const space = product?.space || '';
+      const productBaseSpaceName = getBaseSpaceName(space);
+      
+      // 같은 공간명이면 계속 진행, 다르면 중단
+      if (productBaseSpaceName === baseSpaceName) {
+        start = i;
+      } else {
+        break; // 다른 공간명이 나오면 즉시 중단
+      }
+    }
+
+    // 뒤쪽으로 연속된 같은 공간명 찾기
+    for (let i = productIndex + 1; i < productOrder.length; i++) {
+      const orderIndex = productOrder[i];
+      if (orderIndex < 0 || orderIndex >= productRows.length) {
+        break; // 유효하지 않은 인덱스면 중단
+      }
+      
+      const product = productRows[orderIndex];
+      const space = product?.space || '';
+      const productBaseSpaceName = getBaseSpaceName(space);
+      
+      // 같은 공간명이면 계속 진행, 다르면 중단
+      if (productBaseSpaceName === baseSpaceName) {
+        end = i;
+      } else {
+        break; // 다른 공간명이 나오면 즉시 중단
+      }
+    }
+
+    return { start, end };
+  }, [estimates, activeTab, productOrder, getBaseSpaceName]);
+
+  // 제품 순번 위로 이동 (그룹 이동)
+  const moveProductUp = useCallback((productIndex: number) => {
     if (productIndex > 0) {
       setProductOrder(prev => {
         const newOrder = [...prev];
-        [newOrder[productIndex], newOrder[productIndex - 1]] = [newOrder[productIndex - 1], newOrder[productIndex]];
+        
+        // 안전장치: 유효한 인덱스인지 확인
+        if (productIndex >= newOrder.length) {
+          return newOrder;
+        }
+        
+        const { start, end } = findSpaceGroupRange(productIndex);
+        
+        // 안전장치: 유효한 그룹 범위인지 확인
+        if (start < 0 || end < 0 || start > end || end >= newOrder.length) {
+          return newOrder;
+        }
+        
+        // 그룹이 맨 위에 있으면 이동 불가
+        if (start === 0) return newOrder;
+        
+        // 그룹 전체를 위로 이동
+        const groupSize = end - start + 1;
+        const groupIndices = newOrder.slice(start, end + 1);
+        
+        // 안전장치: 그룹 인덱스가 유효한지 확인
+        if (groupIndices.length !== groupSize) {
+          return newOrder;
+        }
+        
+        // 그룹을 제거하고 위쪽에 삽입
+        newOrder.splice(start, groupSize);
+        newOrder.splice(start - 1, 0, ...groupIndices);
+        
+        // 실제 데이터 업데이트
+        updateEstimateWithNewOrder(newOrder);
+        
         return newOrder;
       });
     }
-  };
+  }, [findSpaceGroupRange]);
 
-  // 제품 순번 아래로 이동
-  const moveProductDown = (productIndex: number) => {
+  // 제품 순번 아래로 이동 (그룹 이동)
+  const moveProductDown = useCallback((productIndex: number) => {
     if (productIndex < productOrder.length - 1) {
       setProductOrder(prev => {
         const newOrder = [...prev];
-        [newOrder[productIndex], newOrder[productIndex + 1]] = [newOrder[productIndex + 1], newOrder[productIndex]];
+        
+        // 안전장치: 유효한 인덱스인지 확인
+        if (productIndex >= newOrder.length) {
+          return newOrder;
+        }
+        
+        const { start, end } = findSpaceGroupRange(productIndex);
+        
+        // 안전장치: 유효한 그룹 범위인지 확인
+        if (start < 0 || end < 0 || start > end || end >= newOrder.length) {
+          return newOrder;
+        }
+        
+        // 그룹이 맨 아래에 있으면 이동 불가
+        if (end === newOrder.length - 1) return newOrder;
+        
+        // 그룹 전체를 아래로 이동
+        const groupSize = end - start + 1;
+        const groupIndices = newOrder.slice(start, end + 1);
+        
+        // 안전장치: 그룹 인덱스가 유효한지 확인
+        if (groupIndices.length !== groupSize) {
+          return newOrder;
+        }
+        
+        // 그룹을 제거하고 아래쪽에 삽입
+        newOrder.splice(start, groupSize);
+        newOrder.splice(start + 1, 0, ...groupIndices);
+        
+        // 실제 데이터 업데이트
+        updateEstimateWithNewOrder(newOrder);
+        
         return newOrder;
       });
     }
-  };
+  }, [productOrder.length, findSpaceGroupRange]);
 
 
 
@@ -1287,13 +1495,26 @@ const EstimateManagement: React.FC = () => {
     }
     
     // 제품 순번에 따라 제품 행들을 정렬
-    const sortedProductRows = productOrder.map(index => productRows[index]);
+    const sortedProductRows = productOrder.map(index => {
+      // 안전장치: 유효한 인덱스인지 확인
+      if (index < 0 || index >= productRows.length) {
+        return null;
+      }
+      return productRows[index];
+    }).filter(Boolean); // null 값 제거
+    
+    // 안전장치: 정렬된 제품이 원본과 개수가 다르면 원본 반환
+    if (sortedProductRows.length !== productRows.length) {
+      return rows;
+    }
     
     // 각 제품의 옵션들을 해당 제품 뒤에 배치 (레일 옵션 제외)
     const sortedRows: any[] = [];
     const railOptions: any[] = [];
     
     sortedProductRows.forEach((productRow, productIndex) => {
+      if (!productRow) return; // null 체크
+      
       sortedRows.push(productRow);
       
       // 해당 제품의 옵션들 찾기 (배열 순서 기반)
@@ -1326,6 +1547,11 @@ const EstimateManagement: React.FC = () => {
     
     // 레일 옵션들을 마지막에 추가
     sortedRows.push(...railOptions);
+    
+    // 안전장치: 최종 행 개수가 원본과 다르면 원본 반환
+    if (sortedRows.length !== rows.length) {
+      return rows;
+    }
     
     return sortedRows;
   }, [estimates, activeTab, productOrder]);
@@ -1367,23 +1593,38 @@ const EstimateManagement: React.FC = () => {
     }
   }, [estimates, activeTab]);
 
-  // 제품 순번 변경 시 실제 데이터 업데이트 (무한 루프 방지)
-  useEffect(() => {
-    if (productOrder.length > 0 && estimates[activeTab]?.rows) {
-      // 실제 데이터 업데이트는 제품 순번 변경 시에만 수행
+  // 제품 순번 변경 시 실제 데이터 업데이트 함수
+  const updateEstimateWithNewOrder = useCallback((newOrder: number[]) => {
+    if (!estimates[activeTab]?.rows || newOrder.length === 0) {
+      return;
+    }
+    
       const rows = estimates[activeTab].rows;
       const productRows = rows.filter(row => row.type === 'product');
       const optionRows = rows.filter(row => row.type === 'option');
       
-      if (productOrder.length === productRows.length) {
+    if (newOrder.length === productRows.length) {
         // 제품 순번에 따라 제품 행들을 정렬
-        const sortedProductRows = productOrder.map(index => productRows[index]);
+      const sortedProductRows = newOrder.map(index => {
+        // 안전장치: 유효한 인덱스인지 확인
+        if (index < 0 || index >= productRows.length) {
+          return null;
+        }
+        return productRows[index];
+      }).filter(Boolean); // null 값 제거
+      
+      // 안전장치: 정렬된 제품이 원본과 개수가 다르면 업데이트하지 않음
+      if (sortedProductRows.length !== productRows.length) {
+        return;
+      }
         
         // 각 제품의 옵션들을 해당 제품 뒤에 배치 (레일 옵션 제외)
         const sortedRows: any[] = [];
         const railOptions: any[] = [];
         
         sortedProductRows.forEach((productRow) => {
+        if (!productRow) return; // null 체크
+        
           sortedRows.push(productRow);
           
           // 해당 제품의 옵션들 찾기 (배열 순서 기반)
@@ -1417,11 +1658,13 @@ const EstimateManagement: React.FC = () => {
         // 레일 옵션들을 마지막에 추가
         sortedRows.push(...railOptions);
         
+      // 안전장치: 최종 행 개수가 원본과 다르면 업데이트하지 않음
+      if (sortedRows.length === rows.length) {
         // 실제 견적서 데이터 업데이트
         updateEstimateRows(activeTab, sortedRows);
       }
     }
-  }, [productOrder]); // updateEstimateWithNewOrder 의존성 제거
+  }, [estimates, activeTab, updateEstimateRows]);
 
   // 디버깅: 견적서 스토어 상태 확인 (개발 환경에서만)
   // 주석 처리하여 반복 로그 방지
@@ -1473,6 +1716,43 @@ const EstimateManagement: React.FC = () => {
   const [optionQuantity, setOptionQuantity] = useState<number>(1); // 시공 옵션 수량
   const [editRowIdx, setEditRowIdx] = useState<number | null>(null);
   const [editRow, setEditRow] = useState<any>(null);
+  
+  // 주름양배수 변경 시 세부내용 즉시 업데이트
+  useEffect(() => {
+    if (editRow && editRow.productType === '커튼' && 
+        editRow.curtainType === '속커튼' && editRow.pleatType === '민자' && 
+        editRow.pleatMultiplier) {
+      
+      // 세부내용 즉시 업데이트
+      let currentDetails = editRow.details || '';
+      
+      // 모든 커튼 관련 정보 완전 제거
+      currentDetails = currentDetails.replace(/겉커튼|속커튼/g, '');
+      currentDetails = currentDetails.replace(/민자주름|나비주름|3주름/g, '');
+      currentDetails = currentDetails.replace(/[0-9]+폭/g, '');
+      currentDetails = currentDetails.replace(/[0-9.~]+배/g, '');
+      currentDetails = currentDetails.replace(/배/g, '');
+      currentDetails = currentDetails.replace(/[0-9]+\.[0-9]+/g, '');
+      currentDetails = currentDetails.replace(/[0-9]+/g, '');
+      
+      // 콤마 정리
+      currentDetails = currentDetails.replace(/,\s*,/g, ',');
+      currentDetails = currentDetails.replace(/,\s*,/g, ',');
+      currentDetails = currentDetails.replace(/^,\s*/, '');
+      currentDetails = currentDetails.replace(/,\s*$/, '');
+      
+      // 새로운 커튼 정보 생성
+      let curtainInfo = `${editRow.curtainType}, ${editRow.pleatType}주름`;
+      if (editRow.pleatMultiplier && editRow.pleatMultiplier !== 0 && editRow.pleatMultiplier !== '0' && editRow.pleatMultiplier !== '') {
+        curtainInfo += `, ${editRow.pleatMultiplier}`;
+      }
+      
+      // 세부내용 업데이트
+      const finalDetails = currentDetails ? `${curtainInfo}, ${currentDetails}` : curtainInfo;
+      setEditRow((prev: any) => ({ ...prev, details: finalDetails }));
+    }
+  }, [editRow?.pleatMultiplier, editRow?.curtainType, editRow?.pleatType]);
+  
   const [editOpen, setEditOpen] = useState(false);
   const [recommendedPleatCount, setRecommendedPleatCount] = useState<number>(0);
   const [recommendedPleatAmount, setRecommendedPleatAmount] = useState<string>('');
@@ -1567,6 +1847,20 @@ const EstimateManagement: React.FC = () => {
       return true;
     }
   });
+
+  // 최근 수정한 행 추적 상태
+  const [recentlyModifiedRowId, setRecentlyModifiedRowId] = useState<number | null>(null);
+
+  // 최근 수정한 행 표시 자동 제거
+  useEffect(() => {
+    if (recentlyModifiedRowId !== null) {
+      const timer = setTimeout(() => {
+        setRecentlyModifiedRowId(null);
+      }, 3000); // 3초 후 자동 제거
+
+      return () => clearTimeout(timer);
+    }
+  }, [recentlyModifiedRowId]);
 
   // 정렬 설정 변경 시 localStorage에 저장
   useEffect(() => {
@@ -1667,7 +1961,6 @@ const EstimateManagement: React.FC = () => {
       return newCounts;
     });
   };
-
   // 선택된 제품들을 견적서에 일괄 추가
   const handleAddSelectedProducts = () => {
     if (selectedProducts.size === 0) {
@@ -1794,6 +2087,11 @@ const EstimateManagement: React.FC = () => {
       ...newRows,
     ]);
 
+    // 새로 추가된 제품들을 시각적으로 표시 (마지막 제품의 ID만 저장)
+    if (newRows.length > 0) {
+      setRecentlyModifiedRowId(newRows[newRows.length - 1].id);
+    }
+
     setSelectedProducts(new Set()); // 선택 초기화
     // setProductDialogOpen(false); // 모달을 닫지 않음 - 여러 번 제품 추가 가능
 
@@ -1868,19 +2166,19 @@ const EstimateManagement: React.FC = () => {
     if (saved) return JSON.parse(saved);
     return {
       showEstimateNo: true,
-      showEstimateDate: true,
+      showEstimateDate: false,
       showSavedDate: true,
       showCustomerName: true,
       showContact: true,
-      showProjectName: true,
+      showProjectName: false,
       showType: false,
-      showAddress: false,
-      showProducts: true,
+      showAddress: true,
+      showProducts: false,
       showTotalAmount: true,
-      showDiscountedAmount: false,
-      showDiscountAmount: true,
-      showDiscountRate: true,
-      showMargin: true,
+      showDiscountedAmount: true,
+      showDiscountAmount: false,
+      showDiscountRate: false, // 기본값을 false로 변경
+      showMargin: false, // 기본값을 false로 변경
       showActions: true,
     };
   });
@@ -1901,20 +2199,16 @@ const EstimateManagement: React.FC = () => {
       return JSON.parse(savedOrder);
     }
     return [
+      'address',
       'estimateNo',
-      'estimateDate',
       'savedDate',
       'customerName',
       'contact',
-      'projectName',
-      'products',
       'totalAmount',
       'discountedAmount',
-      'discountAmount',
       'discountRate',
       'margin',
       'actions',
-      'address',
     ];
   });
 
@@ -2326,20 +2620,23 @@ const EstimateManagement: React.FC = () => {
   const now = new Date();
   const filteredSavedEstimatesList = savedEstimates.filter((estimate: any) => {
     const s = savedEstimateSearch.trim().toLowerCase();
-    if (
-      s &&
-      !(
-        estimate.name.toLowerCase().includes(s) ||
-        estimate.rows.some(
-          (row: any) =>
-            row.productName?.toLowerCase().includes(s) ||
-            row.details?.toLowerCase().includes(s) ||
-            row.vendor?.toLowerCase().includes(s) ||
-            row.brand?.toLowerCase().includes(s)
-        )
-      )
-    )
-      return false;
+    if (s) {
+      // 검색어를 공백으로 분리하여 각 단어를 개별적으로 검색
+      const searchWords = s.split(/\s+/).filter(word => word.length > 0);
+      
+      // 모든 검색 단어가 하나 이상의 필드에 포함되어야 함
+      const allWordsMatch = searchWords.every(searchWord => {
+        const searchLower = searchWord.toLowerCase();
+        return (
+          estimate.address?.toLowerCase().includes(searchLower) ||
+          estimate.customerName?.toLowerCase().includes(searchLower) ||
+          estimate.contact?.toLowerCase().includes(searchLower) ||
+          estimate.projectName?.toLowerCase().includes(searchLower)
+        );
+      });
+      
+      if (!allWordsMatch) return false;
+    }
 
     // 'all' 모드일 때는 모든 견적서 표시
     if (periodMode === 'all') return true;
@@ -2392,7 +2689,7 @@ const EstimateManagement: React.FC = () => {
     }
   });
 
-  // 견적번호-최신순으로 정렬 (최신 견적서가 위에 표시)
+  // 견적번호-최신순으로 정렬 (Final 견적서가 동일 주소 내에서 최상단에 위치)
   const sortedFilteredEstimatesList = filteredSavedEstimatesList.sort((a: any, b: any) => {
     // 견적번호에서 날짜 부분 추출 (예: E20250728-001 -> 20250728)
     const extractDateFromEstimateNo = (estimateNo: string) => {
@@ -2420,7 +2717,23 @@ const EstimateManagement: React.FC = () => {
       return dateB.localeCompare(dateA);
     }
     
-    // 2. 날짜가 같으면 시퀀스 번호로 정렬 (높은 번호가 위로)
+    // 2. 날짜가 같으면 주소로 그룹화하여 정렬
+    const addressA = a.address || '';
+    const addressB = b.address || '';
+    
+    if (addressA !== addressB) {
+      return addressA.localeCompare(addressB); // 주소 알파벳 순
+    }
+    
+    // 3. 동일한 주소 내에서는 Final 견적서가 최상단에 위치
+    const isFinalA = (a.estimateNo || '').includes('-final');
+    const isFinalB = (b.estimateNo || '').includes('-final');
+    
+    if (isFinalA !== isFinalB) {
+      return isFinalA ? -1 : 1; // Final이 위로
+    }
+    
+    // 4. Final 여부가 같으면 시퀀스 번호로 정렬 (높은 번호가 위로)
     const sequenceA = extractSequenceFromEstimateNo(a.estimateNo || '');
     const sequenceB = extractSequenceFromEstimateNo(b.estimateNo || '');
     
@@ -2436,21 +2749,12 @@ const EstimateManagement: React.FC = () => {
       return baseSequenceB - baseSequenceA; // 높은 번호가 위로
     }
     
-    // 3. 기본 시퀀스 번호가 같으면 Final 견적서가 위로
-    const isFinalA = (a.estimateNo || '').includes('-final');
-    const isFinalB = (b.estimateNo || '').includes('-final');
-    
-    if (isFinalA !== isFinalB) {
-      return isFinalA ? -1 : 1; // Final이 위로
-    }
-    
-    // 4. Final 여부가 같으면 저장일시로 정렬 (최신이 위로)
+    // 5. 시퀀스 번호가 같으면 저장일시로 정렬 (최신이 위로)
     const savedAtA = a.savedAt ? new Date(a.savedAt).getTime() : 0;
     const savedAtB = b.savedAt ? new Date(b.savedAt).getTime() : 0;
     
     return savedAtB - savedAtA;
   });
-
   // 디버깅 정보 출력 (개발 환경에서만)
   // 주석 처리하여 반복 로그 방지
   // if (process.env.NODE_ENV === 'development') {
@@ -2458,7 +2762,6 @@ const EstimateManagement: React.FC = () => {
   //   console.log('필터링된 견적서:', filteredSavedEstimatesList.length, '개');
   //   console.log('현재 기간 모드:', periodMode);
   // }
-
   // 저장된 견적서 불러오기 핸들러
   const handleLoadSavedEstimate = (savedEstimate: any) => {
     // Final 견적서인지 확인
@@ -2517,10 +2820,12 @@ const EstimateManagement: React.FC = () => {
             updatedRow.curtainType === '속커튼' &&
             updatedRow.pleatType === '민자'
           ) {
-            if (updatedRow.widthMM > 0 && updatedRow.heightMM > 0) {
-              const area = (updatedRow.widthMM * updatedRow.heightMM) / 1000000; // m²
+            if (updatedRow.widthMM > 0) {
+              // 주름양 배수 가져오기 (기본값 1.4배)
+              const pleatMultiplier = Number(updatedRow.pleatMultiplier?.replace('배', '')) || 1.4;
+              const area = (updatedRow.widthMM / 1000) * pleatMultiplier; // m²
               updatedRow.area = area;
-              updatedRow.pleatAmount = area.toFixed(2);
+              updatedRow.pleatAmount = updatedRow.pleatMultiplier || '1.4배';
             }
           }
 
@@ -2539,24 +2844,20 @@ const EstimateManagement: React.FC = () => {
 
       newEstimate = {
         ...savedEstimate,
-        id: Date.now(), // 새로운 ID 부여
+        id: savedEstimate.id, // 원본 ID 유지 (Firebase 업데이트를 위해)
         estimateNo: savedEstimate.estimateNo, // 기존 견적번호 유지
         name: savedEstimate.name, // 기존 이름 유지 (Final 표시 포함)
         estimateDate: savedEstimate.estimateDate, // 기존 견적일자 유지
         rows: updatedRows, // 재계산된 제품/옵션 정보
       };
     } else {
-      // 일반 견적서인 경우 기존 로직 적용
-      const revisionNo = generateRevisionNo(
-        savedEstimate.estimateNo,
-        estimates
-      );
+      // 일반 견적서인 경우 동일한 견적번호로 유지
       newEstimate = {
         ...savedEstimate,
-        id: Date.now(), // 새로운 ID 부여
-        estimateNo: revisionNo, // 수정번호로 변경
-        name: `${savedEstimate.name} (수정본)`,
-        estimateDate: getLocalDate(), // 로컬 시간 기준으로 오늘 날짜로 설정
+        id: savedEstimate.id, // 원본 ID 유지 (Firebase 업데이트를 위해)
+        estimateNo: savedEstimate.estimateNo, // 동일한 견적번호 유지
+        name: savedEstimate.name, // 기존 이름 유지
+        estimateDate: savedEstimate.estimateDate, // 기존 견적일자 유지
         rows: [...savedEstimate.rows], // 제품/옵션 정보 복사
       };
     }
@@ -2614,7 +2915,7 @@ const EstimateManagement: React.FC = () => {
         );
       } else {
         alert(
-          `저장된 견적서가 수정본으로 불러와졌습니다.\n견적번호: ${newEstimate.estimateNo}`
+          `저장된 견적서가 불러와졌습니다.\n견적번호: ${newEstimate.estimateNo}`
         );
       }
     }
@@ -2968,15 +3269,26 @@ const EstimateManagement: React.FC = () => {
         filtered = filtered.filter(p => p.brand === productSearchFilters.brand);
       }
       if (productSearchFilters.searchText) {
-        const searchText = productSearchFilters.searchText.toLowerCase();
-        filtered = filtered.filter(p =>
-          p.vendorName?.toLowerCase().includes(searchText) ||
-          p.brand?.toLowerCase().includes(searchText) ||
-          p.category?.toLowerCase().includes(searchText) ||
-          p.productName?.toLowerCase().includes(searchText) ||
-          p.productCode?.toLowerCase().includes(searchText) ||
-          p.details?.toLowerCase().includes(searchText)
-        );
+        const searchText = productSearchFilters.searchText.trim().toLowerCase();
+        if (searchText) {
+          // 검색어를 공백으로 분리하여 각 단어를 개별적으로 검색
+          const searchWords = searchText.split(/\s+/).filter(word => word.length > 0);
+          
+          // 모든 검색 단어가 하나 이상의 필드에 포함되어야 함
+          filtered = filtered.filter(p => {
+            return searchWords.every(searchWord => {
+              const searchLower = searchWord.toLowerCase();
+              return (
+                p.vendorName?.toLowerCase().includes(searchLower) ||
+                p.brand?.toLowerCase().includes(searchLower) ||
+                p.category?.toLowerCase().includes(searchLower) ||
+                p.productName?.toLowerCase().includes(searchLower) ||
+                p.productCode?.toLowerCase().includes(searchLower) ||
+                p.details?.toLowerCase().includes(searchLower)
+              );
+            });
+          });
+        }
       }
 
       // 선택 횟수에 따라 정렬 (가장 많이 선택된 제품을 상위에)
@@ -3226,7 +3538,6 @@ const EstimateManagement: React.FC = () => {
     setEditOptionDialogOpen(true);
     console.log('수정 모달 상태:', { editingOption: option, editOptionQuantity: option.quantity || 1 });
   };
-
   const handleSaveEditOption = () => {
     if (!editingOption) return;
 
@@ -3268,13 +3579,23 @@ const EstimateManagement: React.FC = () => {
           }
         }
         
+        // 옵션의 적용 타입에 따른 올바른 계산
+        const calculatedTotalPrice = getOptionAmount({
+          ...editingOption,
+          quantity: editOptionQuantity
+        }, row);
+        const calculatedCost = getOptionPurchaseAmount({
+          ...editingOption,
+          quantity: editOptionQuantity
+        }, row);
+        
         return {
           ...row,
           quantity: editOptionQuantity,
           details: optionDetails, // 자동 계산 정보가 포함된 세부내용
-          totalPrice: (editingOption.salePrice || 0) * editOptionQuantity,
-          cost: (editingOption.purchaseCost || 0) * editOptionQuantity,
-          margin: ((editingOption.salePrice || 0) - (editingOption.purchaseCost || 0)) * editOptionQuantity,
+          totalPrice: calculatedTotalPrice,
+          cost: calculatedCost,
+          margin: calculatedTotalPrice - calculatedCost,
         };
       }
       return row;
@@ -3351,12 +3672,22 @@ const EstimateManagement: React.FC = () => {
           updatedDetails = updatedDetails.replace(/\(커튼\s+\d+조\)/, `(커튼 ${editingQuantityValue}조)`);
         }
 
+        // 옵션의 적용 타입에 따른 올바른 계산
+        const calculatedTotalPrice = getOptionAmount({
+          ...row,
+          quantity: editingQuantityValue
+        }, row);
+        const calculatedCost = getOptionPurchaseAmount({
+          ...row,
+          quantity: editingQuantityValue
+        }, row);
+        
         return {
           ...row,
           quantity: editingQuantityValue,
-          totalPrice: (row.salePrice || 0) * editingQuantityValue,
-          cost: (row.purchaseCost || 0) * editingQuantityValue,
-          margin: ((row.salePrice || 0) - (row.purchaseCost || 0)) * editingQuantityValue,
+          totalPrice: calculatedTotalPrice,
+          cost: calculatedCost,
+          margin: calculatedTotalPrice - calculatedCost,
           details: updatedDetails,
           isManualQuantity: true, // 수동 설정으로 변경
         };
@@ -3632,6 +3963,10 @@ const EstimateManagement: React.FC = () => {
     newRows.splice(insertIndex, 0, newOptionRow);
 
     updateEstimateRows(activeTab, newRows);
+    
+    // 새로 추가된 옵션을 시각적으로 표시
+    setRecentlyModifiedRowId(newOptionRow.id);
+    
     setOptionDialogOpen(false);
   };
 
@@ -3661,28 +3996,9 @@ const EstimateManagement: React.FC = () => {
     
     // 공간 정보에 자동 넘버링 추가
     const originalSpace = originalRow.space;
-    const originalSpaceCustom = originalRow.spaceCustom;
     
-    if (originalSpace === '직접입력' && originalSpaceCustom) {
-      // 직접입력된 공간명에 넘버링 추가 (예: "창1" -> "창2")
-      const baseName = originalSpaceCustom.replace(/\d+$/, ''); // 끝의 숫자 제거
-      const existingNumbers = rows
-        .filter(row => 
-          row.space === '직접입력' && 
-          row.spaceCustom && 
-          row.spaceCustom.startsWith(baseName) &&
-          row.spaceCustom !== originalSpaceCustom
-        )
-        .map(row => {
-          const match = row.spaceCustom?.match(new RegExp(`^${baseName}(\\d+)$`));
-          return match ? parseInt(match[1]) : 0;
-        })
-        .filter(num => num > 0);
-      
-      const nextNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 2;
-      copy.spaceCustom = `${baseName}${nextNumber}`;
-    } else if (originalSpace && originalSpace !== '직접입력') {
-      // 일반 공간명에 넘버링 추가 (예: "거실" -> "거실2")
+    if (originalSpace) {
+      // 공간명에 넘버링 추가 (예: "거실" -> "거실2")
       // 기존 넘버링이 있는지 확인하고 기본 공간명 추출
       const baseSpaceName = originalSpace.replace(/\s*\d+$/, ''); // 끝의 공백과 숫자 제거
       
@@ -3716,11 +4032,37 @@ const EstimateManagement: React.FC = () => {
     // 복사된 항목을 맨 뒤에 추가하여 순서대로 보이도록 함
     rows.push(copy);
     updateEstimateRows(activeTab, rows);
+    
+    // 복사된 행의 ID를 저장하여 시각적 표시
+    setRecentlyModifiedRowId(copy.id);
   };
 
   const handleRowClick = (idx: number) => {
-    setEditRowIdx(idx);
-    setEditRow({ ...estimates[activeTab].rows[idx] });
+    // 안전장치: 유효한 인덱스인지 확인
+    if (idx < 0 || !estimates[activeTab]?.rows) return;
+    
+    // filteredRows의 인덱스를 원본 배열의 인덱스로 변환
+    const originalRows = estimates[activeTab].rows;
+    const filteredRows = getSortedRows().filter(row =>
+      FILTER_FIELDS.every(f => {
+        if (!activeFilters[f.key]) return true;
+        const val = getRowValue(row, f.key);
+        return val !== undefined && val !== null && val !== '';
+      })
+    );
+    
+    // 안전장치: 유효한 인덱스인지 확인
+    if (idx >= filteredRows.length) return;
+    
+    const clickedRow = filteredRows[idx];
+    if (!clickedRow || !clickedRow.id) return;
+    
+    // 원본 배열에서 해당 행의 인덱스 찾기
+    const originalIndex = originalRows.findIndex(row => row && row.id === clickedRow.id);
+    if (originalIndex === -1) return;
+    
+    setEditRowIdx(originalIndex);
+    setEditRow({ ...originalRows[originalIndex] });
     setEditOpen(true);
     // 편집 모달이 열릴 때 사용자 수정 상태 초기화
     setUserModifiedWidthCount(false);
@@ -3732,7 +4074,6 @@ const EstimateManagement: React.FC = () => {
   const handleDetailsChange = (value: string) => {
     setEditRow((prev: any) => ({ ...prev, details: value }));
   };
-
   const handleEditChange = (field: string, value: any) => {
     const newEditRow = { ...editRow, [field]: value };
     let productDataChanged = false;
@@ -3760,6 +4101,28 @@ const EstimateManagement: React.FC = () => {
         newEditRow.width = product.width || '';
         newEditRow.details = product.details || '';
 
+        // 제품명 기반 공간 자동 설정
+        const productName = product.productName || '';
+        if (productName.includes('중간방2')) {
+          newEditRow.space = '중간방2';
+        } else if (productName.includes('중간방')) {
+          newEditRow.space = '중간방';
+        } else if (productName.includes('거실')) {
+          newEditRow.space = '거실';
+        } else if (productName.includes('안방')) {
+          newEditRow.space = '안방';
+        } else if (productName.includes('드레스룸')) {
+          newEditRow.space = '드레스룸';
+        } else if (productName.includes('끝방')) {
+          newEditRow.space = '끝방';
+        } else if (productName.includes('주방')) {
+          newEditRow.space = '주방';
+        }
+        // 기존 공간 정보가 있으면 유지
+        else if (editRow.space) {
+          newEditRow.space = editRow.space;
+        }
+
         // 속커튼 초기값 설정
         if (product.category === '커튼') {
           if (product.insideOutside === '속') {
@@ -3770,18 +4133,62 @@ const EstimateManagement: React.FC = () => {
             newEditRow.curtainType = '겉커튼';
             newEditRow.pleatType = '민자';
           }
+          
+          // 속커튼, 민자를 선택할 때 주름양배수를 1.4배로 기본 설정
+          if (newEditRow.curtainType === '속커튼' && newEditRow.pleatType === '민자') {
+            newEditRow.pleatMultiplier = '1.4배';
+          }
         }
 
         productDataChanged = true;
       }
     }
 
-    // 주름양 계산 로직 (단순화)
-    if (['widthMM', 'productName', 'curtainType', 'pleatType', 'widthCount'].includes(field) || productDataChanged) {
+    // 커튼종류나 주름방식이 변경될 때는 주름양 계산 후 세부내용 업데이트를 위해 플래그 설정
+    if ((field === 'curtainType' || field === 'pleatType') && newEditRow.productType === '커튼') {
+      // 주름타입 변경 시 폭수를 추천폭수로 리셋
+      if (field === 'pleatType') {
+        newEditRow.widthCount = 0; // 추천폭수 계산을 위해 0으로 리셋
+      }
+      
+      // 속커튼, 민자를 선택할 때 주름양배수를 1.4배로 기본 설정
+      if (newEditRow.curtainType === '속커튼' && newEditRow.pleatType === '민자') {
+        newEditRow.pleatMultiplier = '1.4배';
+      }
+    }
+
+    // 가로 사이즈 변경 시에도 세부내용 업데이트 필요
+    if (field === 'widthMM' && newEditRow.productType === '커튼') {
+      // 가로값 변경 시 사용자 수정 상태 리셋
+      setUserModifiedWidthCount(false);
+    }
+
+    // 주름양배수 변경 시 속커튼 민자에서 즉시 주름양 업데이트
+    if (field === 'pleatMultiplier' && newEditRow.productType === '커튼' && 
+        newEditRow.curtainType === '속커튼' && newEditRow.pleatType === '민자') {
+      // 주름양을 선택된 배수값으로 즉시 업데이트
+      newEditRow.pleatAmount = value;
+      
+      // 면적도 즉시 업데이트
+      const widthMM = Number(newEditRow.widthMM) || 0;
+      if (widthMM > 0) {
+        const pleatMultiplier = Number(value?.replace('배', '')) || 1.4;
+        const area = (widthMM / 1000) * pleatMultiplier;
+        newEditRow.area = area;
+      }
+    }
+
+    // 주름양 계산 로직 통합
+    if (['widthMM', 'productName', 'curtainType', 'pleatType', 'widthCount', 'pleatMultiplier'].includes(field) || productDataChanged) {
       // 가로값이나 주름타입이 변경되면 사용자 수정 상태 리셋 (widthCount 직접 수정 제외)
       if (field !== 'widthCount' && ['widthMM', 'curtainType', 'pleatType'].includes(field)) {
         setUserModifiedWidthCount(false);
+        // 주름타입 변경 시 폭수를 추천폭수로 리셋
+        if (field === 'pleatType') {
+          newEditRow.widthCount = 0; // 추천폭수 계산을 위해 0으로 리셋
+        }
       }
+      
       const product = productOptions.find(
         p => p.productCode === newEditRow.productCode
       );
@@ -3791,66 +4198,106 @@ const EstimateManagement: React.FC = () => {
       const curtainTypeVal = newEditRow.curtainType;
       const productWidth = product ? Number(product.width) || 0 : 0;
 
-      // 속커튼 나비주름일 때 주름양을 1.8~2로 설정
+      // 속커튼 나비주름일 때
       if (curtainTypeVal === '속커튼' && pleatTypeVal === '나비') {
+        if (widthMM > 0) {
+          const area = widthMM / 1000; // m²
+          newEditRow.area = area;
         newEditRow.pleatAmount = '1.8~2';
-        // 폭수/pleatCount를 0으로 명확히 세팅 (Infinity 방지)
         newEditRow.widthCount = 0;
         newEditRow.pleatCount = 0;
-      } else if (curtainTypeVal === '속커튼' && pleatTypeVal === '민자') {
-        // 속커튼 민자는 면적 기반 주름양 계산
-        if (widthMM > 0 && heightMM > 0) {
-          const area = (widthMM * heightMM) / 1000000; // m²
-          newEditRow.area = area;
-          newEditRow.pleatAmount = area.toFixed(2);
         }
-      } else if (curtainTypeVal === '겉커튼' && widthMM > 0) {
-        // 겉커튼 폭수 계산
-        const pleatCount = getPleatCount(
+      }
+      // 속커튼 민자일 때
+      else if (curtainTypeVal === '속커튼' && pleatTypeVal === '민자') {
+        if (widthMM > 0) {
+          // 주름양 배수 가져오기 (기본값 1.4배)
+          const pleatMultiplier = Number(newEditRow.pleatMultiplier?.replace('배', '')) || 1.4;
+          const area = (widthMM / 1000) * pleatMultiplier; // m²
+          newEditRow.area = area;
+          // 주름양은 선택된 배수값을 그대로 사용
+          newEditRow.pleatAmount = newEditRow.pleatMultiplier || '1.4배';
+        }
+      }
+      // 겉커튼일 때
+      else if (curtainTypeVal === '겉커튼' && widthMM > 0) {
+        // 사용자가 입력한 폭수 값이 있으면 그 값을 우선 사용
+        const userInputWidthCount = Number(newEditRow.widthCount) || 0;
+        let finalWidthCount = userInputWidthCount;
+
+        // 사용자가 폭수를 입력하지 않았다면 추천 폭수 계산
+        if (userInputWidthCount === 0) {
+          let pleatCount: number | string = 0;
+          
+          // 겉커튼 민자는 productWidth가 없어도 계산 가능
+          if (pleatTypeVal === '민자') {
+            // 겉커튼 민자는 가로 길이 기반으로 추천 폭수 계산
+            pleatCount = Math.ceil(widthMM / 700); // 700mm당 1폭
+          } else if (productWidth > 0) {
+            // 겉커튼 나비/3주름은 productWidth가 필요
+            pleatCount = getPleatCount(
           widthMM,
           productWidth,
           pleatTypeVal,
           curtainTypeVal
         );
-        
-        newEditRow.pleatCount = pleatCount;
-        // 사용자가 직접 수정하지 않은 경우에만 추천폭수로 자동 입력
-        if (!userModifiedWidthCount) {
-          newEditRow.widthCount = pleatCount;
         }
-        setRecommendedPleatCount(pleatCount || 0);
+          
+          finalWidthCount = Number(pleatCount) || 0;
+          newEditRow.widthCount = finalWidthCount;
+          newEditRow.pleatCount = finalWidthCount;
         
-                // 추천 주름양 계산
-        if (pleatCount && pleatCount > 0) {
-          const calculatedPleatAmount = getPleatAmount(
+        // 추천 주름양 계산
+          if (finalWidthCount > 0) {
+            let calculatedPleatAmount = '';
+            if (pleatTypeVal === '민자') {
+              calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, finalWidthCount);
+            } else if (productWidth > 0) {
+              calculatedPleatAmount = getPleatAmount(
             widthMM,
             productWidth,
             pleatTypeVal,
             curtainTypeVal,
-            pleatCount
-          );
-
-          setRecommendedPleatAmount(calculatedPleatAmount || '');
+                finalWidthCount
+              ) || '';
+            }
+            setRecommendedPleatAmount(calculatedPleatAmount);
         } else {
           setRecommendedPleatAmount('');
+          }
         }
 
-        // 주름양 자동 계산
-        if (pleatCount && pleatCount > 0) {
-          const calculatedPleatAmount = getPleatAmount(
+        // 주름양 계산
+        if (finalWidthCount > 0) {
+          let calculatedPleatAmount = '';
+          if (pleatTypeVal === '민자') {
+            calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, finalWidthCount);
+          } else if (productWidth > 0) {
+            calculatedPleatAmount = getPleatAmount(
             widthMM,
             productWidth,
             pleatTypeVal,
             curtainTypeVal,
-            pleatCount
-          );
+              finalWidthCount
+            );
+          } else {
+            // 겉커튼 나비/3주름이지만 productWidth가 없는 경우 표준값으로 계산
+            if (pleatTypeVal === '나비') {
+              const standardWidth = 1370; // 표준 제품폭
+              const calculatedValue = (standardWidth * finalWidthCount) / widthMM;
+              if (isFinite(calculatedValue) && !isNaN(calculatedValue)) {
+                calculatedPleatAmount = calculatedValue.toFixed(2);
+              }
+            } else if (pleatTypeVal === '3주름') {
+              const standardWidth = 1370; // 표준 제품폭
+              const calculatedValue = (standardWidth * finalWidthCount) / widthMM;
+              if (isFinite(calculatedValue) && !isNaN(calculatedValue)) {
+                calculatedPleatAmount = calculatedValue.toFixed(2);
+              }
+            }
+          }
           newEditRow.pleatAmount = calculatedPleatAmount;
         }
-      }
-
-      // 속커튼 나비주름일 때 주름양을 1.8~2로 설정
-      if (curtainTypeVal === '속커튼' && pleatTypeVal === '나비') {
-        newEditRow.pleatAmount = '1.8~2';
       }
     }
 
@@ -3873,7 +4320,7 @@ const EstimateManagement: React.FC = () => {
       }
     }
 
-    // widthCount가 직접 변경될 때 주름양 계산
+    // widthCount가 직접 변경될 때 주름양 계산 및 세부내용 업데이트
     if (field === 'widthCount') {
       // 사용자가 직접 폭수를 수정했음을 표시
       setUserModifiedWidthCount(true);
@@ -3888,30 +4335,56 @@ const EstimateManagement: React.FC = () => {
       const pleatCount = Number(value) || 0;
 
       // 겉커튼일 때 주름양 자동 계산
-      if (curtainTypeVal === '겉커튼' && pleatCount > 0 && widthMM > 0 && productWidth > 0) {
-        const calculatedPleatAmount = getPleatAmount(
-          widthMM,
-          productWidth,
-          pleatTypeVal,
-          curtainTypeVal,
-          pleatCount
-        );
-        newEditRow.pleatAmount = calculatedPleatAmount;
+      if (curtainTypeVal === '겉커튼' && pleatCount > 0 && widthMM > 0) {
+        // 겉커튼 민자는 productWidth가 없어도 계산 가능
+        if (pleatTypeVal === '민자') {
+          // 겉커튼 민자는 가로 길이와 폭수를 고려한 주름양 계산
+          const calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, pleatCount);
+          newEditRow.pleatAmount = calculatedPleatAmount;
+        } else if (productWidth > 0) {
+          // 겉커튼 나비/3주름은 productWidth가 필요
+          const calculatedPleatAmount = getPleatAmount(
+            widthMM,
+            productWidth,
+            pleatTypeVal,
+            curtainTypeVal,
+            pleatCount
+          );
+          newEditRow.pleatAmount = calculatedPleatAmount;
+        } else {
+          // 겉커튼 나비/3주름이지만 productWidth가 없는 경우 기본값 설정
+          if (pleatTypeVal === '나비') {
+            newEditRow.pleatAmount = '1.8~2';
+          } else if (pleatTypeVal === '3주름') {
+            newEditRow.pleatAmount = '2.5~3';
+          }
+        }
       }
 
-      // 속커튼 민자일 때는 면적 기반 주름양 계산
+      // 속커튼 민자일 때는 주름양배수 선택값을 그대로 사용
       if (curtainTypeVal === '속커튼' && pleatTypeVal === '민자') {
-        const heightMM = Number(newEditRow.heightMM) || 0;
-        if (widthMM > 0 && heightMM > 0) {
-          const area = (widthMM * heightMM) / 1000000; // m²
+        if (widthMM > 0) {
+          // 주름양 배수 가져오기 (기본값 1.4배)
+          const pleatMultiplier = Number(newEditRow.pleatMultiplier?.replace('배', '')) || 1.4;
+          const area = (widthMM / 1000) * pleatMultiplier; // m²
           newEditRow.area = area;
-          newEditRow.pleatAmount = area.toFixed(2);
+          // 주름양은 선택된 배수값을 그대로 사용
+          newEditRow.pleatAmount = newEditRow.pleatMultiplier || '1.4배';
+        }
+      }
+
+      // 속커튼 나비일 때는 가로 기반 면적 계산
+      if (curtainTypeVal === '속커튼' && pleatTypeVal === '나비') {
+        if (widthMM > 0) {
+          const area = widthMM / 1000; // m²
+          newEditRow.area = area;
+          newEditRow.pleatAmount = '1.8~2';
         }
       }
     }
 
         // 주름양 계산 로직 통합
-    if (['widthMM', 'productName', 'curtainType', 'pleatType', 'widthCount'].includes(field) || productDataChanged) {
+    if (['widthMM', 'productName', 'curtainType', 'pleatType', 'widthCount', 'pleatMultiplier'].includes(field) || productDataChanged) {
       const product = productOptions.find(
         p => p.productCode === newEditRow.productCode
       );
@@ -3923,46 +4396,72 @@ const EstimateManagement: React.FC = () => {
 
       // 속커튼 나비주름일 때
       if (curtainTypeVal === '속커튼' && pleatTypeVal === '나비') {
-        newEditRow.pleatAmount = '1.8~2';
-        newEditRow.widthCount = 0;
-        newEditRow.pleatCount = 0;
+        if (widthMM > 0) {
+          const area = widthMM / 1000; // m²
+          newEditRow.area = area;
+          newEditRow.pleatAmount = '1.8~2';
+          newEditRow.widthCount = 0;
+          newEditRow.pleatCount = 0;
+          // editRow 상태도 업데이트하여 화면에 반영
+          setEditRow((prev: any) => ({ ...prev, pleatAmount: '1.8~2' }));
+        }
       }
       // 속커튼 민자일 때
       else if (curtainTypeVal === '속커튼' && pleatTypeVal === '민자') {
-        if (widthMM > 0 && heightMM > 0) {
-          const area = (widthMM * heightMM) / 1000000; // m²
+        if (widthMM > 0) {
+          // 주름양 배수 가져오기 (기본값 1.4배)
+          const pleatMultiplier = Number(newEditRow.pleatMultiplier?.replace('배', '')) || 1.4;
+          const area = (widthMM / 1000) * pleatMultiplier; // m²
           newEditRow.area = area;
-          newEditRow.pleatAmount = area;
+          // 주름양은 선택된 배수값을 그대로 사용
+          newEditRow.pleatAmount = newEditRow.pleatMultiplier || '1.4배';
+          // editRow 상태도 업데이트하여 화면에 반영
+          setEditRow((prev: any) => ({ ...prev, pleatAmount: newEditRow.pleatMultiplier || '1.4배' }));
         }
       }
       // 겉커튼일 때
-      else if (curtainTypeVal === '겉커튼' && widthMM > 0 && productWidth > 0) {
-        // 사용자가 입력한 폭수가 있는지 확인
+      else if (curtainTypeVal === '겉커튼' && widthMM > 0) {
+        // 사용자가 입력한 폭수 값이 있으면 그 값을 우선 사용
         const userInputWidthCount = Number(newEditRow.widthCount) || 0;
         let finalWidthCount = userInputWidthCount;
 
         // 사용자가 폭수를 입력하지 않았다면 추천 폭수 계산
         if (userInputWidthCount === 0) {
-          const pleatCount = getPleatCount(
-            widthMM,
-            productWidth,
-            pleatTypeVal,
-            curtainTypeVal
-          );
-          finalWidthCount = pleatCount || 0;
+          let pleatCount: number | string = 0;
+          
+          // 겉커튼 민자는 productWidth가 없어도 계산 가능
+          if (pleatTypeVal === '민자') {
+            // 겉커튼 민자는 가로 길이 기반으로 추천 폭수 계산
+            pleatCount = Math.ceil(widthMM / 700); // 700mm당 1폭
+          } else if (productWidth > 0) {
+            // 겉커튼 나비/3주름은 productWidth가 필요
+            pleatCount = getPleatCount(
+              widthMM,
+              productWidth,
+              pleatTypeVal,
+              curtainTypeVal
+            );
+          }
+          
+          finalWidthCount = Number(pleatCount) || 0;
           newEditRow.widthCount = finalWidthCount;
           newEditRow.pleatCount = finalWidthCount;
           
           // 추천 주름양 계산
           if (finalWidthCount > 0) {
-            const calculatedPleatAmount = getPleatAmount(
-              widthMM,
-              productWidth,
-              pleatTypeVal,
-              curtainTypeVal,
-              finalWidthCount
-            );
-            setRecommendedPleatAmount(calculatedPleatAmount || '');
+            let calculatedPleatAmount = '';
+            if (pleatTypeVal === '민자') {
+              calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, finalWidthCount);
+            } else if (productWidth > 0) {
+              calculatedPleatAmount = getPleatAmount(
+                widthMM,
+                productWidth,
+                pleatTypeVal,
+                curtainTypeVal,
+                finalWidthCount
+              ) || '';
+            }
+            setRecommendedPleatAmount(calculatedPleatAmount);
           } else {
             setRecommendedPleatAmount('');
           }
@@ -3970,22 +4469,97 @@ const EstimateManagement: React.FC = () => {
 
         // 주름양 계산
         if (finalWidthCount > 0) {
-          const calculatedPleatAmount = getPleatAmount(
-            widthMM,
-            productWidth,
-            pleatTypeVal,
-            curtainTypeVal,
-            finalWidthCount
-          );
+          let calculatedPleatAmount = '';
+          if (pleatTypeVal === '민자') {
+            calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, finalWidthCount);
+          } else if (productWidth > 0) {
+            calculatedPleatAmount = getPleatAmount(
+              widthMM,
+              productWidth,
+              pleatTypeVal,
+              curtainTypeVal,
+              finalWidthCount
+            );
+                  } else {
+          // 겉커튼 나비/3주름이지만 productWidth가 없는 경우 표준값으로 계산
+          if (pleatTypeVal === '나비') {
+            const standardWidth = 1370; // 표준 제품폭
+            const calculatedValue = (standardWidth * finalWidthCount) / widthMM;
+            if (isFinite(calculatedValue) && !isNaN(calculatedValue)) {
+              calculatedPleatAmount = calculatedValue.toFixed(2);
+            }
+          } else if (pleatTypeVal === '3주름') {
+            const standardWidth = 1370; // 표준 제품폭
+            const calculatedValue = (standardWidth * finalWidthCount) / widthMM;
+            if (isFinite(calculatedValue) && !isNaN(calculatedValue)) {
+              calculatedPleatAmount = calculatedValue.toFixed(2);
+            }
+          }
+        }
           newEditRow.pleatAmount = calculatedPleatAmount;
+          // editRow 상태도 업데이트하여 화면에 반영
+          setEditRow((prev: any) => ({ ...prev, pleatAmount: calculatedPleatAmount }));
+        }
+      }
+    }
+
+    // 세부내용 업데이트 로직 통합
+    if (['widthMM', 'curtainType', 'pleatType', 'widthCount', 'pleatMultiplier'].includes(field) && newEditRow.productType === '커튼') {
+      const curtainType = newEditRow.curtainType || '';
+      const pleatType = newEditRow.pleatType || '';
+      
+      if (curtainType && pleatType) {
+        // 기존 세부내용에서 커튼 관련 정보만 제거하고 나머지는 유지
+        let currentDetails = newEditRow.details || '';
+        
+        // 커튼 관련 정보 완전 제거 (겉커튼, 속커튼, 민자주름, 나비주름, 3주름, 폭수, 주름양)
+        currentDetails = currentDetails.replace(/겉커튼|속커튼/g, ''); // 커튼타입 제거
+        currentDetails = currentDetails.replace(/민자주름|나비주름|3주름/g, ''); // 주름타입 제거
+        currentDetails = currentDetails.replace(/[0-9]+폭/g, ''); // 폭수 제거
+        currentDetails = currentDetails.replace(/[0-9.~]+배/g, ''); // 주름양 제거 (1.8~2배 같은 형태 포함)
+        currentDetails = currentDetails.replace(/배/g, ''); // 단독 "배" 제거
+        currentDetails = currentDetails.replace(/[0-9]+\.[0-9]+/g, ''); // 숫자.숫자 형태 제거 (1.3, 1.6 등)
+        
+        // 연달아 있는 콤마 정리
+        currentDetails = currentDetails.replace(/,\s*,/g, ','); // 연달아 있는 콤마를 하나로
+        currentDetails = currentDetails.replace(/,\s*,/g, ','); // 한 번 더 실행하여 3개 이상의 콤마도 처리
+        currentDetails = currentDetails.replace(/^,\s*/, ''); // 앞쪽 콤마 제거
+        currentDetails = currentDetails.replace(/,\s*$/, ''); // 뒤쪽 콤마 제거
+        
+        // 새로운 커튼 정보 생성
+        let curtainInfo = `${curtainType}, ${pleatType}주름`;
+        
+        // 주름양과 폭수가 유효한 값이면 세부내용에 추가
+        const widthCount = newEditRow.widthCount;
+        const pleatAmount = newEditRow.pleatAmount;
+        
+        if (widthCount && widthCount !== 0 && widthCount !== '0' && widthCount !== '') {
+          curtainInfo += `, ${widthCount}폭`;
+        }
+        
+        if (pleatAmount && pleatAmount !== 0 && pleatAmount !== '0' && pleatAmount !== '') {
+          // 속커튼 민자는 pleatMultiplier 값을 사용
+          if (curtainType === '속커튼' && pleatType === '민자') {
+            const pleatMultiplier = newEditRow.pleatMultiplier;
+            if (pleatMultiplier && pleatMultiplier !== '') {
+              curtainInfo += `, ${pleatMultiplier}`;
+            }
+          } else {
+            curtainInfo += `, ${pleatAmount}배`;
+          }
+        }
+        
+        // 새로운 커튼 정보와 기존 세부내용 결합
+        if (currentDetails) {
+          newEditRow.details = `${curtainInfo}, ${currentDetails}`;
+        } else {
+          newEditRow.details = curtainInfo;
         }
       }
     }
 
     // 상태 업데이트 (무한 루프 방지)
-    setTimeout(() => {
-      setEditRow(newEditRow);
-    }, 0);
+    setEditRow(newEditRow);
   };
 
   const handleEditSave = () => {
@@ -3994,6 +4568,57 @@ const EstimateManagement: React.FC = () => {
 
     // 1. 다이얼로그의 수정된 정보로 시작
     const updatedRow = { ...editRow };
+
+    // 커튼 제품인 경우 커튼종류와 주름방식 정보를 세부내용에 자동 반영
+    if (updatedRow.productType === '커튼' && updatedRow.curtainType && updatedRow.pleatType) {
+      const curtainType = updatedRow.curtainType;
+      const pleatType = updatedRow.pleatType;
+      
+      // 기존 세부내용에서 커튼종류/주름방식 정보 제거
+      let currentDetails = updatedRow.details || '';
+      currentDetails = currentDetails.replace(/커튼종류:\s*[^,]+/, '').replace(/주름방식:\s*[^,]+/, '');
+      currentDetails = currentDetails.replace(/[^,]*주름/, ''); // 주름 관련 정보 제거
+      currentDetails = currentDetails.replace(/겉커튼|속커튼/g, ''); // 커튼종류 정보 제거
+      // 기존 폭수와 주름양 정보도 제거 (중복 방지)
+      currentDetails = currentDetails.replace(/[0-9]+폭/g, ''); // 숫자+폭 패턴 제거
+      currentDetails = currentDetails.replace(/[0-9.~]+배/g, ''); // 숫자+배 패턴 제거 (1.8~2배 같은 형태 포함)
+      currentDetails = currentDetails.replace(/배/g, ''); // 단독 "배" 제거
+      currentDetails = currentDetails.replace(/[0-9]+\.[0-9]+/g, ''); // 숫자.숫자 형태 제거 (1.3, 1.6 등)
+      // 연달아 있는 콤마 정리
+      currentDetails = currentDetails.replace(/,\s*,/g, ','); // 연달아 있는 콤마를 하나로
+      currentDetails = currentDetails.replace(/,\s*,/g, ','); // 한 번 더 실행하여 3개 이상의 콤마도 처리
+      currentDetails = currentDetails.replace(/^,\s*/, ''); // 앞쪽 콤마 제거
+      currentDetails = currentDetails.replace(/,\s*$/, ''); // 뒤쪽 콤마 제거
+      
+      // 새로운 커튼종류/주름방식 정보 추가 (기존 세부내용 앞에 추가)
+      let curtainInfo = `${curtainType}, ${pleatType}주름`;
+      
+      // 주름양과 폭수가 유효한 값이면 세부내용에 추가
+      const widthCount = updatedRow.widthCount;
+      const pleatAmount = updatedRow.pleatAmount;
+      
+      if (widthCount && widthCount !== 0 && widthCount !== '0' && widthCount !== '') {
+        curtainInfo += `, ${widthCount}폭`;
+      }
+      
+      if (pleatAmount && pleatAmount !== 0 && pleatAmount !== '0' && pleatAmount !== '') {
+        // 속커튼 민자는 pleatMultiplier 값을 사용
+        if (curtainType === '속커튼' && pleatType === '민자') {
+          const pleatMultiplier = updatedRow.pleatMultiplier;
+          if (pleatMultiplier && pleatMultiplier !== '') {
+            curtainInfo += `, ${pleatMultiplier}`;
+          }
+        } else {
+          curtainInfo += `, ${pleatAmount}배`;
+        }
+      }
+      
+      if (currentDetails) {
+        updatedRow.details = `${curtainInfo}, ${currentDetails}`;
+      } else {
+        updatedRow.details = curtainInfo;
+      }
+    }
 
     // 2. 핵심 값들이 유효한 숫자인지 확인
     updatedRow.widthMM = Number(updatedRow.widthMM) || 0;
@@ -4053,11 +4678,11 @@ const EstimateManagement: React.FC = () => {
         updatedRow.pleatAmount = '1.8~2';
         updatedRow.widthCount = 0;
       } else if (updatedRow.pleatType === '민자') {
-        // 속커튼 민자는 면적 기반 주름양 계산
-        if (updatedRow.widthMM > 0 && updatedRow.heightMM > 0) {
-          const area = (updatedRow.widthMM * updatedRow.heightMM) / 1000000; // m²
-          updatedRow.pleatAmount = area.toFixed(2);
+        // 속커튼 민자는 주름양배수 선택값을 그대로 사용
+        if (updatedRow.pleatMultiplier) {
+          updatedRow.pleatAmount = updatedRow.pleatMultiplier;
         }
+        updatedRow.widthCount = 0;
       }
     }
 
@@ -4093,7 +4718,10 @@ const EstimateManagement: React.FC = () => {
     newRows[editRowIdx] = updatedRow;
     updateEstimateRows(activeTab, newRows);
 
-    // 8. 다이얼로그 닫기 및 상태 초기화
+    // 8. 최근 수정한 행 ID 저장
+    setRecentlyModifiedRowId(updatedRow.id);
+
+    // 9. 다이얼로그 닫기 및 상태 초기화
     setEditOpen(false);
     setEditRowIdx(null);
     setEditRow(null);
@@ -4149,11 +4777,8 @@ const EstimateManagement: React.FC = () => {
       return row.lineDirection || '';
     }
 
-    // 공간명 표시 (직접입력 시 커스텀 값 우선)
+    // 공간명 표시
     if (key === 'space') {
-      if (row.space === '직접입력' && row.spaceCustom) {
-        return row.spaceCustom;
-      }
       return row.space;
     }
 
@@ -4163,6 +4788,14 @@ const EstimateManagement: React.FC = () => {
         return row.customLineLength || '';
       }
       return row.lineLength || '';
+    }
+
+    // 주름양 표시 (속커튼 민자의 경우 주름양배수 선택값 표시)
+    if (key === 'pleatAmount') {
+      if (row.productType === '커튼' && row.curtainType === '속커튼' && row.pleatType === '민자') {
+        return row.pleatMultiplier || row.pleatAmount || '';
+      }
+      return row.pleatAmount || '';
     }
 
     // 숫자 값들에 천 단위 구분자 추가
@@ -4200,7 +4833,202 @@ const EstimateManagement: React.FC = () => {
   };
 
   // WINDOWSTORY 버튼 핸들러
-  const handleToggleMarginSum = () => setShowMarginSum(v => !v);
+  const handleToggleMarginSum = () => {
+    setShowMarginSum(v => !v);
+    setShowDiscount(v => !v);
+  };
+
+  // 작업 제목 더블클릭 시 할인율/마진 컬럼 토글
+  const handleToggleDiscountMarginColumns = () => {
+    setEstimateListDisplay((prev: any) => ({
+      ...prev,
+      showDiscountRate: !prev.showDiscountRate,
+      showMargin: !prev.showMargin,
+    }));
+  };
+  // Final 상태 토글 핸들러
+  const handleToggleFinalStatus = async (estimate: any) => {
+    try {
+      const updatedSavedEstimates = [...savedEstimates];
+      const estimateIndex = updatedSavedEstimates.findIndex(e => e.id === estimate.id);
+      
+      if (estimateIndex === -1) {
+        console.error('견적서를 찾을 수 없습니다:', estimate.id);
+        setSnackbarMessage('견적서를 찾을 수 없습니다.');
+        setSnackbarOpen(true);
+        return;
+      }
+
+      const currentEstimate = updatedSavedEstimates[estimateIndex];
+      const isCurrentlyFinal = currentEstimate.estimateNo.includes('-final');
+      
+      // 동일한 주소를 가진 견적서들 확인
+      const sameAddressEstimates = updatedSavedEstimates.filter(e => 
+        e.address === estimate.address
+      );
+      
+      // 단독 견적서인 경우 Final 설정 가능 (넘버링 "1"로 표시되므로)
+      // 기존 제한 제거
+      
+      if (isCurrentlyFinal) {
+        // Final 상태를 해제하고 원래 견적번호로 복원
+        const baseEstimateNo = currentEstimate.estimateNo.replace(/-final(-[0-9]+)?$/, '');
+        updatedSavedEstimates[estimateIndex] = {
+          ...currentEstimate,
+          estimateNo: baseEstimateNo,
+          name: currentEstimate.name.replace(/ \(Final[^)]*\)$/, '')
+        };
+      } else {
+        // Final 상태로 설정
+        // 동일한 주소를 가진 다른 견적서들의 final 상태를 해제
+        const otherSameAddressEstimates = updatedSavedEstimates.filter(e => 
+          e.address === estimate.address && e.id !== estimate.id
+        );
+        
+        otherSameAddressEstimates.forEach(sameEst => {
+          const sameEstIndex = updatedSavedEstimates.findIndex(e => e.id === sameEst.id);
+          if (sameEstIndex !== -1) {
+            const baseEstimateNo = sameEst.estimateNo.replace(/-final(-[0-9]+)?$/, '');
+            updatedSavedEstimates[sameEstIndex] = {
+              ...sameEst,
+              estimateNo: baseEstimateNo,
+              name: sameEst.name.replace(/ \(Final[^)]*\)$/, '')
+            };
+          }
+        });
+
+        // 현재 견적서를 final로 설정
+        const finalEstimateNo = `${currentEstimate.estimateNo}-final`;
+        updatedSavedEstimates[estimateIndex] = {
+          ...currentEstimate,
+          estimateNo: finalEstimateNo,
+          name: `${currentEstimate.name} (Final)`
+        };
+      }
+
+      // 로컬 상태 업데이트
+      setSavedEstimates(updatedSavedEstimates);
+      localStorage.setItem('saved_estimates', JSON.stringify(updatedSavedEstimates));
+
+      // Firebase 업데이트 (견적서 ID 검증 후)
+      try {
+        // 견적서 ID가 유효한지 확인 (문자열 또는 숫자 모두 허용)
+        if (!estimate.id || (typeof estimate.id !== 'string' && typeof estimate.id !== 'number')) {
+          console.warn('유효하지 않은 견적서 ID:', estimate.id);
+          throw new Error('유효하지 않은 견적서 ID입니다.');
+        }
+        
+        // ID를 문자열로 변환
+        const estimateId = String(estimate.id);
+        if (estimateId.trim() === '') {
+          console.warn('빈 견적서 ID:', estimate.id);
+          throw new Error('유효하지 않은 견적서 ID입니다.');
+        }
+
+                  if (isCurrentlyFinal) {
+            // Final 해제
+            console.log('Final 해제 시도:', estimateId, updatedSavedEstimates[estimateIndex]);
+            try {
+              await estimateService.updateEstimate(estimateId, updatedSavedEstimates[estimateIndex]);
+            } catch (updateError) {
+              // 404 오류인 경우 견적서를 새로 저장
+              if (updateError instanceof Error && updateError.message.includes('404')) {
+                console.log('견적서가 Firebase에 없어 새로 저장합니다:', estimate.estimateNo);
+                const savedEstimate = await estimateService.saveEstimate(updatedSavedEstimates[estimateIndex]);
+                if (savedEstimate) {
+                  updatedSavedEstimates[estimateIndex].id = savedEstimate;
+                  setSavedEstimates(updatedSavedEstimates);
+                  localStorage.setItem('saved_estimates', JSON.stringify(updatedSavedEstimates));
+                  console.log('견적서가 Firebase에 새로 저장되었습니다:', savedEstimate);
+                }
+              } else {
+                throw updateError;
+              }
+            }
+          } else {
+            // Final 설정
+            console.log('Final 설정 시도:', estimateId, updatedSavedEstimates[estimateIndex]);
+            try {
+              await estimateService.updateEstimate(estimateId, updatedSavedEstimates[estimateIndex]);
+            } catch (updateError) {
+              // 404 오류인 경우 견적서를 새로 저장
+              if (updateError instanceof Error && updateError.message.includes('404')) {
+                console.log('견적서가 Firebase에 없어 새로 저장합니다:', estimate.estimateNo);
+                const savedEstimate = await estimateService.saveEstimate(updatedSavedEstimates[estimateIndex]);
+                if (savedEstimate) {
+                  updatedSavedEstimates[estimateIndex].id = savedEstimate;
+                  setSavedEstimates(updatedSavedEstimates);
+                  localStorage.setItem('saved_estimates', JSON.stringify(updatedSavedEstimates));
+                  console.log('견적서가 Firebase에 새로 저장되었습니다:', savedEstimate);
+                }
+              } else {
+                throw updateError;
+              }
+            }
+          
+          // 동일 주소의 다른 견적서들도 업데이트
+          const otherSameAddressEstimates = updatedSavedEstimates.filter(e => 
+            e.address === estimate.address && e.id !== estimate.id
+          );
+          for (const sameEst of otherSameAddressEstimates) {
+            const sameEstIndex = updatedSavedEstimates.findIndex(e => e.id === sameEst.id);
+            if (sameEstIndex !== -1 && sameEst.id && (typeof sameEst.id === 'string' || typeof sameEst.id === 'number')) {
+              const sameEstId = String(sameEst.id);
+              if (sameEstId.trim() !== '') {
+                console.log('동일 주소 견적서 업데이트:', sameEstId, updatedSavedEstimates[sameEstIndex]);
+                try {
+                  await estimateService.updateEstimate(sameEstId, updatedSavedEstimates[sameEstIndex]);
+                } catch (updateError) {
+                  // 404 오류인 경우 견적서를 새로 저장
+                  if (updateError instanceof Error && updateError.message.includes('404')) {
+                    console.log('동일 주소 견적서가 Firebase에 없어 새로 저장합니다:', sameEst.estimateNo);
+                    const savedEstimate = await estimateService.saveEstimate(updatedSavedEstimates[sameEstIndex]);
+                    if (savedEstimate) {
+                      updatedSavedEstimates[sameEstIndex].id = savedEstimate;
+                      setSavedEstimates(updatedSavedEstimates);
+                      localStorage.setItem('saved_estimates', JSON.stringify(updatedSavedEstimates));
+                      console.log('동일 주소 견적서가 Firebase에 새로 저장되었습니다:', savedEstimate);
+                    }
+                  } else {
+                    console.warn('동일 주소 견적서 업데이트 실패:', updateError);
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (firebaseError) {
+        console.warn('Firebase 업데이트 실패, 로컬에서만 변경됨:', firebaseError);
+        
+        // 사용자에게 더 구체적인 오류 메시지 제공
+        let errorMessage = 'Final 상태가 로컬에서만 변경되었습니다.';
+        if (firebaseError instanceof Error) {
+          if (firebaseError.message.includes('404')) {
+            errorMessage = '견적서를 Firebase에서 찾을 수 없어 로컬에서만 변경되었습니다.';
+          } else if (firebaseError.message.includes('401')) {
+            errorMessage = '인증 오류로 로컬에서만 변경되었습니다.';
+          } else if (firebaseError.message.includes('500')) {
+            errorMessage = '서버 오류로 로컬에서만 변경되었습니다.';
+          }
+        }
+        setSnackbarMessage(errorMessage);
+        setSnackbarOpen(true);
+        return; // 오류 메시지를 표시하고 함수 종료
+      }
+
+      // 성공 메시지
+      const message = isCurrentlyFinal 
+        ? 'Final 상태가 해제되었습니다.' 
+        : 'Final 상태로 설정되었습니다.';
+      setSnackbarMessage(message);
+      setSnackbarOpen(true);
+
+    } catch (error) {
+      console.error('Final 상태 변경 중 오류:', error);
+      setSnackbarMessage('Final 상태 변경 중 오류가 발생했습니다.');
+      setSnackbarOpen(true);
+    }
+  };
 
   // 옵션 금액 계산 함수 (getTotalConsumerAmount보다 먼저 선언)
   const getOptionAmount = (option: any, row: any) => {
@@ -4750,6 +5578,133 @@ const EstimateManagement: React.FC = () => {
     );
   };
 
+  // 새견적 저장하기 핸들러 함수
+  const handleSaveAsNewEstimate = async () => {
+    try {
+      const currentEstimate = estimates[activeTab];
+      
+      console.log('새견적 저장 시작');
+
+      // 새로운 견적번호 생성
+      const newEstimateNo = generateEstimateNo(estimates);
+      const newEstimateName = `견적서-${newEstimateNo}`;
+
+      // 소비자금액과 합계금액 계산
+      const sumTotalPrice = currentEstimate.rows.reduce(
+        (sum: number, row: any) => sum + (row.totalPrice || 0),
+        0
+      );
+      const totalAmount = Math.round(sumTotalPrice);
+      const discountAmountNumber = Number(
+        String(discountAmount).replace(/[^\d]/g, '')
+      );
+      const discountedAmount =
+        discountAmountNumber > 0
+          ? totalAmount - discountAmountNumber
+          : totalAmount;
+
+      // 새 견적서로 저장
+      const estimateToSave = {
+        ...currentEstimate,
+        id: Date.now(), // 새로운 ID 부여
+        estimateNo: newEstimateNo,
+        name: newEstimateName,
+        savedAt: new Date().toISOString(),
+        totalAmount,
+        discountAmount: discountAmountNumber,
+        discountedAmount,
+        margin: sumMargin,
+        // 실측 정보 추가
+        measurementRequired: currentEstimate.measurementRequired,
+        measurementInfo: currentEstimate.measurementInfo
+          ? {
+            ...currentEstimate.measurementInfo,
+            measuredAt:
+              currentEstimate.measurementRequired === false
+                ? new Date().toISOString()
+                : undefined,
+            measuredBy:
+              currentEstimate.measurementRequired === false
+                ? '사용자'
+                : undefined,
+            measurementMethod:
+              currentEstimate.measurementRequired === false
+                ? '실측없이진행'
+                : '현장실측',
+          }
+          : {
+            measuredAt:
+              currentEstimate.measurementRequired === false
+                ? new Date().toISOString()
+                : undefined,
+            measuredBy:
+              currentEstimate.measurementRequired === false
+                ? '사용자'
+                : undefined,
+            measurementMethod:
+              currentEstimate.measurementRequired === false
+                ? '실측없이진행'
+                : '현장실측',
+          },
+      };
+
+      // localStorage에 저장
+      savedEstimates.push(estimateToSave);
+      localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
+      console.log('새견적 localStorage 저장 완료:', newEstimateName);
+
+      // Firebase에도 자동 저장
+      try {
+        console.log('Firebase에 새견적 저장 시작');
+        await estimateService.saveEstimate(estimateToSave);
+        console.log('Firebase 새견적 저장 완료:', newEstimateName);
+      } catch (error) {
+        console.error('Firebase 새견적 저장 실패:', error);
+        setSnackbar({
+          open: true,
+          message: '새견적이 저장되었지만 Firebase 동기화에 실패했습니다. 인터넷 연결을 확인해주세요.',
+        });
+      }
+
+      alert(`새견적이 저장되었습니다.\n견적번호: ${newEstimateNo}`);
+
+      // 현재 견적서를 새 견적서로 교체
+      const newEstimates = [...estimates];
+      newEstimates[activeTab] = {
+        ...currentEstimate,
+        id: Date.now(),
+        estimateNo: newEstimateNo,
+        name: newEstimateName,
+      };
+      useEstimateStore.setState({ estimates: newEstimates });
+
+      // meta 상태도 업데이트
+      setMeta({
+        estimateNo: newEstimateNo,
+        estimateDate: currentEstimate.estimateDate,
+        customerName: currentEstimate.customerName || '',
+        contact: currentEstimate.contact || '',
+        emergencyContact: currentEstimate.emergencyContact || '',
+        projectName: currentEstimate.projectName || '',
+        type: currentEstimate.type || '',
+        address: currentEstimate.address || '',
+      });
+
+      // 최근 저장된 견적서 하이라이트 설정
+      const savedEstimateId = `${newEstimateNo}-${estimateToSave.id}`;
+      setRecentlySavedEstimateId(savedEstimateId);
+      
+      // 5초 후 하이라이트 제거
+      setTimeout(() => {
+        setRecentlySavedEstimateId(null);
+      }, 5000);
+
+      console.log('새견적 저장 완료');
+    } catch (error) {
+      console.error('새견적 저장 중 오류:', error);
+      alert('새견적 저장 중 오류가 발생했습니다.');
+    }
+  };
   // 저장하기 핸들러 함수
   const handleSaveEstimate = async () => {
     try {
@@ -4922,56 +5877,13 @@ const EstimateManagement: React.FC = () => {
         return;
       }
 
-      // 일반 견적서 저장 로직 (기존 코드)
+      // 일반 견적서 저장 로직 - 동일한 견적번호로 덮어씌우기
       if (existingEstimateByNo) {
-        // 고객명, 연락처, 프로젝트명이 모두 동일한지 확인
-        const isSameCustomer =
-          existingEstimateByNo.customerName === currentEstimate.customerName &&
-          existingEstimateByNo.contact === currentEstimate.contact &&
-          existingEstimateByNo.projectName === currentEstimate.projectName;
-
-        if (isSameCustomer) {
-          // 고객 정보가 동일하면 수정번호로 저장
-          const baseEstimateNo = currentEstimate.estimateNo
-            .split('-')
-            .slice(0, 2)
-            .join('-');
-
-          // 같은 기본 견적번호를 가진 수정본들 찾기
-          const revisionEstimates = savedEstimates.filter(
-            (est: any) =>
-              est.estimateNo.startsWith(baseEstimateNo) &&
-              est.estimateNo.includes('-')
-          );
-
-          // 수정번호 찾기
-          const revisionNumbers = revisionEstimates
-            .map((est: any) => {
-              const parts = est.estimateNo.split('-');
-              const lastPart = parts[parts.length - 1];
-              return Number(lastPart);
-            })
-            .filter((num: number) => !isNaN(num));
-
-          const maxRevision =
-            revisionNumbers.length > 0 ? Math.max(...revisionNumbers) : 0;
-          const nextRevision = maxRevision + 1;
-
-          finalEstimateNo = `${baseEstimateNo}-${String(nextRevision).padStart(2, '0')}`;
-          finalEstimateName = `${currentEstimate.name} (수정본)`;
-
-          console.log('동일한 고객 정보, 수정번호로 변경:', finalEstimateNo);
-        } else {
-          // 고객 정보가 다르면 신규 견적번호로 저장
-          finalEstimateNo = generateEstimateNo(estimates);
-          finalEstimateName = `견적서명-${finalEstimateNo}`;
-          isNewEstimate = true;
-
-          console.log(
-            '고객 정보가 다름, 신규 견적번호로 변경:',
-            finalEstimateNo
-          );
-        }
+        // 기존 견적서가 있으면 동일한 견적번호로 덮어씌우기
+        finalEstimateNo = currentEstimate.estimateNo;
+        finalEstimateName = currentEstimate.name;
+        
+        console.log('기존 견적서 덮어씌우기:', finalEstimateNo);
       }
 
       // 소비자금액과 합계금액 계산 (totalPrice가 이미 VAT 포함이므로 * 1.1 제거)
@@ -5065,8 +5977,60 @@ const EstimateManagement: React.FC = () => {
       // Firebase에도 자동 저장
       try {
         console.log('Firebase에 견적서 저장 시작');
-        await estimateService.saveEstimate(estimateToSave);
-        console.log('Firebase 저장 완료:', finalEstimateName);
+        
+        // 임시 ID인지 확인 (temp-로 시작하는 ID)
+        const isTempId = estimateToSave.id && String(estimateToSave.id).startsWith('temp-');
+        
+        if (existingEstimateByNo) {
+          // 기존 견적서가 있으면 업데이트
+          const existingEstimate = await estimateService.getEstimateByNumber(estimateToSave.estimateNo);
+          if (existingEstimate) {
+            await estimateService.updateEstimate(existingEstimate.id, estimateToSave);
+            console.log('Firebase 기존 견적서 업데이트 완료:', finalEstimateName);
+          } else {
+            // 기존 견적서가 Firebase에 없으면 새로 저장
+            const savedEstimate = await estimateService.saveEstimate(estimateToSave);
+            console.log('Firebase 새 견적서 저장 완료:', finalEstimateName);
+            
+            // 저장된 ID로 업데이트
+            if (savedEstimate) {
+              estimateToSave.id = savedEstimate;
+              const updatedIndex = savedEstimates.findIndex(e => e.estimateNo === estimateToSave.estimateNo);
+              if (updatedIndex !== -1) {
+                savedEstimates[updatedIndex] = estimateToSave;
+                localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
+              }
+            }
+          }
+        } else if (isTempId) {
+          // 임시 ID인 경우 새로 저장
+          const savedEstimate = await estimateService.saveEstimate(estimateToSave);
+          console.log('Firebase 임시 견적서 새로 저장 완료:', finalEstimateName);
+          
+          // 저장된 ID로 업데이트
+          if (savedEstimate) {
+            estimateToSave.id = savedEstimate;
+            const updatedIndex = savedEstimates.findIndex(e => e.estimateNo === estimateToSave.estimateNo);
+            if (updatedIndex !== -1) {
+              savedEstimates[updatedIndex] = estimateToSave;
+              localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
+            }
+          }
+        } else {
+          // 완전히 새로운 견적서인 경우 저장
+          const savedEstimate = await estimateService.saveEstimate(estimateToSave);
+          console.log('Firebase 새 견적서 저장 완료:', finalEstimateName);
+          
+          // 저장된 ID로 업데이트
+          if (savedEstimate) {
+            estimateToSave.id = savedEstimate;
+            const updatedIndex = savedEstimates.findIndex(e => e.estimateNo === estimateToSave.estimateNo);
+            if (updatedIndex !== -1) {
+              savedEstimates[updatedIndex] = estimateToSave;
+              localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
+            }
+          }
+        }
       } catch (error) {
         console.error('Firebase 저장 실패:', error);
         // Firebase 저장 실패해도 localStorage는 성공했으므로 사용자에게 경고만 표시
@@ -5076,13 +6040,9 @@ const EstimateManagement: React.FC = () => {
         });
       }
 
-      if (existingEstimateByNo && !isNewEstimate) {
+      if (existingEstimateByNo) {
         alert(
-          `동일한 견적번호가 있어 수정번호로 저장되었습니다.\n견적번호: ${finalEstimateNo}`
-        );
-      } else if (isNewEstimate) {
-        alert(
-          `고객 정보가 달라 신규 견적번호로 저장되었습니다.\n견적번호: ${finalEstimateNo}`
+          `기존 견적서가 덮어씌워졌습니다.\n견적번호: ${finalEstimateNo}`
         );
       } else {
         alert('견적서가 저장되었습니다.');
@@ -5579,7 +6539,6 @@ const EstimateManagement: React.FC = () => {
       return '견적완료';
     }
   };
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case '견적완료':
@@ -6202,9 +7161,6 @@ const EstimateManagement: React.FC = () => {
     const newRailItems = railEditData.railItems.filter((_, i) => i !== index);
     setRailEditData({ ...railEditData, railItems: newRailItems });
   };
-
-
-
   // 제품 검색에서 제품 선택 시 editRow에 반영하는 핸들러
   const handleProductSelectForEdit = (product: any) => {
     if (!editRow) return;
@@ -6224,6 +7180,28 @@ const EstimateManagement: React.FC = () => {
       details: product.details || '',
     };
 
+    // 제품명 기반 공간 자동 설정
+    const productName = product.productName || '';
+    if (productName.includes('중간방2')) {
+      newEditRow.space = '중간방2';
+    } else if (productName.includes('중간방')) {
+      newEditRow.space = '중간방';
+    } else if (productName.includes('거실')) {
+      newEditRow.space = '거실';
+    } else if (productName.includes('안방')) {
+      newEditRow.space = '안방';
+    } else if (productName.includes('드레스룸')) {
+      newEditRow.space = '드레스룸';
+    } else if (productName.includes('끝방')) {
+      newEditRow.space = '끝방';
+    } else if (productName.includes('주방')) {
+      newEditRow.space = '주방';
+    }
+    // 기존 공간 정보가 있으면 유지
+    else if (editRow.space) {
+      newEditRow.space = editRow.space;
+    }
+
     // 속커튼 초기값 설정
     if (product.category === '커튼') {
       if (product.insideOutside === '속') {
@@ -6233,6 +7211,57 @@ const EstimateManagement: React.FC = () => {
       } else {
         newEditRow.curtainType = '겉커튼';
         newEditRow.pleatType = '민자';
+      }
+      
+      // 속커튼, 민자를 선택할 때 주름양배수를 1.4배로 기본 설정
+      if (newEditRow.curtainType === '속커튼' && newEditRow.pleatType === '민자') {
+        newEditRow.pleatMultiplier = '1.4배';
+      }
+      
+      // 커튼 제품인 경우 커튼종류와 주름방식 정보를 세부내용에 자동 반영
+      const curtainType = newEditRow.curtainType;
+      const pleatType = newEditRow.pleatType;
+      
+      // 기존 세부내용에서 커튼종류/주름방식 정보 제거
+      let currentDetails = newEditRow.details || '';
+      currentDetails = currentDetails.replace(/커튼종류:\s*[^,]+/, '').replace(/주름방식:\s*[^,]+/, '');
+      currentDetails = currentDetails.replace(/[^,]*주름/, ''); // 주름 관련 정보 제거
+      currentDetails = currentDetails.replace(/겉커튼|속커튼/g, ''); // 커튼종류 정보 제거
+      // 기존 폭수와 주름양 정보도 제거 (중복 방지)
+      currentDetails = currentDetails.replace(/[0-9]+폭/g, ''); // 숫자+폭 패턴 제거
+      currentDetails = currentDetails.replace(/[0-9.~]+배/g, ''); // 숫자+배 패턴 제거 (1.8~2배 같은 형태 포함)
+      currentDetails = currentDetails.replace(/배/g, ''); // 단독 "배" 제거
+      currentDetails = currentDetails.replace(/[0-9]+\.[0-9]+/g, ''); // 숫자.숫자 형태 제거 (1.3, 1.6 등)
+      // 연달아 있는 콤마 정리
+      currentDetails = currentDetails.replace(/,\s*,/g, ','); // 연달아 있는 콤마를 하나로
+      currentDetails = currentDetails.replace(/,\s*,/g, ','); // 한 번 더 실행하여 3개 이상의 콤마도 처리
+      currentDetails = currentDetails.replace(/^,\s*/, ''); // 앞쪽 콤마 제거
+      currentDetails = currentDetails.replace(/,\s*$/, ''); // 뒤쪽 콤마 제거
+      
+      // 새로운 커튼종류/주름방식 정보 추가 (기존 세부내용 앞에 추가)
+      let curtainInfo = `${curtainType}, ${pleatType}주름`;
+      
+      // 주름양과 폭수가 유효한 값이면 세부내용에 추가
+      const widthCount = newEditRow.widthCount;
+      const pleatAmount = newEditRow.pleatAmount;
+      
+      if (widthCount && widthCount !== 0 && widthCount !== '0' && widthCount !== '') {
+        curtainInfo += `, ${widthCount}폭`;
+      }
+      
+      if (pleatAmount && pleatAmount !== 0 && pleatAmount !== '0' && pleatAmount !== '') {
+        // 속커튼 민자는 pleatAmount에 이미 "배"가 포함되어 있으므로 그대로 사용
+        if (curtainType === '속커튼' && pleatType === '민자') {
+          curtainInfo += `, ${pleatAmount}`;
+        } else {
+          curtainInfo += `, ${pleatAmount}배`;
+        }
+      }
+      
+      if (currentDetails) {
+        newEditRow.details = `${curtainInfo}, ${currentDetails}`;
+      } else {
+        newEditRow.details = curtainInfo;
       }
     }
 
@@ -6249,18 +7278,29 @@ const EstimateManagement: React.FC = () => {
       // 폭수/pleatCount를 0으로 명확히 세팅 (Infinity 방지)
       newEditRow.widthCount = 0;
       newEditRow.pleatCount = 0;
+      // 추천 폭수/주름양 초기화
+      setRecommendedPleatCount(0);
+      setRecommendedPleatAmount('');
       // 단가/원가도 할당
       if (newEditRow.salePrice === editRow.salePrice) {
         newEditRow.salePrice = product.salePrice ?? newEditRow.salePrice;
       }
       newEditRow.purchaseCost = product.purchaseCost ?? newEditRow.purchaseCost;
     } else if (curtainTypeVal === '속커튼' && pleatTypeVal === '민자') {
-      // 속커튼 민자는 면적 기반 주름양 계산
-      if (widthMM > 0 && heightMM > 0) {
-        const area = (widthMM * heightMM) / 1000000; // m²
+      // 속커튼 민자는 주름양배수 선택값을 그대로 사용
+      if (widthMM > 0) {
+        // 주름양 배수 가져오기 (기본값 1.4배)
+        const pleatMultiplier = Number(newEditRow.pleatMultiplier?.replace('배', '')) || 1.4;
+        const area = (widthMM / 1000) * pleatMultiplier; // m²
         newEditRow.area = area;
-        newEditRow.pleatAmount = area.toFixed(2);
+        // 주름양은 선택된 배수값을 그대로 사용
+        newEditRow.pleatAmount = newEditRow.pleatMultiplier || '1.4배';
       }
+      // 속커튼은 폭수 계산하지 않음
+      newEditRow.widthCount = 0;
+      newEditRow.pleatCount = 0;
+      setRecommendedPleatCount(0);
+      setRecommendedPleatAmount('');
     } else if (curtainTypeVal === '겉커튼' && widthMM > 0) {
         let pleatCount: number | '' = '';
         if (pleatTypeVal === '민자') {
@@ -6314,10 +7354,10 @@ const EstimateManagement: React.FC = () => {
         }
       newEditRow.pleatCount = pleatCount;
       newEditRow.widthCount = pleatCount;
-              setRecommendedPleatCount(pleatCount === '' ? 0 : pleatCount);
+      setRecommendedPleatCount(pleatCount === '' ? 0 : pleatCount);
         
-        // 추천 주름양 계산
-        if (pleatCount && pleatCount > 0) {
+      // 추천 주름양 계산
+      if (pleatCount && pleatCount > 0) {
           const calculatedPleatAmount = getPleatAmount(
             widthMM,
             productWidth,
@@ -6342,11 +7382,14 @@ const EstimateManagement: React.FC = () => {
         newEditRow.pleatAmount = calculatedPleatAmount;
       }
     } else if (curtainTypeVal === '속커튼' && pleatTypeVal === '민자') {
-      // 속커튼 민자는 면적 기반 주름양 계산
-      if (widthMM > 0 && heightMM > 0) {
-        const area = (widthMM * heightMM) / 1000000; // m²
+      // 속커튼 민자는 주름양배수 선택값을 그대로 사용
+      if (widthMM > 0) {
+        // 주름양 배수 가져오기 (기본값 1.4배)
+        const pleatMultiplier = Number(newEditRow.pleatMultiplier?.replace('배', '')) || 1.4;
+        const area = (widthMM / 1000) * pleatMultiplier; // m²
         newEditRow.area = area;
-        newEditRow.pleatAmount = area.toFixed(2);
+        // 주름양은 선택된 배수값을 그대로 사용
+        newEditRow.pleatAmount = newEditRow.pleatMultiplier || '1.4배';
       }
     } else if (product) {
       // 다른 커튼 타입으로 변경 시 원래 제품의 단가/원가로 복원
@@ -6578,7 +7621,6 @@ const EstimateManagement: React.FC = () => {
     console.log('프로젝트 옵션:', projectOptions);
     console.log('대기 중인 고객:', pendingCustomer);
   }, [projectSelectDialogOpen, projectOptions, pendingCustomer]);
-
   return (
     <>
       <Box
@@ -6865,16 +7907,27 @@ const EstimateManagement: React.FC = () => {
             }}
           />
         </Box>
-        {/* 우측: 고객저장 버튼 */}
+        {/* 우측: 고객저장 및 고객리스트 버튼 */}
+        <Box sx={{ display: 'flex', gap: 1, ml: 1, alignSelf: 'flex-start' }}>
         <Button
           variant="contained"
           color="primary"
           size="medium"
           onClick={handleSaveCustomer}
-          sx={{ height: 40, minWidth: 100, ml: 1, alignSelf: 'flex-start' }}
+            sx={{ height: 40, minWidth: 100 }}
         >
           고객저장
         </Button>
+          <Button
+            variant="outlined"
+            color="info"
+            size="medium"
+            onClick={handleOpenCustomerList}
+            sx={{ height: 40, minWidth: 100 }}
+          >
+            고객리스트
+          </Button>
+        </Box>
       </Box>
       {/* 견적서 탭 표시 설정 다이얼로그 */}
       <Dialog
@@ -7320,7 +8373,7 @@ const EstimateManagement: React.FC = () => {
             alignItems: 'center',
             width: '100%'
           }}>
-            <Typography variant="h6" sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
+            <Typography variant="body1" component="span" sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
               {isBulkEditProductSelection ? '일괄변경할 제품 선택' : '제품 검색'}
             </Typography>
             <Button
@@ -8192,7 +9245,7 @@ const EstimateManagement: React.FC = () => {
             </IconButton>
           )}
           <Box>
-            <Typography variant="h6" sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem', color: 'var(--text-color)' }}>
+            <Typography variant="body1" component="span" sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem', color: 'var(--text-color)' }}>
               옵션 추가
             </Typography>
             {selectedProductIdx !== null &&
@@ -8227,8 +9280,8 @@ const EstimateManagement: React.FC = () => {
             </Box>
           )}
           {selectedProductIdx === null && (
-            <Box sx={{ mb: 2, p: 2, bgcolor: 'var(--primary-color)', opacity: 0.1, borderRadius: 1, border: '1px solid var(--border-color)' }}>
-              <Typography variant="subtitle2" sx={{ color: 'var(--primary-color)', mb: 1 }}>
+            <Box sx={{ mb: 2, p: 2, bgcolor: 'var(--hover-color)', borderRadius: 1, border: '1px solid var(--border-color)' }}>
+              <Typography variant="subtitle2" sx={{ color: 'var(--text-color)', mb: 1 }}>
                 전체 견적서 옵션 추가
               </Typography>
               <Typography variant="body2" sx={{ color: 'var(--text-color)', opacity: 0.7, fontSize: '0.875rem' }}>
@@ -8310,6 +9363,31 @@ const EstimateManagement: React.FC = () => {
                     },
                     '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
                       borderColor: 'var(--primary-color)'
+                    },
+                    '& .MuiSelect-icon': {
+                      color: 'var(--text-color)'
+                    }
+                  }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        backgroundColor: 'var(--surface-color)',
+                        color: 'var(--text-color)',
+                        border: '1px solid var(--border-color)',
+                        '& .MuiMenuItem-root': {
+                          color: 'var(--text-color)',
+                          '&:hover': {
+                            backgroundColor: 'var(--hover-color)'
+                          },
+                          '&.Mui-selected': {
+                            backgroundColor: 'var(--primary-color)',
+                            color: 'white',
+                            '&:hover': {
+                              backgroundColor: 'var(--primary-color)'
+                            }
+                          }
+                        }
+                      }
                     }
                   }}
                 >
@@ -8335,6 +9413,31 @@ const EstimateManagement: React.FC = () => {
                     },
                     '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
                       borderColor: 'var(--primary-color)'
+                    },
+                    '& .MuiSelect-icon': {
+                      color: 'var(--text-color)'
+                    }
+                  }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        backgroundColor: 'var(--surface-color)',
+                        color: 'var(--text-color)',
+                        border: '1px solid var(--border-color)',
+                        '& .MuiMenuItem-root': {
+                          color: 'var(--text-color)',
+                          '&:hover': {
+                            backgroundColor: 'var(--hover-color)'
+                          },
+                          '&.Mui-selected': {
+                            backgroundColor: 'var(--primary-color)',
+                            color: 'white',
+                            '&:hover': {
+                              backgroundColor: 'var(--primary-color)'
+                            }
+                          }
+                        }
+                      }
                     }
                   }}
                 >
@@ -8503,7 +9606,7 @@ const EstimateManagement: React.FC = () => {
           backgroundColor: 'var(--primary-color)',
           color: 'white'
         }}>
-          <Typography variant="h6" sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
+          <Typography variant="body1" component="span" sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
             시공 옵션 수정
           </Typography>
         </DialogTitle>
@@ -8628,7 +9731,6 @@ const EstimateManagement: React.FC = () => {
           수량 수정
         </MenuItem>
       </Menu>
-
       {/* 수정 모달 */}
       {editOpen && editRow && (
         <Dialog
@@ -8654,7 +9756,7 @@ const EstimateManagement: React.FC = () => {
             backgroundColor: 'var(--primary-color)',
             color: 'white'
           }}>
-            <Typography variant="h6" sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
+            <Typography variant="body1" component="span" sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
               제품 정보 수정
             </Typography>
           </DialogTitle>
@@ -8671,6 +9773,14 @@ const EstimateManagement: React.FC = () => {
                       InputProps={{ readOnly: true }}
                       fullWidth
                       size="small"
+                      sx={{
+                        input: { color: '#bdbdbd' },
+                        label: { color: 'var(--text-secondary-color)' },
+                        '& .MuiOutlinedInput-root': {
+                          '& fieldset': { borderColor: 'var(--border-color)' },
+                          '&:hover fieldset': { borderColor: 'var(--primary-color)' },
+                        },
+                      }}
                     />
                     <Button
                       variant="outlined"
@@ -8712,61 +9822,25 @@ const EstimateManagement: React.FC = () => {
                   />
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <FormControl
-                    fullWidth
-                    size="small"
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: 'var(--border-color)' },
-                        '&:hover fieldset': { borderColor: 'var(--primary-color)' },
-                      },
-                      label: { color: 'var(--text-secondary-color)' },
-                      '.MuiSelect-select': { color: 'var(--text-color)' },
-                    }}
-                  >
-                    <InputLabel>공간</InputLabel>
-                    <Select
+                  <TextField
+                    label="공간"
                       value={editRow?.space || ''}
-                      onChange={(e: SelectChangeEvent) =>
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                         handleEditChange('space', e.target.value)
                       }
-                      label="공간"
-                    >
-                      {spaceOptions.map((space) => (
-                        <MenuItem key={space} value={space} sx={{
-                          color: 'var(--text-color)',
-                          backgroundColor: 'var(--background-color)',
-                          '&:hover': {
-                            backgroundColor: 'var(--hover-color)',
-                          },
-                        }}>
-                          {space}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                {editRow?.space === '직접입력' && (
-                  <Grid item xs={12} md={4}>
-                    <TextField
-                      label="공간 직접입력"
-                      value={editRow?.spaceCustom || ''}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        setEditRow((prev: any) => ({ ...prev, spaceCustom: e.target.value }));
-                      }}
                       fullWidth
                       size="small"
+                    placeholder="공간을 입력하세요"
                       sx={{
-                        input: { color: '#e0e6ed' },
-                        label: { color: '#b0b8c1' },
+                      input: { color: 'var(--text-color)' },
+                      label: { color: 'var(--text-secondary-color)' },
                         '& .MuiOutlinedInput-root': {
-                          '& fieldset': { borderColor: '#2e3a4a' },
-                          '&:hover fieldset': { borderColor: '#3a4a5a' },
+                        '& fieldset': { borderColor: 'var(--border-color)' },
+                        '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                         },
                       }}
                     />
                   </Grid>
-                )}
                 <Grid item xs={12} md={4}>
                   <TextField
                     label="가로(mm)"
@@ -8957,76 +10031,76 @@ const EstimateManagement: React.FC = () => {
                         >
                           <InputLabel>주름양 배수</InputLabel>
                           <Select
-                            value={editRow.pleatAmount || '1.0'}
+                            value={editRow.pleatMultiplier || '1.4배'}
                             onChange={(e: SelectChangeEvent) =>
-                              handleEditChange('pleatAmount', e.target.value)
+                              handleEditChange('pleatMultiplier', e.target.value)
                             }
                             label="주름양 배수"
                           >
-                            <MenuItem value="1.1" sx={{
+                            <MenuItem value="1.1배" sx={{
                               color: 'var(--text-color)',
                               backgroundColor: 'var(--background-color)',
                               '&:hover': {
                                 backgroundColor: 'var(--hover-color)',
                               },
                             }}>1.1배</MenuItem>
-                            <MenuItem value="1.2" sx={{
+                            <MenuItem value="1.2배" sx={{
                               color: 'var(--text-color)',
                               backgroundColor: 'var(--background-color)',
                               '&:hover': {
                                 backgroundColor: 'var(--hover-color)',
                               },
                             }}>1.2배</MenuItem>
-                            <MenuItem value="1.3" sx={{
+                            <MenuItem value="1.3배" sx={{
                               color: 'var(--text-color)',
                               backgroundColor: 'var(--background-color)',
                               '&:hover': {
                                 backgroundColor: 'var(--hover-color)',
                               },
                             }}>1.3배</MenuItem>
-                            <MenuItem value="1.4" sx={{
+                            <MenuItem value="1.4배" sx={{
                               color: 'var(--text-color)',
                               backgroundColor: 'var(--background-color)',
                               '&:hover': {
                                 backgroundColor: 'var(--hover-color)',
                               },
                             }}>1.4배</MenuItem>
-                            <MenuItem value="1.5" sx={{
+                            <MenuItem value="1.5배" sx={{
                               color: 'var(--text-color)',
                               backgroundColor: 'var(--background-color)',
                               '&:hover': {
                                 backgroundColor: 'var(--hover-color)',
                               },
                             }}>1.5배</MenuItem>
-                            <MenuItem value="1.6" sx={{
+                            <MenuItem value="1.6배" sx={{
                               color: 'var(--text-color)',
                               backgroundColor: 'var(--background-color)',
                               '&:hover': {
                                 backgroundColor: 'var(--hover-color)',
                               },
                             }}>1.6배</MenuItem>
-                            <MenuItem value="1.7" sx={{
+                            <MenuItem value="1.7배" sx={{
                               color: 'var(--text-color)',
                               backgroundColor: 'var(--background-color)',
                               '&:hover': {
                                 backgroundColor: 'var(--hover-color)',
                               },
                             }}>1.7배</MenuItem>
-                            <MenuItem value="1.8" sx={{
+                            <MenuItem value="1.8배" sx={{
                               color: 'var(--text-color)',
                               backgroundColor: 'var(--background-color)',
                               '&:hover': {
                                 backgroundColor: 'var(--hover-color)',
                               },
                             }}>1.8배</MenuItem>
-                            <MenuItem value="1.9" sx={{
+                            <MenuItem value="1.9배" sx={{
                               color: 'var(--text-color)',
                               backgroundColor: 'var(--background-color)',
                               '&:hover': {
                                 backgroundColor: 'var(--hover-color)',
                               },
                             }}>1.9배</MenuItem>
-                            <MenuItem value="2.0" sx={{
+                            <MenuItem value="2.0배" sx={{
                               color: 'var(--text-color)',
                               backgroundColor: 'var(--background-color)',
                               '&:hover': {
@@ -9268,7 +10342,8 @@ const EstimateManagement: React.FC = () => {
                 </Grid>
                 {recommendedPleatCount > 0 && 
                   isFinite(recommendedPleatCount) &&
-                  editRow.productType !== '블라인드' && (
+                  editRow.productType !== '블라인드' &&
+                  editRow.curtainType !== '속커튼' && (
                     <Grid item xs={12}>
                       <Box
                         sx={{
@@ -9292,7 +10367,7 @@ const EstimateManagement: React.FC = () => {
                       </Box>
                     </Grid>
                   )}
-                                {recommendedPleatAmount && (
+                                {recommendedPleatAmount && editRow.curtainType !== '속커튼' && (
                     <Grid item xs={12}>
                       <Box
                         sx={{
@@ -9483,6 +10558,28 @@ const EstimateManagement: React.FC = () => {
                     </Button>
                   </>
                 )}
+                
+                {/* 저장하기 버튼을 일괄 변경 모드 우측으로 이동 */}
+                <Box sx={{ marginLeft: 'auto', display: 'flex', gap: 1 }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    color="success"
+                    sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
+                    onClick={handleSaveEstimate}
+                  >
+                    저장하기
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    color="warning"
+                    sx={{ minWidth: 100, fontSize: 13, py: 0.5, px: 1.5 }}
+                    onClick={handleSaveAsNewEstimate}
+                  >
+                    새견적 저장
+                  </Button>
+                </Box>
               </Box>
             )}
             {(() => {
@@ -9514,7 +10611,7 @@ const EstimateManagement: React.FC = () => {
                                 <TableCell 
                                   key={field.key} 
                                   align={['widthMM', 'heightMM', 'area', 'lineLen', 'pleatAmount', 'widthCount', 'quantity', 'totalPrice', 'salePrice', 'cost', 'purchaseCost', 'margin'].includes(field.key) ? 'right' : 'left'}
-                                  sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: '12pt', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}
+                                  sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: '12pt', textShadow: '0 1px 2px rgba(0,0,0,0.1)', whiteSpace: 'nowrap' }}
                                 >
                                   {field.label}
                                 </TableCell>
@@ -9553,6 +10650,9 @@ const EstimateManagement: React.FC = () => {
                           ).length;
 
                         if (isProduct) {
+                          // 최근 수정한 행인지 확인
+                          const isRecentlyModified = recentlyModifiedRowId === row.id;
+                          
                           return (
                             <TableRow
                               key={`product-${row.id || 'no-id'}-${idx}-${row.productName || 'unnamed'}-${row.space || 'no-space'}`}
@@ -9562,10 +10662,16 @@ const EstimateManagement: React.FC = () => {
                                     ? 'var(--hover-color-strong)' // 테마 색상보다 밝은 배경
                                     : selectedRowsForBulkEdit.has(idx)
                                     ? 'rgba(255, 193, 7, 0.3)'
+                                    : isRecentlyModified
+                                    ? '#fff3cd' // 최근 수정한 행은 노란색 배경
                                     : 'var(--surface-color)', // 통일된 배경색
                                 fontSize: '12pt',
                                 cursor: 'pointer',
                                 transition: 'background 0.2s',
+                                ...(isRecentlyModified && {
+                                  animation: 'pulse 1s ease-in-out',
+                                  boxShadow: '0 0 10px rgba(255, 193, 7, 0.5)',
+                                }),
                                 '&:hover': {
                                   backgroundColor: 'var(--hover-color-strong)', // 테마에 맞는 hover 색상
                                 }
@@ -9612,15 +10718,31 @@ const EstimateManagement: React.FC = () => {
                                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
                                       <IconButton
                                         size="small"
-                                        onClick={(e) => {
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
                                           e.stopPropagation();
+                                          e.nativeEvent.stopImmediatePropagation();
+                                          if (canMoveUp) {
+                                            moveProductUp(productNumber - 1);
+                                          }
+                                        }}
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          e.nativeEvent.stopImmediatePropagation();
+                                          if (canMoveUp) {
                                           moveProductUp(productNumber - 1);
+                                          }
                                         }}
                                         disabled={!canMoveUp}
                                         sx={{ 
                                           padding: '2px',
                                           color: canMoveUp ? 'var(--primary-color)' : 'var(--text-color)',
-                                          opacity: canMoveUp ? 1 : 0.3
+                                          opacity: canMoveUp ? 1 : 0.3,
+                                          '&:active': {
+                                            transform: 'scale(0.95)',
+                                            transition: 'transform 0.1s'
+                                          }
                                         }}
                                         title="위로 이동"
                                       >
@@ -9640,15 +10762,31 @@ const EstimateManagement: React.FC = () => {
                                         </Typography>
                                       <IconButton
                                         size="small"
-                                        onClick={(e) => {
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
                                           e.stopPropagation();
+                                          e.nativeEvent.stopImmediatePropagation();
+                                          if (canMoveDown) {
+                                            moveProductDown(productNumber - 1);
+                                          }
+                                        }}
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          e.nativeEvent.stopImmediatePropagation();
+                                          if (canMoveDown) {
                                           moveProductDown(productNumber - 1);
+                                          }
                                         }}
                                         disabled={!canMoveDown}
                                         sx={{ 
                                           padding: '2px',
                                           color: canMoveDown ? 'var(--primary-color)' : 'var(--text-color)',
-                                          opacity: canMoveDown ? 1 : 0.3
+                                          opacity: canMoveDown ? 1 : 0.3,
+                                          '&:active': {
+                                            transform: 'scale(0.95)',
+                                            transition: 'transform 0.1s'
+                                          }
                                         }}
                                         title="아래로 이동"
                                       >
@@ -9670,7 +10808,8 @@ const EstimateManagement: React.FC = () => {
                                         sx={{ 
                                           fontSize: '12pt',
                                           color: 'var(--text-color)',
-                                          textShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                                          textShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                                          whiteSpace: 'nowrap'
                                         }}
                                       >
                                         {getRowValue(row, field.key)}
@@ -9727,13 +10866,23 @@ const EstimateManagement: React.FC = () => {
                           );
                         } else {
                           // 옵션행: 제품행보다 밝은 배경, 들여쓰기, 글씨 10.5pt
+                          // 최근 수정한 행인지 확인
+                          const isRecentlyModified = recentlyModifiedRowId === row.id;
+                          
                           return (
                             <TableRow
                               key={`option-${row.id || 'no-id'}-${idx}-${row.optionLabel || 'no-label'}-${row.details || 'no-details'}`}
                               sx={{
-                                backgroundColor: 'var(--surface-color)', // 통일된 배경색
-                                fontSize: '12pt',
+                                backgroundColor: isRecentlyModified
+                                  ? '#fff3cd' // 최근 수정한 행은 노란색 배경
+                                  : 'var(--surface-color)', // 통일된 배경색
+                                fontSize: '11.5pt', // 0.5px 작게 (12pt -> 11.5pt)
                                 cursor: 'pointer',
+                                color: '#666666', // 옵션 폰트 색상을 중간그레이로 변경
+                                ...(isRecentlyModified && {
+                                  animation: 'pulse 1s ease-in-out',
+                                  boxShadow: '0 0 10px rgba(255, 193, 7, 0.5)',
+                                }),
                                 '&:hover': {
                                   backgroundColor: 'var(--hover-color-strong)', // 테마에 맞는 hover 색상
                                 }
@@ -9741,25 +10890,45 @@ const EstimateManagement: React.FC = () => {
                                                               onContextMenu={(e) => {
                                   e.preventDefault();
                                   if (isRail) {
-                                    handleRailEdit(idx);
+                                  // 레일 편집의 경우에도 올바른 인덱스 사용
+                                  const originalRows = estimates[activeTab].rows;
+                                  const originalIndex = originalRows.findIndex(r => r.id === row.id);
+                                  if (originalIndex !== -1) {
+                                    handleRailEdit(originalIndex);
+                                  }
                                   } else {
-                                    handleEstimateOptionDoubleClick(row, idx);
+                                    // 옵션 행의 경우 시공 옵션 수정 모달 열기
+                                    setEditingOption({
+                                      optionName: row.optionLabel || row.productName,
+                                      vendor: row.vendor,
+                                      salePrice: row.salePrice,
+                                      purchaseCost: row.purchaseCost,
+                                      details: row.details,
+                                      note: row.note
+                                    });
+                                    setEditOptionQuantity(row.quantity || 1);
+                                    setEditOptionDialogOpen(true);
                                   }
                                 }}
                               onDoubleClick={
-                                isRail ? () => handleRailEdit(idx) : 
+                                isRail ? () => {
+                                  // 레일 편집의 경우에도 올바른 인덱스 사용
+                                  const originalRows = estimates[activeTab].rows;
+                                  const originalIndex = originalRows.findIndex(r => r.id === row.id);
+                                  if (originalIndex !== -1) {
+                                    handleRailEdit(originalIndex);
+                                  }
+                                } : 
                                 () => handleEstimateOptionDoubleClick(row, idx)
                               }
                             >
                                                             <TableCell sx={{ 
                                 width: 80,
-                                fontSize: '12pt',
-                                color: 'var(--text-color)',
+                                fontSize: '11.5pt', // 0.5px 작게
+                                color: '#666666', // 옵션 폰트 색상을 중간그레이로 변경
                                 textShadow: '0 1px 2px rgba(0,0,0,0.1)',
                                 textAlign: 'center'
-                              }}>
-                                {/* 옵션 행은 순번 표시하지 않음 */}
-                              </TableCell>
+                              }}></TableCell>
                               {FILTER_FIELDS.map(
                                 field =>
                                   columnVisibility[field.key] && (
@@ -9769,13 +10938,10 @@ const EstimateManagement: React.FC = () => {
                                         key={field.key}
                                         align={['widthMM', 'heightMM', 'area', 'lineLen', 'pleatAmount', 'widthCount', 'quantity', 'totalPrice', 'salePrice', 'cost', 'purchaseCost', 'margin'].includes(field.key) ? 'right' : 'left'}
                                         sx={{
-                                          whiteSpace: 'nowrap',
-                                          fontSize: '12pt',
-                                          color: 'var(--text-color)',
+                                          fontSize: '11.5pt', // 0.5px 작게
+                                          color: '#666666', // 옵션 폰트 색상을 중간그레이로 변경
                                           textShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                                          overflow: 'hidden',
-                                          textOverflow: 'ellipsis',
-                                          maxWidth: '300px',
+                                          whiteSpace: 'nowrap'
                                         }}
                                       >
                                       {field.key === 'space' ? (
@@ -9884,6 +11050,87 @@ const EstimateManagement: React.FC = () => {
                           );
                         }
                       })}
+                      {/* 합계 행 추가 */}
+                      <TableRow sx={{ backgroundColor: '#e3f2fd', fontWeight: 'bold', fontSize: 'inherit' }}>
+                        <TableCell>합계</TableCell>
+                        {FILTER_FIELDS.map(field =>
+                          columnVisibility[field.key] ? (
+                            ['area', 'lineDir', 'lineLen', 'pleatAmount', 'widthCount', 'quantity', 'totalPrice', 'cost', 'margin'].includes(field.key) ? (
+                              <TableCell key={field.key} align="right" sx={{ fontSize: 'inherit' }}>
+                                {(() => {
+                                  if (field.key === 'area') {
+                                    const sum = filteredRows.reduce((acc, row) => {
+                                      if (row.productType === '커튼') return acc;
+                                      return acc + (Number(row.area) || 0);
+                                    }, 0);
+                                    return sum ? sum.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '';
+                                  }
+                                  
+                                  // 수량 합계를 여러 컬럼에 분산 표시
+                                  if (['lineDir', 'lineLen', 'pleatAmount', 'widthCount', 'quantity'].includes(field.key)) {
+                                    // 제품종류별 수량 계산
+                                    const quantityByType = filteredRows.reduce((acc, row) => {
+                                      const quantity = Number(row.quantity) || 0;
+                                      if (quantity > 0) {
+                                        if (row.productType === '커튼') {
+                                          acc.curtain += quantity;
+                                        } else if (row.productType === '블라인드') {
+                                          acc.blind += quantity;
+                                        } else {
+                                          acc.other += quantity;
+                                        }
+                                      }
+                                      return acc;
+                                    }, { curtain: 0, blind: 0, other: 0 });
+                                    
+                                    const totalSum = quantityByType.curtain + quantityByType.blind + quantityByType.other;
+                                    
+                                    if (totalSum === 0) return '';
+                                    
+                                    // 각 컬럼별로 다른 부분 표시
+                                    if (field.key === 'lineDir') {
+                                      return quantityByType.curtain > 0 ? `커튼 ${quantityByType.curtain}조` : '';
+                                    }
+                                    if (field.key === 'lineLen') {
+                                      return quantityByType.blind > 0 ? `블라인드 ${quantityByType.blind}개` : '';
+                                    }
+                                    if (field.key === 'pleatAmount') {
+                                      return quantityByType.other > 0 ? `기타 ${quantityByType.other}개` : '';
+                                    }
+                                    if (field.key === 'widthCount') {
+                                      return totalSum > 0 ? `/ ${totalSum.toLocaleString()}` : '';
+                                    }
+                                    if (field.key === 'quantity') {
+                                      return totalSum > 0 ? totalSum.toLocaleString() : '';
+                                    }
+                                  }
+                                  
+                                  if (field.key === 'totalPrice') {
+                                    const sum = filteredRows.reduce((acc, row) => acc + (Number(row.totalPrice) || 0), 0);
+                                    return sum ? sum.toLocaleString() : '';
+                                  }
+                                  if (field.key === 'cost') {
+                                    // showMarginSum이 true일 때만 입고금액 합계 표시
+                                    if (!showMarginSum) return '';
+                                    const sum = filteredRows.reduce((acc, row) => acc + (Number(row.cost) || 0), 0);
+                                    return sum ? sum.toLocaleString() : '';
+                                  }
+                                  if (field.key === 'margin') {
+                                    // showMarginSum이 true일 때만 마진 합계 표시
+                                    if (!showMarginSum) return '';
+                                    const sum = filteredRows.reduce((acc, row) => acc + (Number(row.margin) || 0), 0);
+                                    return sum ? sum.toLocaleString() : '';
+                                  }
+                                  return '';
+                                })()}
+                              </TableCell>
+                            ) : (
+                              <TableCell key={field.key} sx={{ width: 80 }}></TableCell>
+                            )
+                          ) : null
+                        )}
+                        <TableCell sx={{ width: 120 }}></TableCell> {/* 작업 컬럼 */}
+                      </TableRow>
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -9919,25 +11166,7 @@ const EstimateManagement: React.FC = () => {
                 </TableContainer>
               );
             })()}
-            <Box
-              sx={{
-                mt: 2,
-                mb: 1,
-                fontWeight: 'bold',
-                fontSize: 14,
-                display: 'flex',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '32px',
-              }}
-            >
-              <span style={{ color: '#a5d6a7' }}>
-                제품 합계금액(VAT포함): {productTotalAmount.toLocaleString()} 원
-              </span>
-              <span style={{ color: '#ff9800' }}>
-                옵션 합계금액(VAT포함): {optionTotalAmount.toLocaleString()} 원
-              </span>
-            </Box>
+
             <Box
               sx={{
                 mt: 0,
@@ -9992,18 +11221,7 @@ const EstimateManagement: React.FC = () => {
               >
                 WINDOWSTORY
               </Button>
-              <Slide
-                direction="left"
-                in={showMarginSum}
-                mountOnEnter
-                unmountOnExit
-              >
-                <span>
-                  <span style={{ color: '#718096' }}>
-                    마진(VAT별도): {sumMargin.toLocaleString()} 원
-                  </span>
-                </span>
-              </Slide>
+
             </Box>
             {showDiscount && (
               <Box
@@ -10098,24 +11316,6 @@ const EstimateManagement: React.FC = () => {
                 endIcon={<ArrowDownIcon />}
               >
                 출력하기
-              </Button>
-              <Button
-                variant="outlined"
-                size="small"
-                color="success"
-                sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
-                onClick={handleSaveEstimate}
-              >
-                저장하기
-              </Button>
-              <Button
-                variant="outlined"
-                size="small"
-                color="info"
-                sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
-                onClick={handleOpenCustomerList}
-              >
-                고객리스트
               </Button>
               <Menu
                 anchorEl={outputAnchorEl}
@@ -10314,7 +11514,7 @@ const EstimateManagement: React.FC = () => {
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setSavedEstimateSearch(e.target.value)
                 }
-                placeholder="견적서명, 제품명, 거래처, 브랜드 등으로 검색"
+                placeholder="주소, 고객명, 연락처, 프로젝트 등으로 검색"
                 sx={{
                   mb: 2,
                   input: { color: 'var(--text-color)' },
@@ -10565,6 +11765,13 @@ const EstimateManagement: React.FC = () => {
                 <Table size="small">
                   <TableHead>
                     <TableRow sx={{ backgroundColor: 'var(--background-color)' }}>
+                      {estimateListDisplay.showAddress && (
+                        <TableCell
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
+                        >
+                          주소
+                        </TableCell>
+                      )}
                       {estimateListDisplay.showEstimateNo && (
                         <TableCell
                           sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
@@ -10651,16 +11858,19 @@ const EstimateManagement: React.FC = () => {
                       )}
                       {estimateListDisplay.showActions && (
                         <TableCell
-                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
+                          sx={{ 
+                            color: 'var(--text-secondary-color)', 
+                            borderColor: 'var(--border-color)',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}
+                          onDoubleClick={handleToggleDiscountMarginColumns}
+                          title="더블클릭하여 할인율/마진 컬럼 토글"
                         >
                           작업
-                        </TableCell>
-                      )}
-                      {estimateListDisplay.showAddress && (
-                        <TableCell
-                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
-                        >
-                          주소
                         </TableCell>
                       )}
                     </TableRow>
@@ -10722,42 +11932,161 @@ const EstimateManagement: React.FC = () => {
                               ...specialStyle,
                             }}
                           >
-                            {estimateListDisplay.showEstimateNo && (
+                            {estimateListDisplay.showAddress && (
                               <TableCell
                                 sx={{
-                                  color: 'var(--text-color)', // 라이트모드용 텍스트 색상
-                                  borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
+                                  color: 'var(--text-color)',
+                                  borderColor: 'var(--border-color)',
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
+                                  fontSize: '15px',
                                 }}
                               >
-                                {est.estimateNo}
+                                {est.address}
                                 {isOrderCompleted && (
                                   <Chip
                                     label="발주완료"
                                     size="small"
                                     sx={{
                                       ml: 1,
-                                      backgroundColor: 'var(--success-color)', // 라이트모드용 발주완료 뱃지 색상
-                                      color: 'var(--on-success-color)', // 라이트모드용 발주완료 뱃지 텍스트 색상
+                                      backgroundColor: 'var(--success-color)',
+                                      color: 'var(--on-success-color)',
                                       fontSize: '0.7rem',
                                       height: '20px',
                                       fontWeight: 'bold',
                                     }}
                                   />
                                 )}
-                                {isFinal && !isOrderCompleted && (
+                                {(() => {
+                                  // 동일한 주소를 가진 견적서들 찾기
+                                  const sameAddressEstimates = savedEstimates.filter(e => 
+                                    e.address === est.address
+                                  );
+                                  
+                                  // 견적서를 생성/저장 순서대로 정렬 (savedAt 기준)
+                                  const sortedSameAddressEstimates = sameAddressEstimates.sort((a, b) => {
+                                    const dateA = a.savedAt ? new Date(a.savedAt).getTime() : 0;
+                                    const dateB = b.savedAt ? new Date(b.savedAt).getTime() : 0;
+                                    return dateA - dateB;
+                                  });
+                                  
+                                  // 현재 견적서의 순서 찾기
+                                  const currentIndex = sortedSameAddressEstimates.findIndex(e => e.id === est.id);
+                                  const isFinal = isFinalEstimate(est);
+                                  
+                                  // 단독 견적서인 경우 - 넘버링 "1"로 표시하고 클릭 가능하게
+                                  if (sameAddressEstimates.length === 1) {
+                                    return (
                                   <Chip
-                                    label="Final"
+                                        label="1"
                                     size="small"
+                                        variant="outlined"
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          e.nativeEvent.stopImmediatePropagation();
+                                          handleToggleFinalStatus(est);
+                                        }}
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          e.nativeEvent.stopImmediatePropagation();
+                                        }}
                                     sx={{
                                       ml: 1,
-                                      backgroundColor: 'var(--primary-color)', // 라이트모드용 Final 뱃지 색상
-                                      color: 'var(--on-primary-color)', // 라이트모드용 Final 뱃지 텍스트 색상
+                                          borderColor: 'var(--primary-color)',
+                                          color: 'var(--primary-color)',
                                       fontSize: '0.7rem',
                                       height: '20px',
-                                    }}
-                                  />
-                                )}
+                                          cursor: 'pointer',
+                                          '&:hover': {
+                                            backgroundColor: 'var(--primary-color)',
+                                            color: 'var(--on-primary-color)',
+                                          },
+                                        }}
+                                      />
+                                    );
+                                  }
+                                  
+                                  // 다중 견적서인 경우
+                                  if (isFinal) {
+                                    // Final 견적들 중에서 현재 견적의 순서 찾기
+                                    const finalEstimates = sortedSameAddressEstimates.filter(e => isFinalEstimate(e));
+                                    const finalIndex = finalEstimates.findIndex(e => e.id === est.id);
+                                    const finalNumber = finalIndex + 1;
+                                    
+                                    return (
+                                      <Chip
+                                        label={finalEstimates.length > 1 ? `Final${finalNumber}` : "Final"}
+                                        size="small"
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          e.nativeEvent.stopImmediatePropagation();
+                                          handleToggleFinalStatus(est);
+                                        }}
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          e.nativeEvent.stopImmediatePropagation();
+                                        }}
+                                        sx={{
+                                          ml: 1,
+                                          backgroundColor: 'var(--primary-color)',
+                                          color: 'var(--on-primary-color)',
+                                          fontSize: '0.7rem',
+                                          height: '20px',
+                                          cursor: 'pointer',
+                                          '&:hover': {
+                                            backgroundColor: 'var(--primary-hover-color)',
+                                          },
+                                        }}
+                                      />
+                                    );
+                                  } else {
+                                    // 넘버링 상태인 경우
+                                    return (
+                                      <Chip
+                                        label={`${currentIndex + 1}`}
+                                        size="small"
+                                        variant="outlined"
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          e.nativeEvent.stopImmediatePropagation();
+                                          handleToggleFinalStatus(est);
+                                        }}
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          e.nativeEvent.stopImmediatePropagation();
+                                        }}
+                                        sx={{
+                                          ml: 1,
+                                          borderColor: 'var(--primary-color)',
+                                          color: 'var(--primary-color)',
+                                          fontSize: '0.7rem',
+                                          height: '20px',
+                                          cursor: 'pointer',
+                                          '&:hover': {
+                                            backgroundColor: 'var(--primary-color)',
+                                            color: 'var(--on-primary-color)',
+                                          },
+                                        }}
+                                      />
+                                    );
+                                  }
+                                })()}
+                              </TableCell>
+                            )}
+                            {estimateListDisplay.showEstimateNo && (
+                              <TableCell
+                                sx={{
+                                  color: 'var(--text-color)', // 라이트모드용 텍스트 색상
+                                  borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
+                                  fontSize: '15px',
+                                }}
+                              >
+                                {est.estimateNo}
                               </TableCell>
                             )}
                             {estimateListDisplay.showEstimateDate && (
@@ -10765,6 +12094,7 @@ const EstimateManagement: React.FC = () => {
                                 sx={{
                                   color: 'var(--text-color)', // 라이트모드용 텍스트 색상
                                   borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
+                                  fontSize: '15px',
                                 }}
                               >
                                 {est.estimateDate}
@@ -10775,6 +12105,7 @@ const EstimateManagement: React.FC = () => {
                                 sx={{
                                   color: 'var(--text-color)', // 라이트모드용 텍스트 색상
                                   borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
+                                  fontSize: '15px',
                                 }}
                               >
                                 {est.savedAt
@@ -10787,6 +12118,7 @@ const EstimateManagement: React.FC = () => {
                                 sx={{
                                   color: 'var(--text-color)', // 라이트모드용 텍스트 색상
                                   borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
+                                  fontSize: '15px',
                                 }}
                               >
                                 {est.customerName}
@@ -10797,6 +12129,7 @@ const EstimateManagement: React.FC = () => {
                                 sx={{
                                   color: 'var(--text-color)', // 라이트모드용 텍스트 색상
                                   borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
+                                  fontSize: '15px',
                                 }}
                               >
                                 {est.contact}
@@ -10807,6 +12140,7 @@ const EstimateManagement: React.FC = () => {
                                 sx={{
                                   color: 'var(--text-color)', // 라이트모드용 텍스트 색상
                                   borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
+                                  fontSize: '15px',
                                 }}
                               >
                                 {est.projectName}
@@ -10817,6 +12151,7 @@ const EstimateManagement: React.FC = () => {
                                 sx={{
                                   color: 'var(--text-color)', // 라이트모드용 텍스트 색상
                                   borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
+                                  fontSize: '15px',
                                 }}
                               >
                                 <Tooltip
@@ -10841,6 +12176,7 @@ const EstimateManagement: React.FC = () => {
                                 sx={{
                                   color: 'var(--text-color)', // 라이트모드용 텍스트 색상
                                   borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
+                                  fontSize: '15px',
                                 }}
                               >
                                 {est.totalAmount?.toLocaleString()}원
@@ -10851,6 +12187,7 @@ const EstimateManagement: React.FC = () => {
                                 sx={{
                                   color: 'var(--text-color)', // 라이트모드용 텍스트 색상
                                   borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
+                                  fontSize: '15px',
                                 }}
                               >
                                 {discountedAmount.toLocaleString()} 원
@@ -10861,6 +12198,7 @@ const EstimateManagement: React.FC = () => {
                                 sx={{
                                   color: 'var(--text-color)', // 라이트모드용 텍스트 색상
                                   borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
+                                  fontSize: '15px',
                                 }}
                               >
                                 {est.discountAmount?.toLocaleString()}원
@@ -10871,6 +12209,7 @@ const EstimateManagement: React.FC = () => {
                                 sx={{
                                   color: 'var(--text-color)', // 라이트모드용 텍스트 색상
                                   borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
+                                  fontSize: '15px',
                                 }}
                               >
                                 {est.totalAmount > 0 && est.discountAmount > 0
@@ -10886,6 +12225,7 @@ const EstimateManagement: React.FC = () => {
                                 sx={{
                                   color: 'var(--text-color)', // 라이트모드용 텍스트 색상
                                   borderColor: 'var(--border-color)', // 라이트모드용 테두리 색상
+                                  fontSize: '15px',
                                 }}
                               >
                                 {est.margin?.toLocaleString()}원
@@ -10893,7 +12233,18 @@ const EstimateManagement: React.FC = () => {
                             )}
 
                             {estimateListDisplay.showActions && (
-                              <TableCell sx={{ borderColor: 'var(--border-color)' }}> {/* 라이트모드용 테두리 색상 */}
+                              <TableCell sx={{ 
+                                borderColor: 'var(--border-color)',
+                                fontSize: '15px',
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                '&:hover': {
+                                  backgroundColor: 'var(--hover-color)',
+                                },
+                              }}
+                              onDoubleClick={handleToggleDiscountMarginColumns}
+                              title="더블클릭하여 할인율/마진 컬럼 토글"
+                            > {/* 라이트모드용 테두리 색상 */}
                                 {/* final 견적서인 경우 특별한 버튼 표시 */}
                                 {isFinal && (
                                   <>
@@ -11166,22 +12517,6 @@ const EstimateManagement: React.FC = () => {
 
                                 <IconButton
                                   size="small"
-                                  onClick={() => {
-                                    setSelectedEstimateForPrint(est);
-                                    setShowEstimateTemplate(true);
-                                  }}
-                                  sx={{
-                                    mr: 1,
-                                    color: '#40c4ff',
-                                    '&:hover': { backgroundColor: '#263040' },
-                                  }}
-                                  title="출력하기"
-                                >
-                                  <PrintIcon fontSize="small" />
-                                </IconButton>
-
-                                <IconButton
-                                  size="small"
                                   onClick={async () => {
                                     if (
                                       window.confirm(
@@ -11329,16 +12664,6 @@ const EstimateManagement: React.FC = () => {
                                 </IconButton>
                               </TableCell>
                             )}
-                            {estimateListDisplay.showAddress && (
-                              <TableCell
-                                sx={{
-                                  color: '#e0e6ed',
-                                  borderColor: '#2e3a4a',
-                                }}
-                              >
-                                {est.address}
-                              </TableCell>
-                            )}
                           </TableRow>
                         );
                       })
@@ -11402,7 +12727,8 @@ const EstimateManagement: React.FC = () => {
             </IconButton>
           )}
           <Typography
-            variant="h6"
+            variant="body1"
+            component="span"
             sx={{
               flex: 1,
               textAlign: isMobile ? 'center' : 'left',
@@ -12035,5 +13361,3 @@ const EstimateManagement: React.FC = () => {
 };
 
 export default EstimateManagement;
-
-
