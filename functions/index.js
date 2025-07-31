@@ -4679,7 +4679,7 @@ exports.saveWorker = functions.https.onRequest(async (req, res) => {
           vehicleNumber: vehicleNumber || '',
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          createdBy: req.user.userId
+          createdBy: req.user.id
         };
         
         const docRef = await db.collection('workers').add(workerData);
@@ -4741,7 +4741,7 @@ exports.updateWorker = functions.https.onRequest(async (req, res) => {
           phone,
           vehicleNumber: vehicleNumber || '',
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedBy: req.user.userId
+          updatedBy: req.user.id
         };
         
         await db.collection('workers').doc(workerId).update(updateData);

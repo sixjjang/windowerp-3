@@ -47,11 +47,12 @@ import {
   Search as SearchIcon,
   Clear as ClearIcon,
   Print as PrintIcon,
-  PictureAsPdf as PdfIcon,
+  PictureAsPdf as PictureAsPdfIcon,
   Image as ImageIcon,
   Assignment as AssignmentIcon,
   Close as CloseIcon,
   ArrowBack as ArrowBackIcon,
+  Pending as PendingIcon,
 } from '@mui/icons-material';
 import {
   useDeliveryStore,
@@ -485,6 +486,27 @@ const getRowValue = (row: any, key: string) => {
 
 // 공간별 색상 함수 (견적서와 동일)
 const getSpaceColor = (space: string, brightness: number = 1) => {
+  // 라이트모드에서는 밝은 색상 반환
+  const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+  
+  if (isLightMode) {
+    const lightColors: { [key: string]: string } = {
+      거실: `rgba(255, 193, 7, ${0.1 * brightness})`,
+      안방: `rgba(156, 39, 176, ${0.1 * brightness})`,
+      침실: `rgba(33, 150, 243, ${0.1 * brightness})`,
+      욕실: `rgba(76, 175, 80, ${0.1 * brightness})`,
+      주방: `rgba(255, 87, 34, ${0.1 * brightness})`,
+      서재: `rgba(121, 85, 72, ${0.1 * brightness})`,
+      아이방: `rgba(233, 30, 99, ${0.1 * brightness})`,
+      드레스룸: `rgba(0, 188, 212, ${0.1 * brightness})`,
+      베란다: `rgba(255, 152, 0, ${0.1 * brightness})`,
+      현관: `rgba(158, 158, 158, ${0.1 * brightness})`,
+      기타: `rgba(96, 125, 139, ${0.1 * brightness})`,
+    };
+    return lightColors[space] || `rgba(96, 125, 139, ${0.1 * brightness})`;
+  }
+  
+  // 다크모드에서는 기존 색상 반환
   const colors: { [key: string]: string } = {
     거실: `rgba(255, 193, 7, ${0.15 * brightness})`,
     안방: `rgba(156, 39, 176, ${0.15 * brightness})`,
@@ -579,6 +601,20 @@ const DeliveryManagement: React.FC = () => {
   // 모바일 환경 감지
   const isMobile = useMediaQuery('(max-width:768px)');
 
+  // 라이트모드 강제 적용 코드 추가
+  useEffect(() => {
+    const theme = document.documentElement.getAttribute('data-theme');
+    if (theme === 'light') {
+      document.body.style.backgroundColor = '#f5f6fa';
+      document.documentElement.style.setProperty('--surface-color', '#fff');
+      document.documentElement.style.setProperty('--background-color', '#f5f6fa');
+      document.documentElement.style.setProperty('--text-color', '#222');
+      document.documentElement.style.setProperty('--text-secondary-color', '#888');
+      document.documentElement.style.setProperty('--border-color', '#e0e0e0');
+      document.documentElement.style.setProperty('--hover-color', '#f0f4ff');
+    }
+  }, []);
+
   const {
     deliveries = [],
     removeDelivery,
@@ -664,7 +700,24 @@ const DeliveryManagement: React.FC = () => {
   }>(() => {
     const initial: { [key: string]: boolean } = {};
     FILTER_FIELDS.forEach(field => {
-      initial[field.key] = true; // 기본적으로 모든 컬럼 표시
+      // 현재 설정에 맞춰 기본값 설정
+      initial[field.key] = [
+        'vendor',           // 거래처
+        'area',             // 면적(㎡)
+        'cost',             // 입고금액
+        'details',          // 세부내용
+        'lineDir',          // 줄방향
+        'quantity',         // 수량
+        'purchaseCost',     // 입고원가
+        'space',            // 공간
+        'lineLen',          // 줄길이
+        'totalPrice',       // 판매금액
+        'margin',           // 마진
+        'productCode',      // 제품코드
+        'productName',      // 제품명
+        'productionDimensions', // 제작사이즈
+        'salePrice',        // 판매단가
+      ].includes(field.key);
     });
     return initial;
   });
@@ -1523,21 +1576,146 @@ const DeliveryManagement: React.FC = () => {
         <html>
           <head>
             <title>AS신청서</title>
+            <meta charset="UTF-8">
             <style>
-              body { font-family: Arial, sans-serif; margin: 20px; background: white; }
-              .header { text-align: center; margin-bottom: 30px; }
-              .title { font-size: 24px; font-weight: bold; margin-bottom: 10px; }
-              .subtitle { font-size: 16px; color: #666; }
-              .info-section { margin-bottom: 20px; }
-              .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-              .info-item { margin-bottom: 10px; }
-              .label { font-weight: bold; color: #333; }
-              .value { margin-left: 10px; }
-              .issue-section { margin: 20px 0; }
-              .issue-title { font-weight: bold; margin-bottom: 10px; }
-              .issue-content { background: #f5f5f5; padding: 15px; border-radius: 5px; }
-              .signature-section { margin-top: 40px; text-align: center; }
-              .signature-line { border-top: 1px solid #000; width: 200px; display: inline-block; margin: 0 20px; }
+              * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+              }
+              
+              html, body {
+                font-family: 'Arial', 'Helvetica', sans-serif !important;
+                margin: 20px !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                color: #333333 !important;
+                line-height: 1.6 !important;
+                font-size: 14px !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              
+              .header { 
+                text-align: center; 
+                margin-bottom: 30px; 
+                background: #ffffff !important;
+              }
+              
+              .title { 
+                font-size: 24px; 
+                font-weight: bold; 
+                margin-bottom: 10px; 
+                color: #1976d2 !important;
+                background: #ffffff !important;
+              }
+              
+              .subtitle { 
+                font-size: 16px; 
+                color: #666666 !important;
+                background: #ffffff !important;
+              }
+              
+              .info-section { 
+                margin-bottom: 20px; 
+                background: #ffffff !important;
+              }
+              
+              .info-grid { 
+                display: grid; 
+                grid-template-columns: 1fr 1fr; 
+                gap: 15px; 
+                background: #ffffff !important;
+              }
+              
+              .info-item { 
+                margin-bottom: 12px; 
+                background: #ffffff !important;
+              }
+              
+              .label { 
+                font-weight: bold; 
+                color: #333333 !important;
+                background: #ffffff !important;
+              }
+              
+              .value { 
+                margin-left: 10px; 
+                color: #555555 !important;
+                background: #ffffff !important;
+              }
+              
+              .issue-section { 
+                margin: 20px 0; 
+                background: #ffffff !important;
+              }
+              
+              .issue-title { 
+                font-weight: bold; 
+                margin-bottom: 10px; 
+                color: #1976d2 !important; 
+                font-size: 16px;
+                background: #ffffff !important;
+              }
+              
+              .issue-content { 
+                background: #f8f9fa !important; 
+                padding: 15px; 
+                border-radius: 5px; 
+                border: 1px solid #e9ecef !important;
+                color: #333333 !important;
+                line-height: 1.5 !important;
+              }
+              
+              .signature-section { 
+                margin-top: 40px; 
+                text-align: center; 
+                background: #ffffff !important;
+              }
+              
+              .signature-line { 
+                border-top: 1px solid #333333 !important; 
+                width: 200px; 
+                display: inline-block; 
+                margin: 0 20px; 
+                background: #ffffff !important;
+              }
+              
+              .signature-section span {
+                color: #333333 !important;
+                background: #ffffff !important;
+              }
+              
+              @media print { 
+                body { 
+                  margin: 0 !important; 
+                  background: #ffffff !important;
+                  color: #333333 !important;
+                }
+                .title { 
+                  color: #1976d2 !important; 
+                  background: #ffffff !important;
+                }
+                .issue-title { 
+                  color: #1976d2 !important; 
+                  background: #ffffff !important;
+                }
+                * {
+                  background: #ffffff !important;
+                  color: #333333 !important;
+                }
+              }
+              
+              @media screen {
+                body {
+                  background: #ffffff !important;
+                  color: #333333 !important;
+                }
+                * {
+                  background: #ffffff !important;
+                  color: #333333 !important;
+                }
+              }
             </style>
           </head>
           <body>
@@ -1669,7 +1847,11 @@ const DeliveryManagement: React.FC = () => {
       }
     } catch (error) {
       console.error('PDF 변환 중 오류:', error);
-      alert('PDF 변환 중 오류가 발생했습니다.');
+      setSnackbar({
+        open: true,
+        message: 'PDF 변환 중 오류가 발생했습니다.',
+        severity: 'error',
+      });
     }
   };
 
@@ -1707,22 +1889,146 @@ const DeliveryManagement: React.FC = () => {
       <html>
         <head>
           <title>AS신청서</title>
+          <meta charset="UTF-8">
           <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .header { text-align: center; margin-bottom: 30px; }
-            .title { font-size: 24px; font-weight: bold; margin-bottom: 10px; }
-            .subtitle { font-size: 16px; color: #666; }
-            .info-section { margin-bottom: 20px; }
-            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-            .info-item { margin-bottom: 10px; }
-            .label { font-weight: bold; color: #333; }
-            .value { margin-left: 10px; }
-            .issue-section { margin: 20px 0; }
-            .issue-title { font-weight: bold; margin-bottom: 10px; }
-            .issue-content { background: #f5f5f5; padding: 15px; border-radius: 5px; }
-            .signature-section { margin-top: 40px; text-align: center; }
-            .signature-line { border-top: 1px solid #000; width: 200px; display: inline-block; margin: 0 20px; }
-            @media print { body { margin: 0; } }
+            * {
+              box-sizing: border-box;
+              margin: 0;
+              padding: 0;
+            }
+            
+            html, body {
+              font-family: 'Arial', 'Helvetica', sans-serif !important;
+              margin: 20px !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              color: #333333 !important;
+              line-height: 1.6 !important;
+              font-size: 14px !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            
+            .header { 
+              text-align: center; 
+              margin-bottom: 30px; 
+              background: #ffffff !important;
+            }
+            
+            .title { 
+              font-size: 24px; 
+              font-weight: bold; 
+              margin-bottom: 10px; 
+              color: #1976d2 !important;
+              background: #ffffff !important;
+            }
+            
+            .subtitle { 
+              font-size: 16px; 
+              color: #666666 !important;
+              background: #ffffff !important;
+            }
+            
+            .info-section { 
+              margin-bottom: 20px; 
+              background: #ffffff !important;
+            }
+            
+            .info-grid { 
+              display: grid; 
+              grid-template-columns: 1fr 1fr; 
+              gap: 15px; 
+              background: #ffffff !important;
+            }
+            
+            .info-item { 
+              margin-bottom: 12px; 
+              background: #ffffff !important;
+            }
+            
+            .label { 
+              font-weight: bold; 
+              color: #333333 !important;
+              background: #ffffff !important;
+            }
+            
+            .value { 
+              margin-left: 10px; 
+              color: #555555 !important;
+              background: #ffffff !important;
+            }
+            
+            .issue-section { 
+              margin: 20px 0; 
+              background: #ffffff !important;
+            }
+            
+            .issue-title { 
+              font-weight: bold; 
+              margin-bottom: 10px; 
+              color: #1976d2 !important; 
+              font-size: 16px;
+              background: #ffffff !important;
+            }
+            
+            .issue-content { 
+              background: #f8f9fa !important; 
+              padding: 15px; 
+              border-radius: 5px; 
+              border: 1px solid #e9ecef !important;
+              color: #333333 !important;
+              line-height: 1.5 !important;
+            }
+            
+            .signature-section { 
+              margin-top: 40px; 
+              text-align: center; 
+              background: #ffffff !important;
+            }
+            
+            .signature-line { 
+              border-top: 1px solid #333333 !important; 
+              width: 200px; 
+              display: inline-block; 
+              margin: 0 20px; 
+              background: #ffffff !important;
+            }
+            
+            .signature-section span {
+              color: #333333 !important;
+              background: #ffffff !important;
+            }
+            
+            @media print { 
+              body { 
+                margin: 0 !important; 
+                background: #ffffff !important;
+                color: #333333 !important;
+              }
+              .title { 
+                color: #1976d2 !important; 
+                background: #ffffff !important;
+              }
+              .issue-title { 
+                color: #1976d2 !important; 
+                background: #ffffff !important;
+              }
+              * {
+                background: #ffffff !important;
+                color: #333333 !important;
+              }
+            }
+            
+            @media screen {
+              body {
+                background: #ffffff !important;
+                color: #333333 !important;
+              }
+              * {
+                background: #ffffff !important;
+                color: #333333 !important;
+              }
+            }
           </style>
         </head>
         <body>
@@ -1830,26 +2136,153 @@ const DeliveryManagement: React.FC = () => {
     if (!selectedASForPrint) return;
 
     try {
+      const { default: html2canvas } = await import('html2canvas');
+
       const printContent = `
         <!DOCTYPE html>
         <html>
           <head>
             <title>AS신청서</title>
+            <meta charset="UTF-8">
             <style>
-              body { font-family: Arial, sans-serif; margin: 20px; background: white; }
-              .header { text-align: center; margin-bottom: 30px; }
-              .title { font-size: 24px; font-weight: bold; margin-bottom: 10px; }
-              .subtitle { font-size: 16px; color: #666; }
-              .info-section { margin-bottom: 20px; }
-              .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-              .info-item { margin-bottom: 10px; }
-              .label { font-weight: bold; color: #333; }
-              .value { margin-left: 10px; }
-              .issue-section { margin: 20px 0; }
-              .issue-title { font-weight: bold; margin-bottom: 10px; }
-              .issue-content { background: #f5f5f5; padding: 15px; border-radius: 5px; }
-              .signature-section { margin-top: 40px; text-align: center; }
-              .signature-line { border-top: 1px solid #000; width: 200px; display: inline-block; margin: 0 20px; }
+              * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+              }
+              
+              html, body {
+                font-family: 'Arial', 'Helvetica', sans-serif !important;
+                margin: 20px !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                color: #333333 !important;
+                line-height: 1.6 !important;
+                font-size: 14px !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              
+              .header { 
+                text-align: center; 
+                margin-bottom: 30px; 
+                background: #ffffff !important;
+              }
+              
+              .title { 
+                font-size: 24px; 
+                font-weight: bold; 
+                margin-bottom: 10px; 
+                color: #1976d2 !important;
+                background: #ffffff !important;
+              }
+              
+              .subtitle { 
+                font-size: 16px; 
+                color: #666666 !important;
+                background: #ffffff !important;
+              }
+              
+              .info-section { 
+                margin-bottom: 20px; 
+                background: #ffffff !important;
+              }
+              
+              .info-grid { 
+                display: grid; 
+                grid-template-columns: 1fr 1fr; 
+                gap: 15px; 
+                background: #ffffff !important;
+              }
+              
+              .info-item { 
+                margin-bottom: 12px; 
+                background: #ffffff !important;
+              }
+              
+              .label { 
+                font-weight: bold; 
+                color: #333333 !important;
+                background: #ffffff !important;
+              }
+              
+              .value { 
+                margin-left: 10px; 
+                color: #555555 !important;
+                background: #ffffff !important;
+              }
+              
+              .issue-section { 
+                margin: 20px 0; 
+                background: #ffffff !important;
+              }
+              
+              .issue-title { 
+                font-weight: bold; 
+                margin-bottom: 10px; 
+                color: #1976d2 !important; 
+                font-size: 16px;
+                background: #ffffff !important;
+              }
+              
+              .issue-content { 
+                background: #f8f9fa !important; 
+                padding: 15px; 
+                border-radius: 5px; 
+                border: 1px solid #e9ecef !important;
+                color: #333333 !important;
+                line-height: 1.5 !important;
+              }
+              
+              .signature-section { 
+                margin-top: 40px; 
+                text-align: center; 
+                background: #ffffff !important;
+              }
+              
+              .signature-line { 
+                border-top: 1px solid #333333 !important; 
+                width: 200px; 
+                display: inline-block; 
+                margin: 0 20px; 
+                background: #ffffff !important;
+              }
+              
+              .signature-section span {
+                color: #333333 !important;
+                background: #ffffff !important;
+              }
+              
+              @media print { 
+                body { 
+                  margin: 0 !important; 
+                  background: #ffffff !important;
+                  color: #333333 !important;
+                }
+                .title { 
+                  color: #1976d2 !important; 
+                  background: #ffffff !important;
+                }
+                .issue-title { 
+                  color: #1976d2 !important; 
+                  background: #ffffff !important;
+                }
+                * {
+                  background: #ffffff !important;
+                  color: #333333 !important;
+                }
+              }
+              
+              @media screen {
+                body {
+                  background: #ffffff !important;
+                  color: #333333 !important;
+                }
+                * {
+                  background: #ffffff !important;
+                  color: #333333 !important;
+                }
+              }
             </style>
           </head>
           <body>
@@ -1951,7 +2384,6 @@ const DeliveryManagement: React.FC = () => {
         printWindow.document.close();
 
         // html2canvas를 사용하여 JPG로 변환
-        const { default: html2canvas } = await import('html2canvas');
         const canvas = await html2canvas(printWindow.document.body, {
           backgroundColor: '#ffffff',
           scale: 2,
@@ -1966,7 +2398,11 @@ const DeliveryManagement: React.FC = () => {
       }
     } catch (error) {
       console.error('JPG 변환 중 오류:', error);
-      alert('JPG 변환 중 오류가 발생했습니다.');
+      setSnackbar({
+        open: true,
+        message: 'JPG 변환 중 오류가 발생했습니다.',
+        severity: 'error',
+      });
     }
   };
 
@@ -2186,11 +2622,27 @@ const DeliveryManagement: React.FC = () => {
         backgroundColor: 'var(--background-color)',
       }}
     >
-      {/* 검색 조건과 통계 정보 - 한 줄에 배치 */}
-      <Box sx={{ p: 1, backgroundColor: 'var(--surface-color)' }}>
-        <Grid container spacing={1} alignItems="center">
+      {/* 납품관리 제목과 검색 기능 */}
+      <Box sx={{ p: 2, backgroundColor: 'var(--surface-color)', borderBottom: '1px solid var(--border-color)' }}>
+        <Grid container spacing={2} alignItems="center">
+          {/* 납품관리 제목 */}
+          <Grid item xs={12} md={2}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Typography
+                variant="h5"
+                sx={{
+                  color: 'var(--primary-color)',
+                  fontWeight: 'bold',
+                  fontSize: '1.8rem',
+                }}
+              >
+                납품관리
+              </Typography>
+            </Box>
+          </Grid>
+
           {/* 검색창 */}
-          <Grid item xs={12} md={3}>
+          <Grid item xs={12} md={5}>
             <Box
               sx={{
                 display: 'flex',
@@ -2199,12 +2651,12 @@ const DeliveryManagement: React.FC = () => {
                 backgroundColor: 'var(--background-color)',
                 backdropFilter: 'blur(10px)',
                 border: '1px solid var(--border-color)',
-                borderRadius: 1,
-                p: 1,
+                borderRadius: 2,
+                p: 1.5,
                 height: '100%',
               }}
             >
-              <SearchIcon sx={{ color: 'var(--primary-color)', fontSize: '1.2rem' }} />
+              <SearchIcon sx={{ color: 'var(--primary-color)', fontSize: '1.3rem' }} />
               <TextField
                 placeholder="고객명, 프로젝트명, 연락처, 주소로 검색..."
                 variant="outlined"
@@ -2221,7 +2673,7 @@ const DeliveryManagement: React.FC = () => {
                   flex: 1,
                   '& .MuiOutlinedInput-root': {
                     color: 'var(--text-color)',
-                    fontSize: '0.85rem',
+                    fontSize: '0.9rem',
                     '& fieldset': {
                       borderColor: 'var(--border-color)',
                     },
@@ -2245,9 +2697,9 @@ const DeliveryManagement: React.FC = () => {
                 sx={{
                   color: 'var(--text-secondary-color)',
                   borderColor: 'var(--border-color)',
-                  fontSize: '0.75rem',
+                  fontSize: '0.8rem',
                   py: 0.5,
-                  px: 1,
+                  px: 1.5,
                   minWidth: 'auto',
                   '&:hover': {
                     borderColor: 'var(--primary-color)',
@@ -2257,19 +2709,99 @@ const DeliveryManagement: React.FC = () => {
               >
                 초기화
               </Button>
-              <Chip
-                label={`${uniqueDeliveries.length}건`}
-                color="primary"
-                variant="outlined"
-                size="small"
+            </Box>
+          </Grid>
+
+          {/* 통계 정보 */}
+          <Grid item xs={12} md={3}>
+            <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+              <Box
                 sx={{
-                  borderColor: 'var(--primary-color)',
-                  color: 'var(--primary-color)',
-                  fontWeight: 'bold',
-                  fontSize: '0.75rem',
-                  height: '24px',
+                  backgroundColor: 'var(--background-color)',
+                  p: 1,
+                  borderRadius: 1,
+                  textAlign: 'center',
+                  border: '1px solid var(--border-color)',
+                  minWidth: 60,
                 }}
-              />
+              >
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: 'var(--primary-color)',
+                    fontWeight: 'bold',
+                    fontSize: '1.2rem',
+                  }}
+                >
+                  {uniqueDeliveries.length}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{ color: 'var(--text-secondary-color)', fontSize: '0.65rem' }}
+                >
+                  전체
+                </Typography>
+              </Box>
+              <Box
+                sx={{
+                  backgroundColor: 'var(--background-color)',
+                  p: 1,
+                  borderRadius: 1,
+                  textAlign: 'center',
+                  border: '1px solid var(--border-color)',
+                  minWidth: 60,
+                }}
+              >
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: '#ff6b6b',
+                    fontWeight: 'bold',
+                    fontSize: '1.2rem',
+                  }}
+                >
+                  {uniqueDeliveries.filter(d => d.deliveryStatus === '제품준비중').length}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{ color: 'var(--text-secondary-color)', fontSize: '0.65rem' }}
+                >
+                  준비중
+                </Typography>
+              </Box>
+              <Box
+                sx={{
+                  backgroundColor: 'var(--background-color)',
+                  p: 1,
+                  borderRadius: 1,
+                  textAlign: 'center',
+                  border: '1px solid var(--border-color)',
+                  minWidth: 60,
+                }}
+              >
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: '#ff9800',
+                    fontWeight: 'bold',
+                    fontSize: '1.2rem',
+                  }}
+                >
+                  {uniqueDeliveries.filter(d => d.paymentStatus === '미수금').length}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{ color: 'var(--text-secondary-color)', fontSize: '0.65rem' }}
+                >
+                  미수금
+                </Typography>
+              </Box>
+            </Box>
+          </Grid>
+
+          {/* 상태 표시 및 버튼들 */}
+          <Grid item xs={12} md={2}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'flex-end' }}>
               <Chip
                 label={autoScheduleUpdate ? '자동업데이트 ON' : '자동업데이트 OFF'}
                 color={autoScheduleUpdate ? 'success' : 'default'}
@@ -2277,8 +2809,7 @@ const DeliveryManagement: React.FC = () => {
                 size="small"
                 sx={{
                   fontSize: '0.7rem',
-                  height: '20px',
-                  ml: 1,
+                  height: '24px',
                 }}
               />
               <Button
@@ -2287,8 +2818,7 @@ const DeliveryManagement: React.FC = () => {
                 onClick={handleResetDeliveries}
                 sx={{
                   fontSize: '0.7rem',
-                  height: '20px',
-                  ml: 1,
+                  height: '24px',
                   color: 'orange',
                   borderColor: 'orange',
                   '&:hover': {
@@ -2302,177 +2832,10 @@ const DeliveryManagement: React.FC = () => {
             </Box>
           </Grid>
 
-          {/* 전체 시공일정 저장 버튼 */}
-          <Grid item xs={12} md={2}>
-            <Button
-              variant="contained"
-              color="primary"
-              fullWidth
-              onClick={async () => {
-                const deliveriesWithConstructionDate = deliveries.filter(
-                  delivery => delivery.constructionDate
-                );
-                
-                if (deliveriesWithConstructionDate.length === 0) {
-                  setSnackbar({
-                    open: true,
-                    message: '시공일자가 있는 납품이 없습니다.',
-                    severity: 'warning',
-                  });
-                  return;
-                }
-
-                try {
-                  let successCount = 0;
-                  let errorCount = 0;
-
-                  for (const delivery of deliveriesWithConstructionDate) {
-                    try {
-                      await createDetailedSchedule(delivery);
-                      successCount++;
-                    } catch (error) {
-                      console.error(`시공일정 저장 실패 (${delivery.customerName}):`, error);
-                      errorCount++;
-                    }
-                  }
-
-                  if (errorCount === 0) {
-                    setSnackbar({
-                      open: true,
-                      message: `${successCount}개의 시공일정이 스케줄에 저장되었습니다.`,
-                      severity: 'success',
-                    });
-                  } else {
-                    setSnackbar({
-                      open: true,
-                      message: `${successCount}개 성공, ${errorCount}개 실패했습니다.`,
-                      severity: 'warning',
-                    });
-                  }
-                } catch (error) {
-                  console.error('전체 시공일정 저장 실패:', error);
-                  setSnackbar({
-                    open: true,
-                    message: '전체 시공일정 저장에 실패했습니다.',
-                    severity: 'error',
-                  });
-                }
-              }}
-              sx={{
-                backgroundColor: 'var(--primary-color)',
-                '&:hover': { backgroundColor: '#33a3cc' },
-                height: '100%',
-                fontSize: '0.8rem',
-              }}
-            >
-              전체 시공일정 저장
-            </Button>
-          </Grid>
-
-          {/* 통계 정보 - 좌측 정렬 */}
-          <Grid item xs={3} md={1.5}>
-            <Box
-              sx={{
-                backgroundColor: 'var(--background-color)',
-                p: 1,
-                borderRadius: 1,
-                textAlign: 'left',
-                border: '1px solid var(--border-color)',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'flex-start',
-              }}
-            >
-              <Typography
-                variant="h6"
-                sx={{
-                  color: 'var(--primary-color)',
-                  fontWeight: 'bold',
-                  fontSize: '1.5rem',
-                }}
-              >
-                {uniqueDeliveries.length}
-              </Typography>
-              <Typography
-                variant="caption"
-                sx={{ color: 'var(--text-secondary-color)', fontSize: '0.7rem' }}
-              >
-                전체
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={3} md={1.5}>
-            <Box
-              sx={{
-                backgroundColor: 'var(--background-color)',
-                p: 1,
-                borderRadius: 1,
-                textAlign: 'left',
-                border: '1px solid var(--border-color)',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'flex-start',
-              }}
-            >
-              <Typography
-                variant="h6"
-                sx={{
-                  color: '#ff6b6b',
-                  fontWeight: 'bold',
-                  fontSize: '1.5rem',
-                }}
-              >
-                {uniqueDeliveries.filter(d => d.deliveryStatus === '제품준비중').length}
-              </Typography>
-              <Typography
-                variant="caption"
-                sx={{ color: 'var(--text-secondary-color)', fontSize: '0.7rem' }}
-              >
-                준비중
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={3} md={1.5}>
-            <Box
-              sx={{
-                backgroundColor: 'var(--background-color)',
-                p: 1,
-                borderRadius: 1,
-                textAlign: 'left',
-                border: '1px solid var(--border-color)',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'flex-start',
-              }}
-            >
-              <Typography
-                variant="h6"
-                sx={{
-                  color: '#ff9800',
-                  fontWeight: 'bold',
-                  fontSize: '1.5rem',
-                }}
-              >
-                {uniqueDeliveries.filter(d => d.paymentStatus === '미수금').length}
-              </Typography>
-              <Typography
-                variant="caption"
-                sx={{ color: 'var(--text-secondary-color)', fontSize: '0.7rem' }}
-              >
-                미수금
-              </Typography>
-            </Box>
-          </Grid>
-
-
         </Grid>
       </Box>
+
+
 
       {/* 납품 목록 */}
       <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
@@ -2483,18 +2846,22 @@ const DeliveryManagement: React.FC = () => {
               expanded={expandedDelivery === delivery.id}
               sx={{
                 mb: 3,
-                backgroundColor: '#2d2d2d',
+                backgroundColor: (document.documentElement.getAttribute('data-theme') === 'light') ? 'var(--surface-color)' : '#2d2d2d',
                 color: 'var(--text-color)',
                 '&:before': { display: 'none' },
                 borderRadius: 3,
                 overflow: 'hidden',
-                boxShadow:
-                  '0 8px 32px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2)',
-                border: '1px solid rgba(255,255,255,0.05)',
+                boxShadow: (document.documentElement.getAttribute('data-theme') === 'light') 
+                  ? '0 4px 12px rgba(0,0,0,0.1), 0 2px 8px rgba(0,0,0,0.08)'
+                  : '0 8px 32px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2)',
+                border: (document.documentElement.getAttribute('data-theme') === 'light') 
+                  ? '1px solid var(--border-color)'
+                  : '1px solid rgba(255,255,255,0.05)',
                 transition: 'all 0.3s ease-in-out',
                 '&:hover': {
-                  boxShadow:
-                    '0 12px 40px rgba(0,0,0,0.4), 0 6px 20px rgba(0,0,0,0.3)',
+                  boxShadow: (document.documentElement.getAttribute('data-theme') === 'light')
+                    ? '0 6px 16px rgba(0,0,0,0.15), 0 3px 10px rgba(0,0,0,0.1)'
+                    : '0 12px 40px rgba(0,0,0,0.4), 0 6px 20px rgba(0,0,0,0.3)',
                   transform: 'translateY(-2px)',
                 },
               }}
@@ -2540,16 +2907,16 @@ const DeliveryManagement: React.FC = () => {
                 }}
                 sx={{
                   '&:hover': {
-                    backgroundColor: 'rgba(255,255,255,0.05)',
+                    backgroundColor: (document.documentElement.getAttribute('data-theme') === 'light') ? 'var(--hover-color)' : 'rgba(255,255,255,0.05)',
                     backdropFilter: 'blur(10px)',
                   },
                   cursor: 'pointer',
                   transition: 'all 0.3s ease-in-out',
                   '&:active': {
-                    backgroundColor: 'rgba(255,255,255,0.08)',
+                    backgroundColor: (document.documentElement.getAttribute('data-theme') === 'light') ? 'var(--hover-color)' : 'rgba(255,255,255,0.08)',
                     transform: 'scale(0.98)',
                   },
-                  borderBottom: '1px solid rgba(255,255,255,0.05)',
+                  borderBottom: (document.documentElement.getAttribute('data-theme') === 'light') ? '1px solid var(--border-color)' : '1px solid rgba(255,255,255,0.05)',
                   minHeight: '80px !important',
                   '& .MuiAccordionSummary-content': {
                     margin: '16px 0',
@@ -2568,28 +2935,52 @@ const DeliveryManagement: React.FC = () => {
                       sx={{
                         color: 'var(--text-color)',
                         mb: 1,
-                        fontSize: 'calc(1.25rem + 1.5px)',
+                        fontSize: 'calc(1.25rem + 2.5px)',
                       }}
                     >
                       고객정보
                     </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        color: 'var(--secondary-text-color)',
-                        fontSize: 'calc(0.875rem + 1.5px)',
-                      }}
-                    >
-                      프로젝트: {delivery.projectName}
-                      {delivery.projectType &&
-                        `, 타입: ${delivery.projectType}`}
-                      <br />
-                      고객명: {delivery.customerName}
-                      <br />
-                      연락처: {delivery.contact}
-                      <br />
-                      주소: {delivery.address}
-                    </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: 'var(--secondary-text-color)',
+                          fontSize: 'calc(0.875rem + 2.5px)',
+                        }}
+                      >
+                        프로젝트: {delivery.projectName}
+                        {delivery.projectType &&
+                          `, 타입: ${delivery.projectType}`}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: 'var(--secondary-text-color)',
+                          fontSize: 'calc(0.875rem + 2.5px)',
+                        }}
+                      >
+                        고객명: {delivery.customerName}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: 'var(--secondary-text-color)',
+                          fontSize: 'calc(0.875rem + 2.5px)',
+                        }}
+                      >
+                        연락처: {delivery.contact}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: 'var(--primary-color)',
+                          fontSize: 'calc(0.875rem + 3.5px)',
+                          fontWeight: '500',
+                        }}
+                      >
+                        주소: {delivery.address}
+                      </Typography>
+                    </Box>
                   </Grid>
 
                   {/* 좌측: 시공정보 */}
@@ -2674,12 +3065,37 @@ const DeliveryManagement: React.FC = () => {
                         </Grid>
                         <Grid item xs={6}>
                           <FormControl size="small" fullWidth>
-                            <InputLabel id={`worker-select-label-${delivery.id}`}>시공자명</InputLabel>
+                            <InputLabel 
+                              id={`worker-select-label-${delivery.id}`}
+                              sx={{
+                                color: 'var(--text-color)',
+                                '&.Mui-focused': {
+                                  color: 'var(--primary-color)',
+                                },
+                              }}
+                            >
+                              시공자명
+                            </InputLabel>
                             <Select
                               labelId={`worker-select-label-${delivery.id}`}
                               value={delivery.constructionWorker || ''}
                               label="시공자명"
                               data-clickable="true"
+                              sx={{
+                                color: 'var(--text-color)',
+                                '& .MuiOutlinedInput-notchedOutline': {
+                                  borderColor: 'var(--border-color)',
+                                },
+                                '&:hover .MuiOutlinedInput-notchedOutline': {
+                                  borderColor: 'var(--primary-color)',
+                                },
+                                '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                                  borderColor: 'var(--primary-color)',
+                                },
+                                '& .MuiSelect-icon': {
+                                  color: 'var(--text-color)',
+                                },
+                              }}
                               onChange={e => {
                                 // Firebase 시공자 데이터에서 먼저 찾기
                                 let selected = firebaseWorkers.find((w: any) => w.name === e.target.value);
@@ -2712,12 +3128,29 @@ const DeliveryManagement: React.FC = () => {
                                 }
                               }}
                             >
-                              <MenuItem value="">
+                              <MenuItem 
+                                value=""
+                                sx={{
+                                  color: 'var(--text-color)',
+                                  '&:hover': {
+                                    backgroundColor: 'var(--hover-color)',
+                                  },
+                                }}
+                              >
                                 <em>선택없음</em>
                               </MenuItem>
                               {/* Firebase 시공자 데이터 우선 표시 */}
                               {firebaseWorkers.map((w: any) => (
-                                <MenuItem key={w.id} value={w.name}>
+                                <MenuItem 
+                                  key={w.id} 
+                                  value={w.name}
+                                  sx={{
+                                    color: 'var(--text-color)',
+                                    '&:hover': {
+                                      backgroundColor: 'var(--hover-color)',
+                                    },
+                                  }}
+                                >
                                   {w.name} 🔥
                                 </MenuItem>
                               ))}
@@ -2725,7 +3158,16 @@ const DeliveryManagement: React.FC = () => {
                               {workers.filter((w: any) => 
                                 !firebaseWorkers.some((fw: any) => fw.name === w.name && fw.phone === w.phone)
                               ).map((w: any) => (
-                                <MenuItem key={w.id} value={w.name}>
+                                <MenuItem 
+                                  key={w.id} 
+                                  value={w.name}
+                                  sx={{
+                                    color: 'var(--text-color)',
+                                    '&:hover': {
+                                      backgroundColor: 'var(--hover-color)',
+                                    },
+                                  }}
+                                >
                                   {w.name} 💾
                                 </MenuItem>
                               ))}
@@ -2985,21 +3427,54 @@ const DeliveryManagement: React.FC = () => {
 
                   {/* 우측: 금액정보 */}
                   <Grid item xs={12} md={2.5}>
-                    <Typography
-                      variant="h6"
+                    <Box
                       sx={{
-                        color: 'var(--text-color)',
-                        mb: 1,
-                        fontSize: 'calc(1.25rem + 1.5px)',
+                        mt: 2,
+                        mb: 2,
+                        p: 2,
+                        backgroundColor: 'var(--surface-color)',
+                        borderRadius: 2,
+                        border: '1px solid var(--border-color)',
+                        boxShadow: (document.documentElement.getAttribute('data-theme') === 'light')
+                          ? '0 2px 8px rgba(0,0,0,0.1)'
+                          : '0 4px 16px rgba(0,0,0,0.3)',
+                        transition: 'all 0.3s ease-in-out',
+                        '&:hover': {
+                          boxShadow: (document.documentElement.getAttribute('data-theme') === 'light')
+                            ? '0 4px 12px rgba(0,0,0,0.15)'
+                            : '0 6px 20px rgba(0,0,0,0.4)',
+                        },
                       }}
                     >
-                      금액정보
+                    <Typography
+                        variant="subtitle1"
+                      sx={{
+                          color: 'var(--primary-color)',
+                          mb: 2,
+                          fontSize: '1rem',
+                          fontWeight: 'bold',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                        }}
+                      >
+                        💰 금액정보
                     </Typography>
+                      <Box
+                        sx={{
+                          p: 2,
+                          backgroundColor: 'var(--background-color)',
+                          borderRadius: 1,
+                          border: '1px solid var(--border-color)',
+                          mb: 2,
+                        }}
+                      >
                     <Typography
                       variant="body2"
                       sx={{
-                        color: 'var(--secondary-text-color)',
-                        fontSize: 'calc(0.875rem + 1.5px)',
+                            color: 'var(--text-color)',
+                            fontSize: 'calc(0.85rem + 1px)',
+                            lineHeight: 1.4,
                         mb: 1,
                       }}
                     >
@@ -3009,6 +3484,7 @@ const DeliveryManagement: React.FC = () => {
                       원<br />
                       잔액: {(delivery.remainingAmount || 0).toLocaleString()}원
                     </Typography>
+                      </Box>
                     <Button
                       variant="contained"
                       size="small"
@@ -3026,6 +3502,7 @@ const DeliveryManagement: React.FC = () => {
                     >
                       수금입력
                     </Button>
+                    </Box>
                   </Grid>
 
                   {/* 우측: MEMO 박스 */}
@@ -3133,14 +3610,22 @@ const DeliveryManagement: React.FC = () => {
                       <Box
                         sx={{
                           display: 'flex',
-                          gap: 1,
+                          flexDirection: 'row',
+                          gap: 2,
                           flexWrap: 'wrap',
                           justifyContent: 'flex-start',
+                          alignItems: 'center',
+                          mt: 2,
+                          p: 2,
+                          backgroundColor: 'rgba(255,255,255,0.05)',
+                          borderRadius: 2,
+                          border: '1px solid rgba(255,255,255,0.1)',
                         }}
                       >
+                        {/* 납품 상태 버튼 */}
                         <Button
                           variant="contained"
-                          size="small"
+                          size="medium"
                           color={delivery.deliveryStatus === '납품완료' ? 'success' : 'primary'}
                           data-clickable="true"
                           onClick={e => {
@@ -3150,12 +3635,17 @@ const DeliveryManagement: React.FC = () => {
                               delivery.deliveryStatus === '납품완료' ? '제품준비중' : '납품완료'
                             );
                           }}
+                          startIcon={delivery.deliveryStatus === '납품완료' ? <CheckCircleIcon /> : <PendingIcon />}
                           sx={{
-                            mt: 1,
-                            minWidth: 120,
+                            minWidth: 140,
                             fontWeight: 'bold',
-                            fontSize: '1rem',
-                            transition: 'all 0.2s',
+                            fontSize: '0.9rem',
+                            transition: 'all 0.3s ease',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                            '&:hover': {
+                              transform: 'translateY(-2px)',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                            },
                             ...(delivery.deliveryStatus === '납품완료' && {
                               backgroundColor: '#2e7d32',
                               color: '#fff',
@@ -3165,46 +3655,38 @@ const DeliveryManagement: React.FC = () => {
                         >
                           {delivery.deliveryStatus === '납품완료' ? '납품완료' : '납품대기'}
                         </Button>
-                        <IconButton
-                          size="small"
+
+                        {/* AS 접수 버튼 */}
+                        <Button
+                          variant="outlined"
+                          size="medium"
                           color="warning"
                           data-clickable="true"
                           onClick={e => {
                             e.stopPropagation();
                             handleASClick(delivery);
                           }}
-                          title="AS 접수"
+                          startIcon={<BuildIcon />}
                           sx={{
-                            transition: 'all 0.2s ease-in-out',
+                            minWidth: 120,
+                            fontWeight: 'bold',
+                            fontSize: '0.9rem',
+                            borderWidth: 2,
+                            transition: 'all 0.3s ease',
                             '&:hover': {
-                              transform: 'scale(1.1)',
+                              transform: 'translateY(-2px)',
                               backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                              borderColor: '#ff9800',
                             },
                           }}
                         >
-                          <BuildIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          data-clickable="true"
-                          onClick={e => {
-                            e.stopPropagation();
-                            handleDeleteClick(delivery);
-                          }}
-                          title="삭제"
-                          sx={{
-                            transition: 'all 0.2s ease-in-out',
-                            '&:hover': {
-                              transform: 'scale(1.1)',
-                              backgroundColor: 'rgba(244, 67, 54, 0.1)',
-                            },
-                          }}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
+                          AS 접수
+                        </Button>
+
+                        {/* 발주서 확인 버튼 */}
+                        <Button
+                          variant="outlined"
+                          size="medium"
                           color="info"
                           data-clickable="true"
                           onClick={() => {
@@ -3215,17 +3697,49 @@ const DeliveryManagement: React.FC = () => {
                             );
                             setOrderDetailModalGroup(projectOrders);
                           }}
-                          title="발주서 확인"
+                          startIcon={<AssignmentIcon />}
                           sx={{
-                            transition: 'all 0.2s ease-in-out',
+                            minWidth: 140,
+                            fontWeight: 'bold',
+                            fontSize: '0.9rem',
+                            borderWidth: 2,
+                            transition: 'all 0.3s ease',
                             '&:hover': {
-                              transform: 'scale(1.1)',
+                              transform: 'translateY(-2px)',
                               backgroundColor: 'rgba(64, 196, 255, 0.1)',
+                              borderColor: '#40c4ff',
                             },
                           }}
                         >
-                          <AssignmentIcon />
-                        </IconButton>
+                          발주서 확인
+                        </Button>
+
+                        {/* 삭제 버튼 */}
+                        <Button
+                          variant="outlined"
+                          size="medium"
+                          color="error"
+                          data-clickable="true"
+                          onClick={e => {
+                            e.stopPropagation();
+                            handleDeleteClick(delivery);
+                          }}
+                          startIcon={<DeleteIcon />}
+                          sx={{
+                            minWidth: 100,
+                            fontWeight: 'bold',
+                            fontSize: '0.9rem',
+                            borderWidth: 2,
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                              transform: 'translateY(-2px)',
+                              backgroundColor: 'rgba(244, 67, 54, 0.1)',
+                              borderColor: '#f44336',
+                            },
+                          }}
+                        >
+                          삭제
+                        </Button>
                       </Box>
                     </Box>
                   </Grid>
@@ -3245,14 +3759,43 @@ const DeliveryManagement: React.FC = () => {
                   <Box sx={{ mb: 4 }}>
                     <Box
                       sx={{
+                        mt: 2,
+                        mb: 2,
+                        p: 2,
+                        backgroundColor: 'var(--surface-color)',
+                        borderRadius: 2,
+                        border: '1px solid var(--border-color)',
+                        boxShadow: (document.documentElement.getAttribute('data-theme') === 'light')
+                          ? '0 2px 8px rgba(0,0,0,0.1)'
+                          : '0 4px 16px rgba(0,0,0,0.3)',
+                        transition: 'all 0.3s ease-in-out',
+                        '&:hover': {
+                          boxShadow: (document.documentElement.getAttribute('data-theme') === 'light')
+                            ? '0 4px 12px rgba(0,0,0,0.15)'
+                            : '0 6px 20px rgba(0,0,0,0.4)',
+                        },
+                      }}
+                    >
+                    <Box
+                      sx={{
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
                         mb: 2,
                       }}
                     >
-                      <Typography variant="subtitle1" sx={{ color: 'var(--primary-color)' }}>
-                        📦 제품 상세 정보 (견적서 양식)
+                        <Typography 
+                          variant="subtitle1" 
+                          sx={{ 
+                            color: 'var(--primary-color)',
+                            fontSize: 'calc(1rem + 1.5px)',
+                            fontWeight: 'bold',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1,
+                          }}
+                        >
+                        📦 제품 상세 정보
                       </Typography>
 
                       {/* 컬럼 설정 버튼 */}
@@ -3297,7 +3840,7 @@ const DeliveryManagement: React.FC = () => {
                             fontSize: 'calc(0.875rem + 1px)',
                           }}
                         >
-                          🔧 컬럼 표시 설정
+                          컬럼 표시 설정
                         </Typography>
                         <Grid container spacing={2}>
                           {FILTER_FIELDS.map(field => (
@@ -3406,7 +3949,7 @@ const DeliveryManagement: React.FC = () => {
                           <TableRow>
                             <TableCell
                               sx={{
-                                backgroundColor: 'rgba(0,0,0,0.8)',
+                                backgroundColor: (document.documentElement.getAttribute('data-theme') === 'light') ? 'var(--surface-color)' : 'rgba(0,0,0,0.8)',
                                 color: 'var(--text-color)',
                                 fontWeight: 'bold',
                                 borderBottom: '1px solid rgba(255,255,255,0.1)',
@@ -3618,6 +4161,7 @@ const DeliveryManagement: React.FC = () => {
                       </Table>
                     </TableContainer>
                   </Box>
+                  </Box>
 
                   {/* 견적/계약관리 금액 정보: 제품 상세 정보 테이블 아래, 수금기록 위 */}
                   <Box
@@ -3635,7 +4179,7 @@ const DeliveryManagement: React.FC = () => {
                     <Box
                       sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}
                     >
-                      <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)' }}>
+                      <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', fontSize: 'calc(0.875rem + 1.5px)' }}>
                         소비자금액:{' '}
                         {(delivery.items || [])
                           .reduce((sum, item) => {
@@ -3704,7 +4248,7 @@ const DeliveryManagement: React.FC = () => {
                           .toLocaleString()}
                         원
                       </Typography>
-                      <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)' }}>
+                      <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', fontSize: 'calc(0.875rem + 1.5px)' }}>
                         할인금액:{' '}
                         {(delivery.discountAmount || 0).toLocaleString()}원
                       </Typography>
@@ -3714,12 +4258,12 @@ const DeliveryManagement: React.FC = () => {
                     >
                       <Typography
                         variant="body2"
-                        sx={{ color: 'var(--primary-color)', fontWeight: 'bold' }}
+                        sx={{ color: 'var(--primary-color)', fontWeight: 'bold', fontSize: 'calc(0.875rem + 1.5px)' }}
                       >
                         할인후금액:{' '}
                         {(delivery.finalAmount || 0).toLocaleString()}원
                       </Typography>
-                      <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)' }}>
+                      <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', fontSize: 'calc(0.875rem + 1.5px)' }}>
                         결제상태: {delivery.paymentStatus}
                       </Typography>
                     </Box>
@@ -3731,151 +4275,79 @@ const DeliveryManagement: React.FC = () => {
                       sx={{
                         mt: 2,
                         mb: 2,
-                        p: 1.5,
-                        background: 'rgba(255, 152, 0, 0.05)',
-                        borderRadius: 1,
-                        border: '1px solid rgba(255, 152, 0, 0.2)',
+                        p: 2,
+                        backgroundColor: 'var(--surface-color)',
+                        borderRadius: 2,
+                        border: '1px solid var(--border-color)',
+                        boxShadow: (document.documentElement.getAttribute('data-theme') === 'light')
+                          ? '0 2px 8px rgba(0,0,0,0.1)'
+                          : '0 4px 16px rgba(0,0,0,0.3)',
+                        transition: 'all 0.3s ease-in-out',
+                        '&:hover': {
+                          boxShadow: (document.documentElement.getAttribute('data-theme') === 'light')
+                            ? '0 4px 12px rgba(0,0,0,0.15)'
+                            : '0 6px 20px rgba(0,0,0,0.4)',
+                        },
                       }}
                     >
                       <Typography
-                        variant="subtitle2"
+                        variant="subtitle1"
                         sx={{
-                          color: '#ff9800',
-                          mb: 1,
-                          fontSize: '0.9rem',
+                          color: 'var(--primary-color)',
+                          mb: 2,
+                          fontSize: '1rem',
                           fontWeight: 'bold',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
                         }}
                       >
                         🚇 레일 정보
                       </Typography>
-                      <TableContainer
-                        component={Paper}
+                      <Box
                         sx={{
-                          backgroundColor: 'rgba(0,0,0,0.1)',
+                          backgroundColor: 'var(--background-color)',
                           borderRadius: 1,
+                          border: '1px solid var(--border-color)',
+                          p: 2,
                         }}
                       >
-                        <Table size="small">
-                          <TableHead>
-                            <TableRow
-                              sx={{ backgroundColor: 'rgba(255, 152, 0, 0.1)' }}
-                            >
-                              <TableCell
+                        {(delivery.railItems || []).map(
+                          (railItem, index) => {
+                            const calculatedLength = calculateRailLength(
+                              railItem.specification ||
+                                railItem.details ||
+                                ''
+                            );
+                            return (
+                              <Typography
+                                key={index}
+                                variant="body2"
                                 sx={{
-                                  color: '#ff9800',
-                                  fontWeight: 'bold',
-                                  fontSize: '0.8rem',
-                                  py: 0.5,
+                                  color: 'var(--text-color)',
+                                  fontSize: 'calc(0.875rem + 1px)',
+                                  mb: 1,
+                                  lineHeight: 1.5,
                                 }}
                               >
-                                세부내용
-                              </TableCell>
-                              <TableCell
-                                sx={{
-                                  color: '#ff9800',
-                                  fontWeight: 'bold',
-                                  fontSize: '0.8rem',
-                                  py: 0.5,
-                                }}
-                              >
-                                자수
-                              </TableCell>
-                              <TableCell
-                                sx={{
-                                  color: '#ff9800',
-                                  fontWeight: 'bold',
-                                  fontSize: '0.8rem',
-                                  py: 0.5,
-                                }}
-                              >
-                                단가
-                              </TableCell>
-                              <TableCell
-                                sx={{
-                                  color: '#ff9800',
-                                  fontWeight: 'bold',
-                                  fontSize: '0.8rem',
-                                  py: 0.5,
-                                }}
-                              >
-                                금액
-                              </TableCell>
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {(delivery.railItems || []).map(
-                              (railItem, index) => {
-                                const calculatedLength = calculateRailLength(
-                                  railItem.specification ||
-                                    railItem.details ||
-                                    ''
-                                );
-                                return (
-                                  <TableRow
-                                    key={index}
-                                    sx={{
-                                      '&:hover': {
-                                        backgroundColor:
-                                          'rgba(255, 152, 0, 0.03)',
-                                      },
-                                    }}
-                                  >
-                                    <TableCell
-                                      sx={{
-                                        color: 'var(--text-color)',
-                                        fontSize: '0.8rem',
-                                        py: 0.5,
-                                      }}
-                                    >
-                                      {railItem.specification ||
-                                        railItem.details ||
-                                        '레일'}
-                                    </TableCell>
-                                    <TableCell
-                                      sx={{
-                                        color: 'var(--text-color)',
-                                        fontSize: '0.8rem',
-                                        py: 0.5,
-                                      }}
-                                    >
-                                      {calculatedLength}자
-                                    </TableCell>
-                                    <TableCell
-                                      sx={{
-                                        color: 'var(--text-color)',
-                                        fontSize: '0.8rem',
-                                        py: 0.5,
-                                      }}
-                                    >
-                                      500원
-                                    </TableCell>
-                                    <TableCell
-                                      sx={{
-                                        color: 'var(--text-color)',
-                                        fontSize: '0.8rem',
-                                        py: 0.5,
-                                        fontWeight: 'bold',
-                                      }}
-                                    >
-                                      {(
-                                        calculatedLength * 500
-                                      ).toLocaleString()}
-                                      원
-                                    </TableCell>
-                                  </TableRow>
-                                );
-                              }
-                            )}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
+                                {railItem.specification ||
+                                  railItem.details ||
+                                  '레일'}: {calculatedLength}자, {(
+                                    calculatedLength * 500
+                                  ).toLocaleString()}원
+                              </Typography>
+                            );
+                          }
+                        )}
+                      </Box>
                       <Typography
                         variant="caption"
                         sx={{
-                          color: '#ff9800',
-                          mt: 0.5,
+                          color: 'var(--text-secondary-color)',
+                          mt: 1,
                           display: 'block',
-                          fontSize: '0.7rem',
+                          fontSize: '0.75rem',
+                          fontStyle: 'italic',
                         }}
                       >
                         * 서비스 품목 (500원/자)
@@ -3885,9 +4357,36 @@ const DeliveryManagement: React.FC = () => {
 
                   {/* 수금기록 */}
                   <Grid item xs={12}>
+                    <Box
+                      sx={{
+                        mt: 2,
+                        mb: 2,
+                        p: 2,
+                        backgroundColor: 'var(--surface-color)',
+                        borderRadius: 2,
+                        border: '1px solid var(--border-color)',
+                        boxShadow: (document.documentElement.getAttribute('data-theme') === 'light')
+                          ? '0 2px 8px rgba(0,0,0,0.1)'
+                          : '0 4px 16px rgba(0,0,0,0.3)',
+                        transition: 'all 0.3s ease-in-out',
+                        '&:hover': {
+                          boxShadow: (document.documentElement.getAttribute('data-theme') === 'light')
+                            ? '0 4px 12px rgba(0,0,0,0.15)'
+                            : '0 6px 20px rgba(0,0,0,0.4)',
+                        },
+                      }}
+                    >
                     <Typography
                       variant="subtitle1"
-                      sx={{ color: 'var(--primary-color)', mb: 1 }}
+                        sx={{
+                          color: 'var(--primary-color)',
+                          mb: 2,
+                          fontSize: '1rem',
+                          fontWeight: 'bold',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                        }}
                     >
                       💰 수금기록
                     </Typography>
@@ -3899,18 +4398,21 @@ const DeliveryManagement: React.FC = () => {
                           sx={{
                             mb: 1,
                             p: 2,
-                            backgroundColor: 'rgba(255,255,255,0.05)',
-                            borderRadius: 2,
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            backdropFilter: 'blur(5px)',
+                              backgroundColor: 'var(--background-color)',
+                              borderRadius: 1,
+                              border: '1px solid var(--border-color)',
                             transition: 'all 0.2s ease-in-out',
                             '&:hover': {
-                              backgroundColor: 'rgba(255,255,255,0.08)',
+                                backgroundColor: 'var(--hover-color)',
                               transform: 'translateX(4px)',
                             },
                           }}
                         >
-                          <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)' }}>
+                            <Typography variant="body2" sx={{ 
+                              color: 'var(--text-color)', 
+                              fontSize: '0.85rem',
+                              lineHeight: 1.4,
+                            }}>
                             {record.date} {record.time} -{' '}
                             {record.amount.toLocaleString()}원 ({record.method})
                             {record.note && <br />}
@@ -3923,32 +4425,61 @@ const DeliveryManagement: React.FC = () => {
                         </Box>
                       ))
                     ) : (
-                      <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)' }}>
+                        <Typography variant="body2" sx={{ 
+                          color: 'var(--text-secondary-color)', 
+                          fontSize: '0.85rem',
+                          fontStyle: 'italic',
+                        }}>
                         수금기록이 없습니다.
                       </Typography>
                     )}
+                    </Box>
                   </Grid>
 
                   {/* 서류기록 */}
                   <Grid item xs={12}>
+                    <Box
+                      sx={{
+                        mt: 2,
+                        mb: 2,
+                        p: 2,
+                        backgroundColor: 'var(--surface-color)',
+                        borderRadius: 2,
+                        border: '1px solid var(--border-color)',
+                        boxShadow: (document.documentElement.getAttribute('data-theme') === 'light')
+                          ? '0 2px 8px rgba(0,0,0,0.1)'
+                          : '0 4px 16px rgba(0,0,0,0.3)',
+                        transition: 'all 0.3s ease-in-out',
+                        '&:hover': {
+                          boxShadow: (document.documentElement.getAttribute('data-theme') === 'light')
+                            ? '0 4px 12px rgba(0,0,0,0.15)'
+                            : '0 6px 20px rgba(0,0,0,0.4)',
+                        },
+                      }}
+                    >
                     <Typography
                       variant="subtitle1"
-                      sx={{ color: 'var(--primary-color)', mb: 1 }}
+                        sx={{
+                          color: 'var(--primary-color)',
+                          mb: 2,
+                          fontSize: 'calc(1rem + 1.5px)',
+                          fontWeight: 'bold',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                        }}
                     >
                       📄 서류기록
                     </Typography>
                     <Box
                       sx={{
-                        mb: 1,
-                        p: 2,
-                        backgroundColor: 'rgba(255,255,255,0.05)',
-                        borderRadius: 2,
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        backdropFilter: 'blur(5px)',
+                          p: 2,
+                          backgroundColor: 'var(--background-color)',
+                          borderRadius: 1,
+                          border: '1px solid var(--border-color)',
                         transition: 'all 0.2s ease-in-out',
                         '&:hover': {
-                          backgroundColor: 'rgba(255,255,255,0.08)',
-                          transform: 'translateX(4px)',
+                            backgroundColor: 'var(--hover-color)',
                         },
                       }}
                     >
@@ -4007,32 +4538,50 @@ const DeliveryManagement: React.FC = () => {
                           >
                             <Typography
                               variant="body2"
-                              sx={{ color: 'var(--secondary-text-color)' }}
+                                sx={{ 
+                                  color: 'var(--text-color)', 
+                                  fontSize: '0.85rem',
+                                  lineHeight: 1.4,
+                                }}
                             >
                               <b>견적일자:</b> {estimate?.estimateDate || '-'}
                             </Typography>
                             <Typography
                               variant="body2"
-                              sx={{ color: 'var(--secondary-text-color)' }}
+                                sx={{ 
+                                  color: 'var(--text-color)', 
+                                  fontSize: '0.85rem',
+                                  lineHeight: 1.4,
+                                }}
                             >
                               <b>견적번호:</b> {estimate?.estimateNo || '-'}
                             </Typography>
                             <Typography
                               variant="body2"
-                              sx={{ color: 'var(--secondary-text-color)' }}
+                                sx={{ 
+                                  color: 'var(--text-color)', 
+                                  fontSize: '0.85rem',
+                                  lineHeight: 1.4,
+                                }}
                             >
                               <b>계약일자:</b> {contract?.contractDate || '-'}
                             </Typography>
                             <Typography
                               variant="body2"
-                              sx={{ color: 'var(--secondary-text-color)' }}
+                                sx={{ 
+                                  color: 'var(--text-color)', 
+                                  fontSize: '0.85rem',
+                                  lineHeight: 1.4,
+                                }}
                             >
                               <b>계약번호:</b> {contract?.contractNo || '-'}
                             </Typography>
                             <Typography
                               variant="body2"
                               sx={{
-                                color: 'var(--secondary-text-color)',
+                                  color: 'var(--text-color)',
+                                  fontSize: '0.85rem',
+                                  lineHeight: 1.4,
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: 1,
@@ -4068,17 +4617,45 @@ const DeliveryManagement: React.FC = () => {
                           </Box>
                         );
                       })()}
+                      </Box>
                     </Box>
                   </Grid>
 
                   {/* AS 기록 */}
                   {delivery.asRecords && delivery.asRecords.length > 0 && (
-                    <Box sx={{ mt: 3 }}>
+                    <Grid item xs={12}>
+                      <Box
+                        sx={{
+                          mt: 2,
+                          mb: 2,
+                          p: 2,
+                          backgroundColor: 'var(--surface-color)',
+                          borderRadius: 2,
+                          border: '1px solid var(--border-color)',
+                          boxShadow: (document.documentElement.getAttribute('data-theme') === 'light')
+                            ? '0 2px 8px rgba(0,0,0,0.1)'
+                            : '0 4px 16px rgba(0,0,0,0.3)',
+                          transition: 'all 0.3s ease-in-out',
+                          '&:hover': {
+                            boxShadow: (document.documentElement.getAttribute('data-theme') === 'light')
+                              ? '0 4px 12px rgba(0,0,0,0.15)'
+                              : '0 6px 20px rgba(0,0,0,0.4)',
+                          },
+                        }}
+                      >
                       <Typography
                         variant="subtitle1"
-                        sx={{ color: '#ff9800', mb: 1 }}
+                          sx={{
+                            color: 'var(--primary-color)',
+                            mb: 2,
+                            fontSize: 'calc(1rem + 1.5px)',
+                            fontWeight: 'bold',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1,
+                          }}
                       >
-                        🔧 AS 기록
+                        AS 기록
                       </Typography>
                       {delivery.asRecords.map((asRecord, index) => (
                         <Box
@@ -4086,13 +4663,12 @@ const DeliveryManagement: React.FC = () => {
                           sx={{
                             mb: 1,
                             p: 2,
-                            backgroundColor: 'rgba(255,255,255,0.05)',
-                            borderRadius: 2,
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            backdropFilter: 'blur(5px)',
+                              backgroundColor: 'var(--background-color)',
+                              borderRadius: 1,
+                              border: '1px solid var(--border-color)',
                             transition: 'all 0.2s ease-in-out',
                             '&:hover': {
-                              backgroundColor: 'rgba(255,255,255,0.08)',
+                                backgroundColor: 'var(--hover-color)',
                               transform: 'translateX(4px)',
                             },
                           }}
@@ -4107,7 +4683,12 @@ const DeliveryManagement: React.FC = () => {
                           >
                             <Typography
                               variant="body2"
-                              sx={{ color: 'var(--secondary-text-color)', flex: 1 }}
+                                sx={{ 
+                                  color: 'var(--text-color)', 
+                                  flex: 1,
+                                  fontSize: 'calc(0.85rem + 1.5px)',
+                                  lineHeight: 1.4,
+                                }}
                             >
                               {asRecord.date} - {asRecord.productName}
                               <br />
@@ -4140,7 +4721,10 @@ const DeliveryManagement: React.FC = () => {
                             >
                               <FormControl size="small" sx={{ width: '200px' }}>
                                 <InputLabel
-                                  sx={{ color: 'var(--secondary-text-color)', fontSize: '0.75rem' }}
+                                    sx={{ 
+                                      color: 'var(--text-color)', 
+                                      fontSize: '0.75rem' 
+                                    }}
                                 >
                                   처리방법
                                 </InputLabel>
@@ -4186,10 +4770,10 @@ const DeliveryManagement: React.FC = () => {
                                   label="처리방법"
                                   sx={{
                                     '& .MuiOutlinedInput-notchedOutline': {
-                                      borderColor: '#3d3d3d',
+                                        borderColor: 'var(--border-color)',
                                     },
                                     '&:hover .MuiOutlinedInput-notchedOutline':
-                                      { borderColor: '#4d4d4d' },
+                                        { borderColor: 'var(--primary-color)' },
                                     '&.Mui-focused .MuiOutlinedInput-notchedOutline':
                                       { borderColor: 'var(--primary-color)' },
                                     '& .MuiSelect-select': {
@@ -4244,16 +4828,16 @@ const DeliveryManagement: React.FC = () => {
                                 sx={{
                                   width: '200px',
                                   '& .MuiOutlinedInput-root': {
-                                    '& fieldset': { borderColor: '#3d3d3d' },
+                                      '& fieldset': { borderColor: 'var(--border-color)' },
                                     '&:hover fieldset': {
-                                      borderColor: '#4d4d4d',
+                                        borderColor: 'var(--primary-color)',
                                     },
                                     '&.Mui-focused fieldset': {
                                       borderColor: 'var(--primary-color)',
                                     },
                                   },
                                   '& .MuiInputLabel-root': {
-                                    color: 'var(--secondary-text-color)',
+                                      color: 'var(--text-color)',
                                     fontSize: '0.75rem',
                                   },
                                   '& .MuiInputBase-input': {
@@ -4283,34 +4867,18 @@ const DeliveryManagement: React.FC = () => {
                                   '&:hover': {
                                     borderColor: '#ff4b6e',
                                     background:
-                                      'linear-gradient(90deg, #ffb6c1 0%, #fff0f5 100%)',
+                                        'linear-gradient(90deg, #ffe4e1 0%, #ffc0cb 100%)',
                                   },
                                 }}
                               >
-                                신청서
+                                  출력
                               </Button>
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() =>
-                                  handleASDeleteClick(delivery, asRecord)
-                                }
-                                title="AS 기록 삭제"
-                                sx={{
-                                  transition: 'all 0.2s ease-in-out',
-                                  '&:hover': {
-                                    transform: 'scale(1.1)',
-                                    backgroundColor: 'rgba(244, 67, 54, 0.1)',
-                                  },
-                                }}
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
                             </Box>
                           </Box>
                         </Box>
                       ))}
                     </Box>
+                    </Grid>
                   )}
                 </Box>
               </AccordionDetails>
@@ -4350,18 +4918,22 @@ const DeliveryManagement: React.FC = () => {
         disableAutoFocus
         PaperProps={{
           sx: {
-            backgroundColor: '#2d2d2d',
+            backgroundColor: document.documentElement.getAttribute('data-theme') === 'light' ? '#ffffff' : '#2d2d2d',
+            color: document.documentElement.getAttribute('data-theme') === 'light' ? '#333333' : 'var(--text-color)',
             borderRadius: 2,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            boxShadow: document.documentElement.getAttribute('data-theme') === 'light' 
+              ? '0 4px 20px rgba(0,0,0,0.15)' 
+              : '0 8px 32px rgba(0,0,0,0.5)',
             transition: 'all 0.3s ease-in-out',
+            border: document.documentElement.getAttribute('data-theme') === 'light' ? '1px solid #e0e0e0' : 'none',
           },
         }}
       >
         <DialogTitle
           sx={{
-            color: 'var(--text-color)',
-            backgroundColor: '#2d2d2d',
-            borderBottom: '1px solid var(--border-color)',
+            color: document.documentElement.getAttribute('data-theme') === 'light' ? '#333333' : 'var(--text-color)',
+            backgroundColor: document.documentElement.getAttribute('data-theme') === 'light' ? '#f5f5f5' : '#2d2d2d',
+            borderBottom: document.documentElement.getAttribute('data-theme') === 'light' ? '1px solid #e0e0e0' : '1px solid var(--border-color)',
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -4374,7 +4946,7 @@ const DeliveryManagement: React.FC = () => {
               </IconButton>
             )}
             <Typography variant={isMobile ? "h5" : "h6"}>
-              🗑️ 삭제 확인
+              삭제 확인
             </Typography>
           </Box>
         </DialogTitle>
@@ -4473,7 +5045,7 @@ const DeliveryManagement: React.FC = () => {
               </IconButton>
             )}
             <Typography variant={isMobile ? "h5" : "h6"}>
-              🔧 AS 접수
+              AS 접수
             </Typography>
           </Box>
         </DialogTitle>
@@ -4494,7 +5066,7 @@ const DeliveryManagement: React.FC = () => {
                   variant="subtitle2"
                   sx={{ color: 'var(--primary-color)', mb: 1 }}
                 >
-                  📋 프로젝트 정보
+                  프로젝트 정보
                 </Typography>
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={6}>
@@ -4662,7 +5234,7 @@ const DeliveryManagement: React.FC = () => {
                     variant="subtitle2"
                     sx={{ color: 'var(--primary-color)', mb: 1 }}
                   >
-                    📋 선택된 제품 정보
+                    선택된 제품 정보
                   </Typography>
                   <Grid container spacing={2}>
                     <Grid item xs={12} md={4}>
@@ -4823,17 +5395,21 @@ const DeliveryManagement: React.FC = () => {
         fullScreen={isMobile}
         PaperProps={{
           sx: {
-            backgroundColor: '#2d2d2d',
-            color: 'var(--text-color)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            backgroundColor: document.documentElement.getAttribute('data-theme') === 'light' ? '#ffffff' : '#2d2d2d',
+            color: document.documentElement.getAttribute('data-theme') === 'light' ? '#333333' : 'var(--text-color)',
+            border: document.documentElement.getAttribute('data-theme') === 'light' ? '1px solid #e0e0e0' : '1px solid rgba(255,255,255,0.1)',
             borderRadius: 2,
+            boxShadow: document.documentElement.getAttribute('data-theme') === 'light' 
+              ? '0 4px 20px rgba(0,0,0,0.15)' 
+              : '0 8px 32px rgba(0,0,0,0.4)',
           },
         }}
       >
         <DialogTitle
           sx={{
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
-            backgroundColor: '#263040',
+            borderBottom: document.documentElement.getAttribute('data-theme') === 'light' ? '1px solid #e0e0e0' : '1px solid rgba(255,255,255,0.1)',
+            backgroundColor: document.documentElement.getAttribute('data-theme') === 'light' ? '#f5f5f5' : '#263040',
+            color: document.documentElement.getAttribute('data-theme') === 'light' ? '#333333' : 'var(--text-color)',
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -5018,59 +5594,112 @@ const DeliveryManagement: React.FC = () => {
         fullScreen={isMobile}
         PaperProps={{
           sx: {
-            backgroundColor: '#2d2d2d',
-            color: 'var(--text-color)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            backgroundColor: '#ffffff !important',
+            color: '#333333 !important',
+            border: '1px solid #e0e0e0 !important',
             borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15) !important',
+            '& *': {
+              backgroundColor: '#ffffff !important',
+              color: '#333333 !important',
+            },
           },
         }}
       >
         <DialogTitle
           sx={{
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
-            backgroundColor: '#263040',
+            borderBottom: '1px solid #e0e0e0 !important',
+            backgroundColor: '#f5f5f5 !important',
+            color: '#333333 !important',
+            '& *': {
+              backgroundColor: '#f5f5f5 !important',
+              color: '#333333 !important',
+            },
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {isMobile && (
               <IconButton
                 onClick={() => setAsPrintDialogOpen(false)}
-                sx={{ color: 'var(--text-color)', mr: 1 }}
+                sx={{ 
+                  color: '#333333 !important', 
+                  mr: 1,
+                  backgroundColor: '#f5f5f5 !important',
+                }}
               >
                 <ArrowBackIcon />
               </IconButton>
             )}
-            <Typography variant={isMobile ? "h5" : "h6"}>
+            <Typography variant={isMobile ? "h5" : "h6"} sx={{ color: '#333333 !important', backgroundColor: '#f5f5f5 !important' }}>
               📄 AS신청서 출력
             </Typography>
           </Box>
         </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
+        <DialogContent sx={{ pt: 3, backgroundColor: '#ffffff !important', color: '#333333 !important' }}>
           {selectedASForPrint && (
             <Box
               sx={{
                 mb: 3,
                 p: 2,
-                backgroundColor: 'rgba(255,255,255,0.05)',
+                backgroundColor: '#f8f9fa !important',
                 borderRadius: 1,
+                border: '1px solid #e9ecef !important',
+                '& *': {
+                  backgroundColor: '#f8f9fa !important',
+                  color: '#333333 !important',
+                },
               }}
             >
-              <Typography variant="subtitle2" sx={{ color: 'var(--primary-color)', mb: 1 }}>
+              <Typography 
+                variant="subtitle2" 
+                sx={{ 
+                  color: '#1976d2 !important', 
+                  mb: 1,
+                  backgroundColor: '#f8f9fa !important',
+                }}
+              >
                 선택된 AS 정보
               </Typography>
-              <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  color: '#555555 !important', 
+                  mb: 0.5,
+                  backgroundColor: '#f8f9fa !important',
+                }}
+              >
                 제품: {selectedASForPrint.productName}
               </Typography>
-              <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 0.5 }}>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  color: '#555555 !important', 
+                  mb: 0.5,
+                  backgroundColor: '#f8f9fa !important',
+                }}
+              >
                 문제: {selectedASForPrint.issue}
               </Typography>
-              <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  color: '#333333 !important',
+                  backgroundColor: '#f8f9fa !important',
+                }}
+              >
                 상태: {selectedASForPrint.status}
               </Typography>
             </Box>
           )}
 
-          <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 2 }}>
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              color: '#555555 !important', 
+              mb: 2,
+              backgroundColor: '#ffffff !important',
+            }}
+          >
             출력 방식을 선택하세요:
           </Typography>
 
@@ -5082,12 +5711,13 @@ const DeliveryManagement: React.FC = () => {
                 startIcon={<PrintIcon />}
                 onClick={handlePrintAS}
                 sx={{
-                  color: 'var(--primary-color)',
-                  borderColor: 'var(--primary-color)',
+                  color: '#1976d2 !important',
+                  borderColor: '#1976d2 !important',
+                  backgroundColor: '#ffffff !important',
                   py: 2,
                   '&:hover': {
-                    borderColor: '#2196f3',
-                    backgroundColor: 'rgba(64, 196, 255, 0.1)',
+                    borderColor: '#1565c0 !important',
+                    backgroundColor: 'rgba(25, 118, 210, 0.1) !important',
                   },
                 }}
               >
@@ -5101,12 +5731,13 @@ const DeliveryManagement: React.FC = () => {
                 startIcon={<ImageIcon />}
                 onClick={handleExportASAsJPG}
                 sx={{
-                  color: '#4caf50',
-                  borderColor: '#4caf50',
+                  color: '#4caf50 !important',
+                  borderColor: '#4caf50 !important',
+                  backgroundColor: '#ffffff !important',
                   py: 2,
                   '&:hover': {
-                    borderColor: '#388e3c',
-                    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                    borderColor: '#388e3c !important',
+                    backgroundColor: 'rgba(76, 175, 80, 0.1) !important',
                   },
                 }}
               >
@@ -5117,15 +5748,16 @@ const DeliveryManagement: React.FC = () => {
               <Button
                 fullWidth
                 variant="outlined"
-                startIcon={<PdfIcon />}
+                startIcon={<PictureAsPdfIcon />}
                 onClick={handleExportASAsPDF}
                 sx={{
-                  color: '#f44336',
-                  borderColor: '#f44336',
+                  color: '#f44336 !important',
+                  borderColor: '#f44336 !important',
+                  backgroundColor: '#ffffff !important',
                   py: 2,
                   '&:hover': {
-                    borderColor: '#d32f2f',
-                    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+                    borderColor: '#d32f2f !important',
+                    backgroundColor: 'rgba(244, 67, 54, 0.1) !important',
                   },
                 }}
               >
@@ -5136,20 +5768,27 @@ const DeliveryManagement: React.FC = () => {
         </DialogContent>
         <DialogActions
           sx={{
-            borderTop: '1px solid rgba(255,255,255,0.1)',
-            backgroundColor: '#263040',
+            borderTop: '1px solid #e0e0e0 !important',
+            backgroundColor: '#f5f5f5 !important',
             p: isMobile ? 3 : 2,
             gap: isMobile ? 2 : 1,
+            '& *': {
+              backgroundColor: '#f5f5f5 !important',
+              color: '#333333 !important',
+            },
           }}
         >
           <Button
             onClick={() => setAsPrintDialogOpen(false)}
             size={isMobile ? "large" : "medium"}
             sx={{
-              color: 'var(--secondary-text-color)',
+              color: '#666666 !important',
+              backgroundColor: '#f5f5f5 !important',
               minWidth: isMobile ? 100 : 80,
               fontSize: isMobile ? 16 : 14,
-              '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' },
+              '&:hover': { 
+                backgroundColor: 'rgba(0,0,0,0.1) !important' 
+              },
             }}
           >
             취소
@@ -5166,17 +5805,21 @@ const DeliveryManagement: React.FC = () => {
         fullScreen={isMobile}
         PaperProps={{
           sx: {
-            backgroundColor: '#2d2d2d',
-            color: 'var(--text-color)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            backgroundColor: document.documentElement.getAttribute('data-theme') === 'light' ? '#ffffff' : '#2d2d2d',
+            color: document.documentElement.getAttribute('data-theme') === 'light' ? '#333333' : 'var(--text-color)',
+            border: document.documentElement.getAttribute('data-theme') === 'light' ? '1px solid #e0e0e0' : '1px solid rgba(255,255,255,0.1)',
             borderRadius: 2,
+            boxShadow: document.documentElement.getAttribute('data-theme') === 'light' 
+              ? '0 4px 20px rgba(0,0,0,0.15)' 
+              : '0 8px 32px rgba(0,0,0,0.4)',
           },
         }}
       >
         <DialogTitle
           sx={{
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
-            backgroundColor: '#263040',
+            borderBottom: document.documentElement.getAttribute('data-theme') === 'light' ? '1px solid #e0e0e0' : '1px solid rgba(255,255,255,0.1)',
+            backgroundColor: document.documentElement.getAttribute('data-theme') === 'light' ? '#f5f5f5' : '#263040',
+            color: document.documentElement.getAttribute('data-theme') === 'light' ? '#333333' : 'var(--text-color)',
             display: 'flex',
             alignItems: 'center',
             gap: 1,
@@ -5200,7 +5843,7 @@ const DeliveryManagement: React.FC = () => {
         <DialogContent sx={{ pt: 3 }}>
           {asRecordToDelete && (
             <Box>
-              <Typography variant="body1" sx={{ color: 'var(--text-color)', mb: 2 }}>
+              <Typography variant="body1" sx={{ color: document.documentElement.getAttribute('data-theme') === 'light' ? '#333333' : 'var(--text-color)', mb: 2 }}>
                 다음 AS 기록을 삭제하시겠습니까?
               </Typography>
               <Box
@@ -5211,21 +5854,21 @@ const DeliveryManagement: React.FC = () => {
                   border: '1px solid rgba(244, 67, 54, 0.3)',
                 }}
               >
-                <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 1 }}>
+                <Typography variant="body2" sx={{ color: document.documentElement.getAttribute('data-theme') === 'light' ? '#555555' : 'var(--secondary-text-color)', mb: 1 }}>
                   <strong>고객명:</strong>{' '}
                   {asRecordToDelete.delivery.customerName}
                 </Typography>
-                <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 1 }}>
+                <Typography variant="body2" sx={{ color: document.documentElement.getAttribute('data-theme') === 'light' ? '#555555' : 'var(--secondary-text-color)', mb: 1 }}>
                   <strong>제품:</strong> {asRecordToDelete.asRecord.productName}
                 </Typography>
-                <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 1 }}>
+                <Typography variant="body2" sx={{ color: document.documentElement.getAttribute('data-theme') === 'light' ? '#555555' : 'var(--secondary-text-color)', mb: 1 }}>
                   <strong>문제:</strong> {asRecordToDelete.asRecord.issue}
                 </Typography>
-                <Typography variant="body2" sx={{ color: 'var(--secondary-text-color)', mb: 1 }}>
+                <Typography variant="body2" sx={{ color: document.documentElement.getAttribute('data-theme') === 'light' ? '#555555' : 'var(--secondary-text-color)', mb: 1 }}>
                   <strong>접수일:</strong> {asRecordToDelete.asRecord.date}
                 </Typography>
                 {asRecordToDelete.asRecord.visitDate && (
-                  <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)' }}>
+                  <Typography variant="body2" sx={{ color: document.documentElement.getAttribute('data-theme') === 'light' ? '#555555' : 'var(--text-secondary-color)' }}>
                     <strong>방문일:</strong>{' '}
                     {asRecordToDelete.asRecord.visitDate}
                   </Typography>
@@ -5243,8 +5886,8 @@ const DeliveryManagement: React.FC = () => {
         </DialogContent>
         <DialogActions
           sx={{
-            borderTop: '1px solid rgba(255,255,255,0.1)',
-            backgroundColor: '#263040',
+            borderTop: document.documentElement.getAttribute('data-theme') === 'light' ? '1px solid #e0e0e0' : '1px solid rgba(255,255,255,0.1)',
+            backgroundColor: document.documentElement.getAttribute('data-theme') === 'light' ? '#f5f5f5' : '#263040',
             p: isMobile ? 3 : 2,
             gap: isMobile ? 2 : 1,
           }}
@@ -5253,10 +5896,12 @@ const DeliveryManagement: React.FC = () => {
             onClick={() => setAsDeleteDialogOpen(false)}
             size={isMobile ? "large" : "medium"}
             sx={{
-              color: 'var(--secondary-text-color)',
+              color: document.documentElement.getAttribute('data-theme') === 'light' ? '#666666' : 'var(--secondary-text-color)',
               minWidth: isMobile ? 100 : 80,
               fontSize: isMobile ? 16 : 14,
-              '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' },
+              '&:hover': { 
+                backgroundColor: document.documentElement.getAttribute('data-theme') === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)' 
+              },
             }}
           >
             취소

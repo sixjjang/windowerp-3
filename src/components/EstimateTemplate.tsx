@@ -1238,143 +1238,200 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {estimate.rows.map((row, index) => {
-                      // 공간별 색상
-                      const spaceColor = getSpaceColor(row.space);
+                    {(() => {
+                      // 레일 항목과 일반 항목 분리
+                      const railItems: any[] = [];
+                      const normalItems: any[] = [];
+                      
+                      estimate.rows.forEach((row, index) => {
+                        // 레일 옵션인지 확인
+                        const isRailOption = row.type === 'option' && row.optionLabel === '레일';
+                        
+                        if (isRailOption) {
+                          railItems.push({ ...row, originalIndex: index });
+                        } else {
+                          normalItems.push({ ...row, originalIndex: index });
+                        }
+                      });
+                      
                       return [
-                        // 제품 행
-                        <TableRow
-                          key={row.id}
-                          sx={{ backgroundColor: spaceColor }}
-                        >
-                          <TableCell
-                            sx={{
-                              p: 0.5,
-                              color: '#000',
-                              verticalAlign: 'top',
-                              fontSize: '11pt',
-                            }}
-                          >
-                            {index + 1}
-                          </TableCell>
-                          {currentTemplate.fields.map((fieldKey: string) => (
-                            <TableCell
-                              key={fieldKey}
-                              sx={{
-                                p: 0.5,
-                                color: '#000',
-                                verticalAlign: 'top',
-                                fontSize: '11pt',
-                              }}
+                        // 일반 제품 및 옵션 행들
+                        ...normalItems.map((row, index) => {
+                          const spaceColor = getSpaceColor(row.space);
+                          return [
+                            // 제품 행
+                            <TableRow
+                              key={row.id}
+                              sx={{ backgroundColor: spaceColor }}
                             >
-                              {getFieldValue(row, fieldKey)}
-                            </TableCell>
-                          ))}
-                        </TableRow>,
-                        // 옵션 행들
-                        ...(row.options && row.options.length > 0
-                          ? row.options.map((option, optIndex) => (
-                              <TableRow
-                                key={`${row.id}-option-${option.id}`}
+                              <TableCell
                                 sx={{
-                                  backgroundColor: getSpaceColor(
-                                    row.space,
-                                    1.12
-                                  ),
+                                  p: 0.5,
+                                  color: '#000',
+                                  verticalAlign: 'top',
+                                  fontSize: '11pt',
                                 }}
                               >
+                                {index + 1}
+                              </TableCell>
+                              {currentTemplate.fields.map((fieldKey: string) => (
                                 <TableCell
+                                  key={fieldKey}
                                   sx={{
                                     p: 0.5,
                                     color: '#000',
                                     verticalAlign: 'top',
-                                    fontSize: '10.5pt',
+                                    fontSize: '11pt',
                                   }}
-                                ></TableCell>
-                                {currentTemplate.fields.map(
-                                  (fieldKey: string) => {
-                                    if (fieldKey === 'productName') {
-                                      return (
-                                        <TableCell
-                                          key={fieldKey}
-                                          sx={{
-                                            p: 0.5,
-                                            color: '#000',
-                                            verticalAlign: 'top',
-                                            fontSize: '10.5pt',
-                                          }}
-                                        >
-                                          └ {option.optionName}
-                                        </TableCell>
-                                      );
-                                    } else if (fieldKey === 'details') {
-                                      return (
-                                        <TableCell
-                                          key={fieldKey}
-                                          sx={{
-                                            p: 0.5,
-                                            color: '#000',
-                                            verticalAlign: 'top',
-                                            fontSize: '10.5pt',
-                                          }}
-                                        >
-                                          {option.details}
-                                        </TableCell>
-                                      );
-                                    } else if (fieldKey === 'quantity') {
-                                      return (
-                                        <TableCell
-                                          key={fieldKey}
-                                          sx={{
-                                            p: 0.5,
-                                            color: '#000',
-                                            verticalAlign: 'top',
-                                            fontSize: '10.5pt',
-                                          }}
-                                        >
-                                          {option.quantity || 1}
-                                        </TableCell>
-                                      );
-                                    } else if (fieldKey === 'totalPrice') {
-                                      const optionAmount = getOptionAmount(
-                                        option,
-                                        row
-                                      );
-                                      return (
-                                        <TableCell
-                                          key={fieldKey}
-                                          sx={{
-                                            p: 0.5,
-                                            color: '#000',
-                                            verticalAlign: 'top',
-                                            fontSize: '10.5pt',
-                                          }}
-                                        >
-                                          {optionAmount.toLocaleString()}원
-                                        </TableCell>
-                                      );
-                                    } else {
-                                      return (
-                                        <TableCell
-                                          key={fieldKey}
-                                          sx={{
-                                            p: 0.5,
-                                            color: '#000',
-                                            verticalAlign: 'top',
-                                            fontSize: '10.5pt',
-                                          }}
-                                        >
-                                          -
-                                        </TableCell>
-                                      );
-                                    }
-                                  }
-                                )}
-                              </TableRow>
-                            ))
-                          : []),
+                                >
+                                  {getFieldValue(row, fieldKey)}
+                                </TableCell>
+                              ))}
+                            </TableRow>,
+                            // 옵션 행들 (레일 제외)
+                            ...(row.options && row.options.length > 0
+                              ? row.options
+                                  .filter((option: any) => option.optionLabel !== '레일')
+                                  .map((option: any, optIndex: number) => (
+                                    <TableRow
+                                      key={`${row.id}-option-${option.id}`}
+                                      sx={{
+                                        backgroundColor: getSpaceColor(
+                                          row.space,
+                                          1.12
+                                        ),
+                                      }}
+                                    >
+                                      <TableCell
+                                        sx={{
+                                          p: 0.5,
+                                          color: '#000',
+                                          verticalAlign: 'top',
+                                          fontSize: '10.5pt',
+                                        }}
+                                      >
+                                        옵션
+                                      </TableCell>
+                                      {currentTemplate.fields.map(
+                                        (fieldKey: string) => {
+                                          if (fieldKey === 'productName') {
+                                            return (
+                                              <TableCell
+                                                key={fieldKey}
+                                                sx={{
+                                                  p: 0.5,
+                                                  color: '#000',
+                                                  verticalAlign: 'top',
+                                                  fontSize: '10.5pt',
+                                                }}
+                                              >
+                                                └ {option.optionName}
+                                              </TableCell>
+                                            );
+                                          } else if (fieldKey === 'details') {
+                                            return (
+                                              <TableCell
+                                                key={fieldKey}
+                                                sx={{
+                                                  p: 0.5,
+                                                  color: '#000',
+                                                  verticalAlign: 'top',
+                                                  fontSize: '10.5pt',
+                                                }}
+                                              >
+                                                {option.details}
+                                              </TableCell>
+                                            );
+                                          } else if (fieldKey === 'quantity') {
+                                            return (
+                                              <TableCell
+                                                key={fieldKey}
+                                                sx={{
+                                                  p: 0.5,
+                                                  color: '#000',
+                                                  verticalAlign: 'top',
+                                                  fontSize: '10.5pt',
+                                                }}
+                                              >
+                                                {option.quantity || 1}
+                                              </TableCell>
+                                            );
+                                          } else if (fieldKey === 'totalPrice') {
+                                            const optionAmount = getOptionAmount(
+                                              option,
+                                              row
+                                            );
+                                            return (
+                                              <TableCell
+                                                key={fieldKey}
+                                                sx={{
+                                                  p: 0.5,
+                                                  color: '#000',
+                                                  verticalAlign: 'top',
+                                                  fontSize: '10.5pt',
+                                                }}
+                                              >
+                                                {optionAmount.toLocaleString()}원
+                                              </TableCell>
+                                            );
+                                          } else {
+                                            return (
+                                              <TableCell
+                                                key={fieldKey}
+                                                sx={{
+                                                  p: 0.5,
+                                                  color: '#000',
+                                                  verticalAlign: 'top',
+                                                  fontSize: '10.5pt',
+                                                }}
+                                              >
+                                                -
+                                              </TableCell>
+                                            );
+                                          }
+                                        }
+                                      )}
+                                    </TableRow>
+                                  ))
+                              : []),
+                          ];
+                        }),
+                        // 레일 항목들을 최하단에 추가 (넘버링 없음)
+                        ...railItems.map((row) => {
+                          const spaceColor = getSpaceColor(row.space);
+                          return (
+                            <TableRow
+                              key={row.id}
+                              sx={{ backgroundColor: spaceColor }}
+                            >
+                              <TableCell
+                                sx={{
+                                  p: 0.5,
+                                  color: '#000',
+                                  verticalAlign: 'top',
+                                  fontSize: '11pt',
+                                }}
+                              >
+                                레일
+                              </TableCell>
+                              {currentTemplate.fields.map((fieldKey: string) => (
+                                <TableCell
+                                  key={fieldKey}
+                                  sx={{
+                                    p: 0.5,
+                                    color: '#000',
+                                    verticalAlign: 'top',
+                                    fontSize: '11pt',
+                                  }}
+                                >
+                                  {getFieldValue(row, fieldKey)}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          );
+                        }),
                       ];
-                    })}
+                    })()}
                   </TableBody>
                 </Table>
               </TableContainer>

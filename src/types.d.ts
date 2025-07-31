@@ -4,6 +4,26 @@ declare module '@mui/x-data-grid';
 declare module '@emotion/react';
 declare module '@emotion/styled';
 
+// Kakao SDK 타입 정의
+declare global {
+  interface Window {
+    Kakao: {
+      init: (key: string) => void;
+      isInitialized: () => boolean;
+      Link: {
+        sendDefault: (options: {
+          objectType: string;
+          text: string;
+          link: {
+            mobileWebUrl: string;
+            webUrl: string;
+          };
+        }) => void;
+      };
+    };
+  }
+}
+
 // 템플릿 관련 타입들
 export interface TemplateRoom {
   id: string;

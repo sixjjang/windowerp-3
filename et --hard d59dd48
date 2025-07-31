@@ -1,0 +1,13 @@
+[33mcommit d59dd48701d077772ff041b82879686ca34dfde4[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: sixjjang <sixjjang@gmail.com>
+Date:   Thu Jul 31 09:27:42 2025 +0900
+
+    Fix Firebase 404 errors and improve UI styling - Fix estimate ID validation for both string and number types - Add automatic Firebase save for temp IDs - Improve error handling with specific messages - Update column display defaults for estimate management - Change option row styling to medium gray color and smaller font - Fix MUI Tooltip warnings with span wrappers
+
+src/components/ContractTemplate.tsx
+src/components/EstimateTemplate.tsx
+src/pages/Dashboard.tsx
+src/pages/business/DeliveryManagement.tsx
+src/pages/business/EstimateManagement.tsx
+src/pages/business/OrderManagement.tsx
+src/utils/firebaseDataService.ts

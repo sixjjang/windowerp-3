@@ -830,23 +830,17 @@ const getPleatCount = (
   curtainType: string
 ) => {
   if (curtainType !== '겉커튼') return '';
-  // 폭 값이 없으면 1370으로 간주
+  // 제품폭이 없을때 1370으로 간주
   const safeProductWidth = productWidth > 0 ? productWidth : 1370;
   if (widthMM <= 0 || safeProductWidth <= 0) return '';
 
   let result = 0;
   if (pleatType === '민자') {
-    if (safeProductWidth > 2000) {
-      result = (widthMM * 1.4) / 1370;
-    } else {
-      result = (widthMM * 1.4) / safeProductWidth;
-    }
+    // 겉커튼, 민자 폭수추천 공식: (실측가로 × 1.4) ÷ 제품폭
+    result = (widthMM * 1.4) / safeProductWidth;
   } else if (pleatType === '나비') {
-    if (safeProductWidth > 2000) {
-      result = (widthMM * 2) / 1370;
-    } else {
-      result = (widthMM * 2) / safeProductWidth;
-    }
+    // 겉커튼, 나비 폭수추천 공식: (실측가로 × 2) ÷ 제품폭
+    result = (widthMM * 2) / safeProductWidth;
   } else {
     return '';
   }
@@ -854,6 +848,7 @@ const getPleatCount = (
   // Infinity나 NaN 체크
   if (!isFinite(result) || isNaN(result)) return '';
 
+  // 소수점 첫째자리 0.1 이하는 버림, 그 외 올림
   const decimal = result - Math.floor(result);
   return decimal <= 0.1 ? Math.floor(result) : Math.ceil(result);
 };
@@ -879,37 +874,34 @@ const getPleatAmount = (
   if (curtainType === '겉커튼' && pleatCount && pleatCount > 0) {
     if (widthMM <= 0) return '';
 
-    let result = 0;
-    if (pleatType === '민자' || pleatType === '나비') {
-      // productWidth가 없으면 표준값 1370mm 사용
-      const standardWidth = productWidth > 0 ? (productWidth > 2000 ? 1370 : productWidth) : 1370;
-      result = (standardWidth * pleatCount) / widthMM;
-    } else {
-      return '';
-    }
+    // 주름양 계산 공식- 겉커튼: (제품폭 × 폭수) ÷ 실측가로
+    // 제품폭이 없을때 1370으로 간주
+    const safeProductWidth = productWidth > 0 ? productWidth : 1370;
+    const result = (safeProductWidth * pleatCount) / widthMM;
 
     // Infinity나 NaN 체크
     if (!isFinite(result) || isNaN(result)) return '';
 
+    // 소수점 둘째자리까지
     return result ? result.toFixed(2) : '';
   }
   
   return '';
 };
 
-// 겉커튼 민자 주름양 계산 함수
-const calculatePleatAmountForGgeotCurtain = (widthMM: number, pleatCount: number): string => {
+// 겉커튼 주름양 계산 함수
+const calculatePleatAmountForGgeotCurtain = (widthMM: number, pleatCount: number, productWidth?: number): string => {
   if (widthMM <= 0 || pleatCount <= 0) return '';
   
-  // 겉커튼 주름양 계산식: (제품폭 × 폭수) ÷ 실측가로
-  // 제품폭이 없는 경우 표준값 1370mm 사용
-  const productWidth = 1370; // 표준 제품폭
-  const calculatedPleatAmount = (productWidth * pleatCount) / widthMM;
+  // 주름양 계산 공식- 겉커튼: (제품폭 × 폭수) ÷ 실측가로
+  // 제품폭이 없을때 1370으로 간주
+  const safeProductWidth = productWidth && productWidth > 0 ? productWidth : 1370;
+  const calculatedPleatAmount = (safeProductWidth * pleatCount) / widthMM;
   
   // Infinity나 NaN 체크
   if (!isFinite(calculatedPleatAmount) || isNaN(calculatedPleatAmount)) return '';
   
-  // 소수점 둘째자리까지 반올림
+  // 소수점 둘째자리까지
   return calculatedPleatAmount.toFixed(2);
 };
 
@@ -1308,6 +1300,20 @@ const EstimateManagement: React.FC = () => {
     updateEstimateRows,
     setEstimates,
   } = useEstimateStore();
+
+  // 견적서리스트 우클릭 메뉴 상태
+  const [estimateListContextMenu, setEstimateListContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    estimate: any;
+  } | null>(null);
+  
+  // 견적서리스트 출력 서브메뉴 상태
+  const [estimateListOutputSubmenu, setEstimateListOutputSubmenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    estimate: any;
+  } | null>(null);
 
   // 제품 순번 관리 상태
   const [productOrder, setProductOrder] = useState<number[]>([]);
@@ -1788,6 +1794,14 @@ const EstimateManagement: React.FC = () => {
   const [discountAmount, setDiscountAmount] = useState('');
   const [discountRate, setDiscountRate] = useState('');
   const [discountedTotalInput, setDiscountedTotalInput] = useState('');
+  const [loadedDiscountedAmount, setLoadedDiscountedAmount] = useState(0);
+  const [unsavedChanges, setUnsavedChanges] = useState<Set<number>>(new Set());
+  // 우클릭 드롭다운 메뉴 상태
+  const [contextMenu, setContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    tabIndex: number;
+  } | null>(null);
   const [outputAnchorEl, setOutputAnchorEl] = useState<null | HTMLElement>(
     null
   );
@@ -2192,6 +2206,253 @@ const EstimateManagement: React.FC = () => {
     }
   }, [estimateListDisplay]);
 
+  // 견적서리스트 우클릭 메뉴 핸들러들
+  const handleEstimateListContextMenu = (event: React.MouseEvent, estimate: any) => {
+    event.preventDefault();
+    setEstimateListContextMenu({
+      mouseX: event.clientX + 2,
+      mouseY: event.clientY - 6,
+      estimate,
+    });
+  };
+
+  const handleCloseEstimateListContextMenu = () => {
+    setEstimateListContextMenu(null);
+  };
+
+  const handleEstimateListContextMenuAction = async (action: string) => {
+    if (!estimateListContextMenu?.estimate) return;
+
+    const estimate = estimateListContextMenu.estimate;
+
+    try {
+      switch (action) {
+        case 'modify':
+          handleLoadSavedEstimate(estimate);
+          break;
+        case 'contract':
+          handleProceedToContract(estimate);
+          break;
+        case 'copy':
+          // 견적서 복사 로직
+          const copiedEstimate = {
+            ...estimate,
+            id: Date.now(),
+            estimateNo: generateEstimateNo(savedEstimates),
+            savedAt: new Date().toISOString(),
+          };
+          delete copiedEstimate.id; // 새 ID 생성을 위해 기존 ID 제거
+          
+          // Firebase에 저장
+          const response = await fetch(`${API_BASE}/estimates`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(copiedEstimate),
+          });
+
+          if (response.ok) {
+            const savedEstimate = await response.json();
+            const updatedSavedEstimates = [...savedEstimates, savedEstimate];
+            setSavedEstimates(updatedSavedEstimates);
+            localStorage.setItem('saved_estimates', JSON.stringify(updatedSavedEstimates));
+            alert('견적서가 복사되었습니다.');
+          } else {
+            throw new Error('견적서 복사 실패');
+          }
+          break;
+        case 'delete':
+          if (window.confirm('정말로 이 견적서를 삭제하시겠습니까?')) {
+            // 기존 삭제 로직 재사용
+            let firestoreId = estimate.id;
+            
+            if (typeof estimate.id === 'number') {
+              const matchingEstimates = savedEstimates.filter(e => 
+                e.estimateNo === estimate.estimateNo
+              );
+              const matchingEstimate = matchingEstimates.find(e => 
+                typeof e.id === 'string' && 
+                e.id.length > 10
+              );
+              if (matchingEstimate) {
+                firestoreId = matchingEstimate.id;
+              } else {
+                firestoreId = estimate.estimateNo;
+              }
+            }
+
+            const response = await fetch(`${API_BASE}/estimates/${encodeURIComponent(firestoreId)}`, {
+              method: 'DELETE',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            });
+
+            if (response.ok) {
+              const updatedSavedEstimates = savedEstimates.filter(
+                (e: any) => e.id !== firestoreId && e.estimateNo !== estimate.estimateNo
+              );
+              setSavedEstimates(updatedSavedEstimates);
+              localStorage.setItem('saved_estimates', JSON.stringify(updatedSavedEstimates));
+              alert('견적서가 삭제되었습니다.');
+            } else {
+              throw new Error('견적서 삭제 실패');
+            }
+          }
+          break;
+        case 'print':
+          // 출력 서브메뉴 표시
+          setEstimateListOutputSubmenu({
+            mouseX: estimateListContextMenu.mouseX + 160, // 메인 메뉴 옆에 표시
+            mouseY: estimateListContextMenu.mouseY,
+            estimate: estimate,
+          });
+          break;
+        default:
+          break;
+      }
+    } catch (error) {
+      console.error('견적서 작업 중 오류:', error);
+      alert('작업 중 오류가 발생했습니다.');
+    } finally {
+      handleCloseEstimateListContextMenu();
+    }
+  };
+
+  // 견적서리스트 출력 서브메뉴 핸들러들
+  const handleCloseEstimateListOutputSubmenu = () => {
+    setEstimateListOutputSubmenu(null);
+  };
+
+  const handleEstimateListOutputAction = async (action: string) => {
+    if (!estimateListOutputSubmenu?.estimate) return;
+
+    const estimate = estimateListOutputSubmenu.estimate;
+
+    try {
+      if (action === 'print') {
+        // 프린트의 경우 견적서 템플릿 모달을 열기
+        setSelectedEstimateForPrint(estimate);
+        setShowEstimateTemplate(true);
+      } else {
+        // PDF, JPG, Share의 경우 견적서를 selectedEstimateForPrint에 설정하고 출력
+        setSelectedEstimateForPrint(estimate);
+        
+        // 견적서 템플릿이 렌더링될 때까지 잠시 대기
+        setTimeout(async () => {
+          // 숨겨진 estimate-template 요소 찾기
+          const captureElement = document.querySelector(
+            '.estimate-template'
+          ) as HTMLElement;
+          if (!captureElement) {
+            alert('견적서 템플릿을 찾을 수 없습니다.');
+            return;
+          }
+
+          // 캡처 전에 요소를 임시로 보이게 만들기
+          const originalVisibility = captureElement.style.visibility;
+          const originalPosition = captureElement.style.position;
+          const originalLeft = captureElement.style.left;
+          const originalTop = captureElement.style.top;
+
+          captureElement.style.visibility = 'visible';
+          captureElement.style.position = 'absolute';
+          captureElement.style.left = '0px';
+          captureElement.style.top = '0px';
+          captureElement.style.zIndex = '9999';
+
+          try {
+            const canvas = await html2canvas(captureElement, {
+              scale: 1.5,
+              backgroundColor: '#ffffff',
+              useCORS: true,
+              allowTaint: true,
+            });
+
+            switch (action) {
+              case 'pdf': {
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = pdf.internal.pageSize.getHeight();
+                const canvasWidth = canvas.width;
+                const canvasHeight = canvas.height;
+                const ratio = canvasWidth / canvasHeight;
+                const width = pdfWidth;
+                const height = width / ratio;
+                pdf.addImage(
+                  imgData,
+                  'PNG',
+                  0,
+                  0,
+                  width,
+                  height > pdfHeight ? pdfHeight : height
+                );
+                pdf.save(`${estimate?.estimateNo || 'estimate'}.pdf`);
+                break;
+              }
+              case 'jpg': {
+                const imgData = canvas.toDataURL('image/png');
+                const link = document.createElement('a');
+                link.href = imgData;
+                link.download = `${estimate?.estimateNo || 'estimate'}.png`;
+                link.click();
+                break;
+              }
+              case 'share': {
+                if (navigator.share) {
+                  canvas.toBlob(async blob => {
+                    if (blob) {
+                      try {
+                        await navigator.share({
+                          files: [
+                            new File(
+                              [blob],
+                              `${estimate?.estimateNo || 'estimate'}.png`,
+                              { type: 'image/png' }
+                            ),
+                          ],
+                          title: '견적서 공유',
+                          text: `견적서(${estimate?.estimateNo})를 확인하세요.`,
+                        });
+                      } catch (error) {
+                        alert('공유 실패: ' + error);
+                      }
+                    }
+                  }, 'image/png');
+                } else {
+                  alert('공유하기가 지원되지 않는 브라우저입니다.');
+                }
+                break;
+              }
+              default:
+                break;
+            }
+          } catch (error) {
+            console.error('출력 오류:', error);
+            alert('출력 중 오류가 발생했습니다: ' + error);
+          } finally {
+            // 원래 상태로 복원
+            captureElement.style.visibility = originalVisibility;
+            captureElement.style.position = originalPosition;
+            captureElement.style.left = originalLeft;
+            captureElement.style.top = originalTop;
+            captureElement.style.zIndex = '';
+            
+            // selectedEstimateForPrint 초기화
+            setSelectedEstimateForPrint(null);
+          }
+        }, 1000); // 견적서 템플릿이 렌더링될 시간
+      }
+    } catch (error) {
+      console.error('출력 작업 중 오류:', error);
+      alert('출력 작업 중 오류가 발생했습니다.');
+    } finally {
+      handleCloseEstimateListOutputSubmenu();
+    }
+  };
+
   // 견적서 LIST 컬럼 순서 설정
   const [estimateListColumnOrder, setEstimateListColumnOrder] = useState(() => {
     const savedOrder = localStorage.getItem('estimateListColumnOrder');
@@ -2217,11 +2478,9 @@ const EstimateManagement: React.FC = () => {
     const parts: string[] = [];
 
     if (estimateTabDisplay.showEstimateNo) {
-      // final 견적서인 경우 특별한 표시
-      const isFinal = estimate.estimateNo.includes('-final');
-      parts.push(
-        isFinal ? `${estimate.estimateNo} (Final)` : estimate.estimateNo
-      );
+      // final 표시 제거하고 견적번호만 표시
+      const baseEstimateNo = estimate.estimateNo.replace(/-final(-[0-9]+)?$/, '');
+      parts.push(baseEstimateNo);
     }
 
     if (estimateTabDisplay.showEstimateName) {
@@ -2615,7 +2874,6 @@ const EstimateManagement: React.FC = () => {
       )
     );
   });
-
   // 하단 저장된 견적서 리스트 필터링
   const now = new Date();
   const filteredSavedEstimatesList = savedEstimates.filter((estimate: any) => {
@@ -2895,6 +3153,24 @@ const EstimateManagement: React.FC = () => {
       type: savedEstimate.type || '',
       address: savedEstimate.address || '',
     });
+
+    // 할인 관련 필드들 자동 설정 - 할인후금액만 로드하고 나머지는 계산
+    if (savedEstimate.discountedAmount && savedEstimate.discountedAmount > 0) {
+      console.log('할인후금액 로드:', savedEstimate.discountedAmount, typeof savedEstimate.discountedAmount);
+      setDiscountedTotalInput(savedEstimate.discountedAmount.toString());
+      // 할인후금액이 있으면 할인 입력 필드들 표시
+      setShowDiscount(true);
+      
+      // sumTotalPrice가 준비된 후에 할인 계산을 수행하기 위해 상태로 저장
+      setLoadedDiscountedAmount(savedEstimate.discountedAmount);
+    } else {
+      setDiscountedTotalInput('');
+      setDiscountAmount('');
+      setDiscountRate('');
+      setLoadedDiscountedAmount(0);
+    }
+
+
 
     setEstimateDialogOpen(false);
 
@@ -3392,7 +3668,6 @@ const EstimateManagement: React.FC = () => {
       return loadOptionsFromLocalStorage();
     }
   };
-
   // localStorage에서 옵션을 불러오는 함수 (fallback용)
   function loadOptionsFromLocalStorage() {
     try {
@@ -3498,10 +3773,18 @@ const EstimateManagement: React.FC = () => {
   
 
   
-  const [contextMenu, setContextMenu] = useState<{
+  const [optionContextMenu, setOptionContextMenu] = useState<{
     mouseX: number;
     mouseY: number;
     option: any;
+  } | null>(null);
+
+  // 행 우클릭 메뉴 상태
+  const [rowContextMenu, setRowContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    rowIndex: number;
+    row: any;
   } | null>(null);
 
   // 자동 수량 계산 함수
@@ -3613,13 +3896,13 @@ const EstimateManagement: React.FC = () => {
     setEditOptionQuantity(1);
   };
 
-  const handleContextMenu = (event: React.MouseEvent, option: any) => {
+  const handleOptionContextMenu = (event: React.MouseEvent, option: any) => {
     event.preventDefault();
     console.log('우클릭 메뉴:', option.optionName);
     
     // 시공 옵션인 경우에만 우클릭 메뉴 표시
     if (optionTypeMap[optionSearchTab] === '시공옵션') {
-      setContextMenu({
+      setOptionContextMenu({
         mouseX: event.clientX + 2,
         mouseY: event.clientY - 6,
         option: option,
@@ -3627,8 +3910,84 @@ const EstimateManagement: React.FC = () => {
     }
   };
 
-  const handleCloseContextMenu = () => {
-    setContextMenu(null);
+  const handleCloseOptionContextMenu = () => {
+    setOptionContextMenu(null);
+  };
+
+  // 행 우클릭 메뉴 핸들러
+  const handleRowContextMenu = (event: React.MouseEvent, rowIndex: number, row: any) => {
+    event.preventDefault();
+    console.log('행 우클릭 메뉴:', row);
+    
+    setRowContextMenu({
+      mouseX: event.clientX + 2,
+      mouseY: event.clientY - 6,
+      rowIndex: rowIndex,
+      row: row,
+    });
+  };
+
+  const handleCloseRowContextMenu = () => {
+    setRowContextMenu(null);
+  };
+
+  const handleRowContextMenuAction = (action: string) => {
+    if (!rowContextMenu) return;
+
+    const { rowIndex, row } = rowContextMenu;
+    
+    switch (action) {
+      case 'edit':
+        // 옵션인 경우 옵션 수정 모달 열기
+        if (row.type === 'option') {
+          setEditingOption(row);
+          setEditOptionQuantity(row.quantity || 1);
+          setEditOptionDialogOpen(true);
+        } else {
+          // 제품인 경우 기존 로직 사용
+          handleRowClick(rowIndex);
+        }
+        break;
+      case 'addOption':
+        handleAddOption(rowIndex);
+        break;
+      case 'copy':
+        handleCopyRow(row.id);
+        break;
+      case 'delete':
+        handleDeleteRow(rowIndex);
+        break;
+    }
+    
+    setRowContextMenu(null);
+  };
+
+  // 특정 제품 행에 옵션 추가하는 함수
+  const handleAddOption = (rowIndex: number) => {
+    // 해당 행이 제품인지 확인
+    const currentRows = estimates[activeTab].rows;
+    const targetRow = currentRows[rowIndex];
+    
+    if (targetRow.type !== 'product') {
+      alert('제품에만 옵션을 추가할 수 있습니다.');
+      return;
+    }
+
+    // 옵션 추가 다이얼로그 열기
+    setOptionDialogOpen(true);
+    // 선택된 제품 인덱스 설정
+    setSelectedProductIdx(rowIndex);
+  };
+
+  // 행 삭제 함수
+  const handleDeleteRow = (rowIndex: number) => {
+    const currentRows = estimates[activeTab].rows;
+    const targetRow = currentRows[rowIndex];
+    
+    if (window.confirm('이 항목을 삭제하시겠습니까?')) {
+      const newRows = currentRows.filter(r => r.id !== targetRow.id);
+      updateEstimateRows(activeTab, newRows);
+    }
   };
 
   // 수량 수정 모달 열기
@@ -3775,9 +4134,9 @@ const EstimateManagement: React.FC = () => {
   };
 
   const handleEditFromContextMenu = () => {
-    if (contextMenu) {
-      handleEditOption(contextMenu.option);
-      setContextMenu(null);
+    if (optionContextMenu) {
+      handleEditOption(optionContextMenu.option);
+      setOptionContextMenu(null);
     }
   };
 
@@ -3992,49 +4351,127 @@ const EstimateManagement: React.FC = () => {
     if (idx === -1) return;
     
     const originalRow = rows[idx];
-    const copy = { ...originalRow, id: Date.now() };
     
-    // 공간 정보에 자동 넘버링 추가
-    const originalSpace = originalRow.space;
-    
-    if (originalSpace) {
-      // 공간명에 넘버링 추가 (예: "거실" -> "거실2")
-      // 기존 넘버링이 있는지 확인하고 기본 공간명 추출
-      const baseSpaceName = originalSpace.replace(/\s*\d+$/, ''); // 끝의 공백과 숫자 제거
+    // 제품인 경우에만 옵션 확인 로직 적용
+    if (originalRow.type === 'product') {
+      // 해당 제품의 옵션들을 찾기 (별도 행으로 저장된 옵션들)
+      const productOptions: EstimateRow[] = [];
+      let currentIndex = idx + 1;
       
-      const existingNumbers = rows
-        .filter(row => 
-          row.space && 
-          row.space.startsWith(baseSpaceName) &&
-          row.id !== originalRow.id
-        )
-        .map(row => {
-          const match = row.space.match(new RegExp(`^${baseSpaceName}\\s*(\\d+)$`));
-          return match ? parseInt(match[1]) : 0;
-        })
-        .filter(num => num > 0);
+      // 원본 제품 다음부터 연속된 옵션들을 찾음
+      while (currentIndex < rows.length && rows[currentIndex].type === 'option') {
+        productOptions.push(rows[currentIndex]);
+        currentIndex++;
+      }
       
-      const nextNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 2;
-      copy.space = `${baseSpaceName} ${nextNumber}`;
+      // 제품 복사
+      const copy = { ...originalRow, id: Date.now() };
+      
+      // 공간 정보에 자동 넘버링 추가
+      const originalSpace = originalRow.space;
+      
+      if (originalSpace) {
+        // 공간명에 넘버링 추가 (예: "거실" -> "거실2")
+        // 기존 넘버링이 있는지 확인하고 기본 공간명 추출
+        const baseSpaceName = originalSpace.replace(/\s*\d+$/, ''); // 끝의 공백과 숫자 제거
+        
+        const existingNumbers = rows
+          .filter(row => 
+            row.space && 
+            row.space.startsWith(baseSpaceName) &&
+            row.id !== originalRow.id
+          )
+          .map(row => {
+            const match = row.space.match(new RegExp(`^${baseSpaceName}\\s*(\\d+)$`));
+            return match ? parseInt(match[1]) : 0;
+          })
+          .filter(num => num > 0);
+        
+        const nextNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 2;
+        copy.space = `${baseSpaceName} ${nextNumber}`;
+      } else {
+        // 공간이 비어있거나 없는 경우 기본 넘버링 (1, 2, 3...)
+        const existingNumbers = rows
+          .filter(row => 
+            (!row.space || row.space === '') &&
+            row.id !== originalRow.id
+          )
+          .map((_, index) => index + 1);
+        
+        const nextNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 1;
+        copy.space = nextNumber.toString();
+      }
+      
+      // 복사할 항목들을 준비
+      const itemsToInsert: EstimateRow[] = [copy];
+      
+      // 옵션이 있는 경우 사용자에게 확인
+      if (productOptions.length > 0) {
+        const includeOptions = window.confirm('이 제품에는 옵션이 있습니다. 옵션을 포함해서 복사하시겠습니까?\n\n"확인"을 누르면 옵션을 포함하여 복사됩니다.\n"취소"를 누르면 옵션 없이 복사됩니다.');
+        
+        // 옵션을 포함하는 경우 옵션들도 복사
+        if (includeOptions) {
+          productOptions.forEach(option => {
+            const optionCopy = { ...option, id: Date.now() + Math.random() };
+            itemsToInsert.push(optionCopy);
+          });
+        }
+      }
+      
+      // 복사된 항목들을 원본 제품과 옵션들의 바로 다음에 삽입
+      // 원본 제품의 옵션 개수만큼 인덱스를 조정
+      const insertIndex = idx + 1 + productOptions.length;
+      rows.splice(insertIndex, 0, ...itemsToInsert);
+      updateEstimateRows(activeTab, rows);
+      
+      // 복사된 제품의 ID를 저장하여 시각적 표시
+      setRecentlyModifiedRowId(copy.id);
     } else {
-      // 공간이 비어있거나 없는 경우 기본 넘버링 (1, 2, 3...)
-      const existingNumbers = rows
-        .filter(row => 
-          (!row.space || row.space === '') &&
-          row.id !== originalRow.id
-        )
-        .map((_, index) => index + 1);
+      // 옵션인 경우 기존 로직과 동일하게 처리
+      const copy = { ...originalRow, id: Date.now() };
       
-      const nextNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 1;
-      copy.space = nextNumber.toString();
+      // 공간 정보에 자동 넘버링 추가
+      const originalSpace = originalRow.space;
+      
+      if (originalSpace) {
+        // 공간명에 넘버링 추가 (예: "거실" -> "거실2")
+        // 기존 넘버링이 있는지 확인하고 기본 공간명 추출
+        const baseSpaceName = originalSpace.replace(/\s*\d+$/, ''); // 끝의 공백과 숫자 제거
+        
+        const existingNumbers = rows
+          .filter(row => 
+            row.space && 
+            row.space.startsWith(baseSpaceName) &&
+            row.id !== originalRow.id
+          )
+          .map(row => {
+            const match = row.space.match(new RegExp(`^${baseSpaceName}\\s*(\\d+)$`));
+            return match ? parseInt(match[1]) : 0;
+          })
+          .filter(num => num > 0);
+        
+        const nextNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 2;
+        copy.space = `${baseSpaceName} ${nextNumber}`;
+      } else {
+        // 공간이 비어있거나 없는 경우 기본 넘버링 (1, 2, 3...)
+        const existingNumbers = rows
+          .filter(row => 
+            (!row.space || row.space === '') &&
+            row.id !== originalRow.id
+          )
+          .map((_, index) => index + 1);
+        
+        const nextNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 1;
+        copy.space = nextNumber.toString();
+      }
+      
+      // 복사된 항목을 선택된 제품 바로 아래에 추가
+      rows.splice(idx + 1, 0, copy);
+      updateEstimateRows(activeTab, rows);
+      
+      // 복사된 행의 ID를 저장하여 시각적 표시
+      setRecentlyModifiedRowId(copy.id);
     }
-    
-    // 복사된 항목을 맨 뒤에 추가하여 순서대로 보이도록 함
-    rows.push(copy);
-    updateEstimateRows(activeTab, rows);
-    
-    // 복사된 행의 ID를 저장하여 시각적 표시
-    setRecentlyModifiedRowId(copy.id);
   };
 
   const handleRowClick = (idx: number) => {
@@ -4178,128 +4615,7 @@ const EstimateManagement: React.FC = () => {
       }
     }
 
-    // 주름양 계산 로직 통합
-    if (['widthMM', 'productName', 'curtainType', 'pleatType', 'widthCount', 'pleatMultiplier'].includes(field) || productDataChanged) {
-      // 가로값이나 주름타입이 변경되면 사용자 수정 상태 리셋 (widthCount 직접 수정 제외)
-      if (field !== 'widthCount' && ['widthMM', 'curtainType', 'pleatType'].includes(field)) {
-        setUserModifiedWidthCount(false);
-        // 주름타입 변경 시 폭수를 추천폭수로 리셋
-        if (field === 'pleatType') {
-          newEditRow.widthCount = 0; // 추천폭수 계산을 위해 0으로 리셋
-        }
-      }
-      
-      const product = productOptions.find(
-        p => p.productCode === newEditRow.productCode
-      );
-      const widthMM = Number(newEditRow.widthMM) || 0;
-      const heightMM = Number(newEditRow.heightMM) || 0;
-      const pleatTypeVal = newEditRow.pleatType;
-      const curtainTypeVal = newEditRow.curtainType;
-      const productWidth = product ? Number(product.width) || 0 : 0;
 
-      // 속커튼 나비주름일 때
-      if (curtainTypeVal === '속커튼' && pleatTypeVal === '나비') {
-        if (widthMM > 0) {
-          const area = widthMM / 1000; // m²
-          newEditRow.area = area;
-        newEditRow.pleatAmount = '1.8~2';
-        newEditRow.widthCount = 0;
-        newEditRow.pleatCount = 0;
-        }
-      }
-      // 속커튼 민자일 때
-      else if (curtainTypeVal === '속커튼' && pleatTypeVal === '민자') {
-        if (widthMM > 0) {
-          // 주름양 배수 가져오기 (기본값 1.4배)
-          const pleatMultiplier = Number(newEditRow.pleatMultiplier?.replace('배', '')) || 1.4;
-          const area = (widthMM / 1000) * pleatMultiplier; // m²
-          newEditRow.area = area;
-          // 주름양은 선택된 배수값을 그대로 사용
-          newEditRow.pleatAmount = newEditRow.pleatMultiplier || '1.4배';
-        }
-      }
-      // 겉커튼일 때
-      else if (curtainTypeVal === '겉커튼' && widthMM > 0) {
-        // 사용자가 입력한 폭수 값이 있으면 그 값을 우선 사용
-        const userInputWidthCount = Number(newEditRow.widthCount) || 0;
-        let finalWidthCount = userInputWidthCount;
-
-        // 사용자가 폭수를 입력하지 않았다면 추천 폭수 계산
-        if (userInputWidthCount === 0) {
-          let pleatCount: number | string = 0;
-          
-          // 겉커튼 민자는 productWidth가 없어도 계산 가능
-          if (pleatTypeVal === '민자') {
-            // 겉커튼 민자는 가로 길이 기반으로 추천 폭수 계산
-            pleatCount = Math.ceil(widthMM / 700); // 700mm당 1폭
-          } else if (productWidth > 0) {
-            // 겉커튼 나비/3주름은 productWidth가 필요
-            pleatCount = getPleatCount(
-          widthMM,
-          productWidth,
-          pleatTypeVal,
-          curtainTypeVal
-        );
-        }
-          
-          finalWidthCount = Number(pleatCount) || 0;
-          newEditRow.widthCount = finalWidthCount;
-          newEditRow.pleatCount = finalWidthCount;
-        
-        // 추천 주름양 계산
-          if (finalWidthCount > 0) {
-            let calculatedPleatAmount = '';
-            if (pleatTypeVal === '민자') {
-              calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, finalWidthCount);
-            } else if (productWidth > 0) {
-              calculatedPleatAmount = getPleatAmount(
-            widthMM,
-            productWidth,
-            pleatTypeVal,
-            curtainTypeVal,
-                finalWidthCount
-              ) || '';
-            }
-            setRecommendedPleatAmount(calculatedPleatAmount);
-        } else {
-          setRecommendedPleatAmount('');
-          }
-        }
-
-        // 주름양 계산
-        if (finalWidthCount > 0) {
-          let calculatedPleatAmount = '';
-          if (pleatTypeVal === '민자') {
-            calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, finalWidthCount);
-          } else if (productWidth > 0) {
-            calculatedPleatAmount = getPleatAmount(
-            widthMM,
-            productWidth,
-            pleatTypeVal,
-            curtainTypeVal,
-              finalWidthCount
-            );
-          } else {
-            // 겉커튼 나비/3주름이지만 productWidth가 없는 경우 표준값으로 계산
-            if (pleatTypeVal === '나비') {
-              const standardWidth = 1370; // 표준 제품폭
-              const calculatedValue = (standardWidth * finalWidthCount) / widthMM;
-              if (isFinite(calculatedValue) && !isNaN(calculatedValue)) {
-                calculatedPleatAmount = calculatedValue.toFixed(2);
-              }
-            } else if (pleatTypeVal === '3주름') {
-              const standardWidth = 1370; // 표준 제품폭
-              const calculatedValue = (standardWidth * finalWidthCount) / widthMM;
-              if (isFinite(calculatedValue) && !isNaN(calculatedValue)) {
-                calculatedPleatAmount = calculatedValue.toFixed(2);
-              }
-            }
-          }
-          newEditRow.pleatAmount = calculatedPleatAmount;
-        }
-      }
-    }
 
 
 
@@ -4339,7 +4655,7 @@ const EstimateManagement: React.FC = () => {
         // 겉커튼 민자는 productWidth가 없어도 계산 가능
         if (pleatTypeVal === '민자') {
           // 겉커튼 민자는 가로 길이와 폭수를 고려한 주름양 계산
-          const calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, pleatCount);
+          const calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, pleatCount, productWidth);
           newEditRow.pleatAmount = calculatedPleatAmount;
         } else if (productWidth > 0) {
           // 겉커튼 나비/3주름은 productWidth가 필요
@@ -4385,6 +4701,15 @@ const EstimateManagement: React.FC = () => {
 
         // 주름양 계산 로직 통합
     if (['widthMM', 'productName', 'curtainType', 'pleatType', 'widthCount', 'pleatMultiplier'].includes(field) || productDataChanged) {
+      // 가로값이나 주름타입이 변경되면 사용자 수정 상태 리셋 (widthCount 직접 수정 제외)
+      if (field !== 'widthCount' && ['widthMM', 'curtainType', 'pleatType'].includes(field)) {
+        setUserModifiedWidthCount(false);
+        // 주름타입 변경 시 폭수를 추천폭수로 리셋
+        if (field === 'pleatType') {
+          newEditRow.widthCount = 0; // 추천폭수 계산을 위해 0으로 리셋
+        }
+      }
+      
       const product = productOptions.find(
         p => p.productCode === newEditRow.productCode
       );
@@ -4425,16 +4750,12 @@ const EstimateManagement: React.FC = () => {
         const userInputWidthCount = Number(newEditRow.widthCount) || 0;
         let finalWidthCount = userInputWidthCount;
 
-        // 사용자가 폭수를 입력하지 않았다면 추천 폭수 계산
-        if (userInputWidthCount === 0) {
+        // 사용자가 폭수를 입력하지 않았거나 주름타입이 변경된 경우 추천 폭수 계산
+        if (userInputWidthCount === 0 || field === 'pleatType') {
           let pleatCount: number | string = 0;
           
-          // 겉커튼 민자는 productWidth가 없어도 계산 가능
-          if (pleatTypeVal === '민자') {
-            // 겉커튼 민자는 가로 길이 기반으로 추천 폭수 계산
-            pleatCount = Math.ceil(widthMM / 700); // 700mm당 1폭
-          } else if (productWidth > 0) {
-            // 겉커튼 나비/3주름은 productWidth가 필요
+          // 겉커튼 민자/나비 모두 새로운 공식 사용
+          if (pleatTypeVal === '민자' || pleatTypeVal === '나비') {
             pleatCount = getPleatCount(
               widthMM,
               productWidth,
@@ -4447,19 +4768,14 @@ const EstimateManagement: React.FC = () => {
           newEditRow.widthCount = finalWidthCount;
           newEditRow.pleatCount = finalWidthCount;
           
+          // 추천폭수 상태 업데이트
+          setRecommendedPleatCount(finalWidthCount);
+          
           // 추천 주름양 계산
           if (finalWidthCount > 0) {
             let calculatedPleatAmount = '';
-            if (pleatTypeVal === '민자') {
-              calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, finalWidthCount);
-            } else if (productWidth > 0) {
-              calculatedPleatAmount = getPleatAmount(
-                widthMM,
-                productWidth,
-                pleatTypeVal,
-                curtainTypeVal,
-                finalWidthCount
-              ) || '';
+            if (pleatTypeVal === '민자' || pleatTypeVal === '나비') {
+              calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, finalWidthCount, productWidth);
             }
             setRecommendedPleatAmount(calculatedPleatAmount);
           } else {
@@ -4470,32 +4786,9 @@ const EstimateManagement: React.FC = () => {
         // 주름양 계산
         if (finalWidthCount > 0) {
           let calculatedPleatAmount = '';
-          if (pleatTypeVal === '민자') {
-            calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, finalWidthCount);
-          } else if (productWidth > 0) {
-            calculatedPleatAmount = getPleatAmount(
-              widthMM,
-              productWidth,
-              pleatTypeVal,
-              curtainTypeVal,
-              finalWidthCount
-            );
-                  } else {
-          // 겉커튼 나비/3주름이지만 productWidth가 없는 경우 표준값으로 계산
-          if (pleatTypeVal === '나비') {
-            const standardWidth = 1370; // 표준 제품폭
-            const calculatedValue = (standardWidth * finalWidthCount) / widthMM;
-            if (isFinite(calculatedValue) && !isNaN(calculatedValue)) {
-              calculatedPleatAmount = calculatedValue.toFixed(2);
-            }
-          } else if (pleatTypeVal === '3주름') {
-            const standardWidth = 1370; // 표준 제품폭
-            const calculatedValue = (standardWidth * finalWidthCount) / widthMM;
-            if (isFinite(calculatedValue) && !isNaN(calculatedValue)) {
-              calculatedPleatAmount = calculatedValue.toFixed(2);
-            }
+          if (pleatTypeVal === '민자' || pleatTypeVal === '나비') {
+            calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, finalWidthCount, productWidth);
           }
-        }
           newEditRow.pleatAmount = calculatedPleatAmount;
           // editRow 상태도 업데이트하여 화면에 반영
           setEditRow((prev: any) => ({ ...prev, pleatAmount: calculatedPleatAmount }));
@@ -4779,6 +5072,10 @@ const EstimateManagement: React.FC = () => {
 
     // 공간명 표시
     if (key === 'space') {
+      // 직접입력인 경우 spaceCustom 값 표시
+      if (row.space === '직접입력' && row.spaceCustom) {
+        return row.spaceCustom;
+      }
       return row.space;
     }
 
@@ -4835,7 +5132,6 @@ const EstimateManagement: React.FC = () => {
   // WINDOWSTORY 버튼 핸들러
   const handleToggleMarginSum = () => {
     setShowMarginSum(v => !v);
-    setShowDiscount(v => !v);
   };
 
   // 작업 제목 더블클릭 시 할인율/마진 컬럼 토글
@@ -5260,6 +5556,66 @@ const EstimateManagement: React.FC = () => {
       ? sumTotalPrice - discountAmountNumber
       : sumTotalPrice;
 
+  // 할인 관련 상태 변경 시 discountedTotalInput 동기화
+  useEffect(() => {
+    if (discountAmountNumber > 0 && sumTotalPrice > 0) {
+      const calculatedDiscountedTotal = sumTotalPrice - discountAmountNumber;
+      // discountedTotalInput이 비어있거나 계산된 값과 다를 때만 업데이트
+      if (!discountedTotalInput || Math.abs(Number(discountedTotalInput) - calculatedDiscountedTotal) > 1) {
+        setDiscountedTotalInput(calculatedDiscountedTotal.toString());
+      }
+    } else if (discountAmountNumber === 0 && sumTotalPrice > 0) {
+      // 할인이 없으면 discountedTotalInput을 sumTotalPrice로 설정
+      if (discountedTotalInput !== sumTotalPrice.toString()) {
+        setDiscountedTotalInput(sumTotalPrice.toString());
+      }
+    }
+  }, [discountAmountNumber, sumTotalPrice]);
+
+  // 견적서 로드 시 할인 계산 수행 (sumTotalPrice가 준비된 후)
+  useEffect(() => {
+    if (loadedDiscountedAmount > 0 && sumTotalPrice > 0) {
+      console.log('견적서 로드 후 할인 계산 수행:', {
+        loadedDiscountedAmount,
+        sumTotalPrice,
+        calculatedDiscountAmount: sumTotalPrice - loadedDiscountedAmount
+      });
+      
+      // 할인금액과 할인율 계산
+      const calculatedDiscountAmount = sumTotalPrice - loadedDiscountedAmount;
+      const calculatedDiscountRate = (calculatedDiscountAmount / sumTotalPrice) * 100;
+      
+      setDiscountAmount(calculatedDiscountAmount.toString());
+      setDiscountRate(calculatedDiscountRate.toFixed(2));
+      
+      // 계산 완료 후 loadedDiscountedAmount 초기화
+      setLoadedDiscountedAmount(0);
+    }
+  }, [loadedDiscountedAmount, sumTotalPrice]);
+
+  // 견적서 변경사항 추적
+  useEffect(() => {
+    if (estimates[activeTab]) {
+      const currentEstimate = estimates[activeTab];
+      const hasChanges = currentEstimate.rows.length > 0 || 
+                        currentEstimate.customerName || 
+                        currentEstimate.contact || 
+                        currentEstimate.address ||
+                        discountAmount ||
+                        discountRate;
+      
+      setUnsavedChanges(prev => {
+        const newSet = new Set(prev);
+        if (hasChanges) {
+          newSet.add(activeTab);
+        } else {
+          newSet.delete(activeTab);
+        }
+        return newSet;
+      });
+    }
+  }, [estimates[activeTab], discountAmount, discountRate, activeTab]);
+
   const handleOutputClick = (event: React.MouseEvent<HTMLElement>) => {
     setOutputAnchorEl(event.currentTarget);
   };
@@ -5577,7 +5933,6 @@ const EstimateManagement: React.FC = () => {
       `레일 옵션이 ${totalRailCount}개 추가되었습니다.\n${detailsArr.join(', ')}\n입고금액: ${totalPurchaseCost.toLocaleString()}원`
     );
   };
-
   // 새견적 저장하기 핸들러 함수
   const handleSaveAsNewEstimate = async () => {
     try {
@@ -5753,6 +6108,7 @@ const EstimateManagement: React.FC = () => {
             discountAmount: Number(
               String(discountAmount).replace(/[^\d]/g, '')
             ),
+            discountRate: Number(discountRate) || 0, // 할인율 추가
             discountedAmount:
               Number(String(discountAmount).replace(/[^\d]/g, '')) > 0
                 ? Math.round(
@@ -5784,6 +6140,7 @@ const EstimateManagement: React.FC = () => {
             discountAmount: Number(
               String(discountAmount).replace(/[^\d]/g, '')
             ),
+            discountRate: Number(discountRate) || 0, // 할인율 추가
             discountedAmount:
               Number(String(discountAmount).replace(/[^\d]/g, '')) > 0
                 ? Math.round(
@@ -5908,6 +6265,7 @@ const EstimateManagement: React.FC = () => {
         savedAt: new Date().toISOString(),
         totalAmount,
         discountAmount: discountAmountNumber,
+        discountRate: Number(discountRate) || 0, // 할인율 추가
         discountedAmount,
         margin: sumMargin,
         // 실측 정보 추가
@@ -6093,6 +6451,13 @@ const EstimateManagement: React.FC = () => {
       setTimeout(() => {
         setRecentlySavedEstimateId(null);
       }, 5000);
+
+      // 저장 완료 후 unsavedChanges에서 제거
+      setUnsavedChanges(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(activeTab);
+        return newSet;
+      });
 
       console.log('견적서 입력 내용 초기화 완료');
     } catch (error) {
@@ -6369,7 +6734,6 @@ const EstimateManagement: React.FC = () => {
     // 계약관리 페이지로 이동
     navigate('/business/contract-management');
   };
-
   const handleProceedToContract = async (savedEstimate: any) => {
     console.log('진행버튼 클릭됨:', savedEstimate);
     
@@ -7005,6 +7369,99 @@ const EstimateManagement: React.FC = () => {
     }
   }, []);
 
+  // 우클릭 드롭다운 메뉴 핸들러들
+  const handleContextMenu = (event: React.MouseEvent, tabIndex: number) => {
+    event.preventDefault();
+    setContextMenu({
+      mouseX: event.clientX + 2,
+      mouseY: event.clientY - 6,
+      tabIndex,
+    });
+  };
+
+  const handleCloseContextMenu = () => {
+    setContextMenu(null);
+  };
+
+  const handleContextMenuAction = async (action: 'save' | 'saveAs' | 'copy' | 'delete') => {
+    if (!contextMenu) return;
+    
+    const { tabIndex } = contextMenu;
+    const currentEstimate = estimates[tabIndex];
+    
+    try {
+      switch (action) {
+        case 'save':
+          // 현재 탭을 활성 탭으로 설정하고 저장
+          setActiveTab(tabIndex);
+          await handleSaveEstimate();
+          break;
+          
+        case 'saveAs':
+          // 새 이름으로 저장 (견적번호 변경)
+          setActiveTab(tabIndex);
+          const newEstimateNo = generateEstimateNo([]);
+          const updatedEstimate = {
+            ...currentEstimate,
+            estimateNo: newEstimateNo,
+            name: `견적서-${newEstimateNo}`,
+          };
+          
+          const newEstimates = [...estimates];
+          newEstimates[tabIndex] = updatedEstimate;
+          useEstimateStore.setState({ estimates: newEstimates });
+          
+          await handleSaveEstimate();
+          break;
+          
+        case 'copy':
+          // 견적서 복사
+          const copiedEstimate = {
+            ...currentEstimate,
+            id: Date.now(),
+            estimateNo: generateEstimateNo([]),
+            name: `견적서-${generateEstimateNo([])}`,
+            estimateDate: getLocalDate(),
+          };
+          
+          const estimatesWithCopy = [...estimates, copiedEstimate];
+          useEstimateStore.setState({ estimates: estimatesWithCopy });
+          setActiveTab(estimatesWithCopy.length - 1);
+          break;
+          
+        case 'delete':
+          // 견적서 삭제 (탭 닫기와 동일)
+          await handleCloseTab(tabIndex);
+          break;
+      }
+    } catch (error) {
+      console.error('컨텍스트 메뉴 작업 중 오류:', error);
+    }
+    
+    handleCloseContextMenu();
+  };
+
+  // 탭 닫기 핸들러
+  const handleCloseTab = async (idx: number) => {
+    // 저장 여부와 관계없이 항상 확인 대화상자 표시
+    const shouldClose = window.confirm(
+      '이 탭을 닫으시겠습니까?\n\n"네"를 선택하면 탭이 닫힙니다.\n"아니오"를 선택하면 탭이 유지됩니다.'
+    );
+    
+    if (!shouldClose) {
+      return; // 사용자가 '아니오'를 선택한 경우 탭 닫기 취소
+    }
+    
+    // 탭 닫기 (저장 여부와 관계없이)
+    removeEstimate(idx);
+    // 저장되지 않은 변경사항 상태에서 제거
+    setUnsavedChanges(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(idx);
+      return newSet;
+    });
+  };
+
   // 견적서 초기화 핸들러
   const handleResetEstimate = (idx: number) => {
     const estimateNo = generateEstimateNo([]);
@@ -7046,7 +7503,6 @@ const EstimateManagement: React.FC = () => {
     railItems: Array<{ space: string; length: number; count: number }>;
     rowIndex: number;
   } | null>(null);
-
   // 레일 수정 모달 핸들러
   const handleRailEdit = (rowIndex: number) => {
     const row = estimates[activeTab].rows[rowIndex];
@@ -7303,94 +7759,32 @@ const EstimateManagement: React.FC = () => {
       setRecommendedPleatAmount('');
     } else if (curtainTypeVal === '겉커튼' && widthMM > 0) {
         let pleatCount: number | '' = '';
-        if (pleatTypeVal === '민자') {
-          const safeProductWidth = productWidth || 1370;
-          const formulaKey =
-            safeProductWidth > 2000 ? '겉커튼-민자-2000이상' : '겉커튼-민자-2000이하';
-
-          if (formulaKey && formulas[formulaKey]) {
-            try {
-              const rawResult = evaluate(formulas[formulaKey].widthCount, {
-                widthMM,
-                productWidth: safeProductWidth,
-              });
-              
-              // Infinity나 NaN 체크
-              if (!isFinite(rawResult) || isNaN(rawResult)) {
-                pleatCount = '';
-              } else {
-                const decimal = rawResult - Math.floor(rawResult);
-                pleatCount =
-                  decimal <= 0.1 ? Math.floor(rawResult) : Math.ceil(rawResult);
-              }
-            } catch {
-              pleatCount = '';
-            }
-          }
-                } else if (pleatTypeVal === '나비') {
-          const safeProductWidth = productWidth || 1370;
-          const formulaKey =
-            safeProductWidth > 2000 ? '겉커튼-나비-2000이상' : '겉커튼-나비-2000이하';
-
-          if (formulaKey && formulas[formulaKey]) {
-            try {
-              const rawResult = evaluate(formulas[formulaKey].widthCount, {
-                widthMM,
-                productWidth: safeProductWidth,
-              });
-              
-              // Infinity나 NaN 체크
-              if (!isFinite(rawResult) || isNaN(rawResult)) {
-                pleatCount = '';
-              } else {
-                const decimal = rawResult - Math.floor(rawResult);
-                pleatCount =
-                  decimal <= 0.1 ? Math.floor(rawResult) : Math.ceil(rawResult);
-              }
-            } catch {
-              pleatCount = '';
-            }
-          }
-        }
-      newEditRow.pleatCount = pleatCount;
-      newEditRow.widthCount = pleatCount;
-      setRecommendedPleatCount(pleatCount === '' ? 0 : pleatCount);
-        
-      // 추천 주름양 계산
-      if (pleatCount && pleatCount > 0) {
-          const calculatedPleatAmount = getPleatAmount(
+        if (pleatTypeVal === '민자' || pleatTypeVal === '나비') {
+          pleatCount = getPleatCount(
             widthMM,
             productWidth,
             pleatTypeVal,
-            curtainTypeVal,
-            pleatCount
+            curtainTypeVal
           );
+        }
+        
+        newEditRow.pleatCount = pleatCount;
+        newEditRow.widthCount = pleatCount;
+        setRecommendedPleatCount(pleatCount === '' ? 0 : pleatCount);
+        
+        // 추천 주름양 계산
+        if (pleatCount && pleatCount > 0) {
+          const calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, pleatCount, productWidth);
           setRecommendedPleatAmount(calculatedPleatAmount || '');
         } else {
           setRecommendedPleatAmount('');
         }
 
-      // 주름양 자동 계산
-      if (pleatCount !== '' && pleatCount > 0) {
-        const calculatedPleatAmount = getPleatAmount(
-          widthMM,
-          productWidth,
-          pleatTypeVal,
-          curtainTypeVal,
-          pleatCount
-        );
-        newEditRow.pleatAmount = calculatedPleatAmount;
-      }
-    } else if (curtainTypeVal === '속커튼' && pleatTypeVal === '민자') {
-      // 속커튼 민자는 주름양배수 선택값을 그대로 사용
-      if (widthMM > 0) {
-        // 주름양 배수 가져오기 (기본값 1.4배)
-        const pleatMultiplier = Number(newEditRow.pleatMultiplier?.replace('배', '')) || 1.4;
-        const area = (widthMM / 1000) * pleatMultiplier; // m²
-        newEditRow.area = area;
-        // 주름양은 선택된 배수값을 그대로 사용
-        newEditRow.pleatAmount = newEditRow.pleatMultiplier || '1.4배';
-      }
+        // 주름양 자동 계산
+        if (pleatCount !== '' && pleatCount > 0) {
+          const calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, pleatCount, productWidth);
+          newEditRow.pleatAmount = calculatedPleatAmount;
+        }
     } else if (product) {
       // 다른 커튼 타입으로 변경 시 원래 제품의 단가/원가로 복원
       if (newEditRow.salePrice === editRow.salePrice) {
@@ -9523,7 +9917,7 @@ const EstimateManagement: React.FC = () => {
                           console.log('클릭 이벤트 발생:', option.optionName);
                           handleAddOptionToEstimate(option);
                         }}
-                        onContextMenu={(e) => handleContextMenu(e, option)}
+                                                        onContextMenu={(e) => handleOptionContextMenu(e, option)}
                         sx={{
                           cursor: 'pointer',
                           color: 'var(--text-color)',
@@ -9711,24 +10105,105 @@ const EstimateManagement: React.FC = () => {
 
       {/* 우클릭 컨텍스트 메뉴 */}
       <Menu
-        open={contextMenu !== null}
-        onClose={handleCloseContextMenu}
+        open={optionContextMenu !== null}
+        onClose={handleCloseOptionContextMenu}
         anchorReference="anchorPosition"
         anchorPosition={
-          contextMenu !== null
-            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+          optionContextMenu !== null
+            ? { top: optionContextMenu.mouseY, left: optionContextMenu.mouseX }
             : undefined
         }
         PaperProps={{
           sx: {
-            backgroundColor: 'var(--surface-color)',
-            color: 'var(--text-color)',
-            border: '1px solid var(--border-color)',
+            backgroundColor: '#ffffff',
+            color: '#333333',
+            border: '1px solid #e0e0e0',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
           }
         }}
       >
-        <MenuItem onClick={handleEditFromContextMenu} sx={{ color: '#e65100', fontWeight: 'bold' }}>
+        <MenuItem 
+          onClick={handleEditFromContextMenu} 
+          sx={{ 
+            color: '#e65100', 
+            fontWeight: 'bold',
+            '&:hover': {
+              backgroundColor: 'rgba(230, 81, 0, 0.1)',
+            },
+          }}
+        >
           수량 수정
+        </MenuItem>
+      </Menu>
+
+      {/* 행 우클릭 컨텍스트 메뉴 */}
+      <Menu
+        open={rowContextMenu !== null}
+        onClose={handleCloseRowContextMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          rowContextMenu !== null
+            ? { top: rowContextMenu.mouseY, left: rowContextMenu.mouseX }
+            : undefined
+        }
+        PaperProps={{
+          sx: {
+            backgroundColor: '#ffffff',
+            color: '#333333',
+            border: '1px solid #e0e0e0',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+          }
+        }}
+      >
+        <MenuItem 
+          onClick={() => handleRowContextMenuAction('edit')} 
+          sx={{ 
+            color: '#2196f3',
+            '&:hover': {
+              backgroundColor: 'rgba(33, 150, 243, 0.1)',
+            },
+          }}
+        >
+          <EditIcon fontSize="small" sx={{ mr: 1 }} />
+          수정하기
+        </MenuItem>
+        {rowContextMenu?.row.type === 'product' && (
+          <MenuItem 
+            onClick={() => handleRowContextMenuAction('addOption')} 
+            sx={{ 
+              color: '#4caf50',
+              '&:hover': {
+                backgroundColor: 'rgba(76, 175, 80, 0.1)',
+              },
+            }}
+          >
+            <AddIcon fontSize="small" sx={{ mr: 1 }} />
+            옵션추가
+          </MenuItem>
+        )}
+        <MenuItem 
+          onClick={() => handleRowContextMenuAction('copy')} 
+          sx={{ 
+            color: '#ff9800',
+            '&:hover': {
+              backgroundColor: 'rgba(255, 152, 0, 0.1)',
+            },
+          }}
+        >
+          <ContentCopyIcon fontSize="small" sx={{ mr: 1 }} />
+          복사하기
+        </MenuItem>
+        <MenuItem 
+          onClick={() => handleRowContextMenuAction('delete')} 
+          sx={{ 
+            color: '#f44336',
+            '&:hover': {
+              backgroundColor: 'rgba(244, 67, 54, 0.1)',
+            },
+          }}
+        >
+          <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+          삭제하기
         </MenuItem>
       </Menu>
       {/* 수정 모달 */}
@@ -9822,25 +10297,67 @@ const EstimateManagement: React.FC = () => {
                   />
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <TextField
-                    label="공간"
+                  <FormControl
+                    fullWidth
+                    size="small"
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '& fieldset': { borderColor: 'var(--border-color)' },
+                        '&:hover fieldset': { borderColor: 'var(--primary-color)' },
+                      },
+                    }}
+                  >
+                    <InputLabel sx={{ color: 'var(--text-secondary-color)' }}>공간</InputLabel>
+                    <Select
+                      label="공간"
                       value={editRow?.space || ''}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      onChange={(e: SelectChangeEvent) =>
                         handleEditChange('space', e.target.value)
+                      }
+                      sx={{
+                        color: 'var(--primary-color)',
+                        fontWeight: 'bold',
+                        '& .MuiSelect-icon': {
+                          color: 'var(--primary-color)',
+                        },
+                      }}
+                    >
+                      {spaceOptions.map((option) => (
+                        <MenuItem key={option} value={option} sx={{
+                          color: 'var(--primary-color)',
+                          fontWeight: 'bold',
+                          '&:hover': {
+                            backgroundColor: 'var(--primary-color)',
+                            color: '#ffffff',
+                          },
+                        }}>
+                          {option}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                {editRow?.space === '직접입력' && (
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      label="공간 직접입력"
+                      value={editRow?.spaceCustom || ''}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        handleEditChange('spaceCustom', e.target.value)
                       }
                       fullWidth
                       size="small"
-                    placeholder="공간을 입력하세요"
                       sx={{
-                      input: { color: 'var(--text-color)' },
-                      label: { color: 'var(--text-secondary-color)' },
+                        input: { color: 'var(--text-color)' },
+                        label: { color: 'var(--text-secondary-color)' },
                         '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: 'var(--border-color)' },
-                        '&:hover fieldset': { borderColor: 'var(--primary-color)' },
+                          '& fieldset': { borderColor: 'var(--border-color)' },
+                          '&:hover fieldset': { borderColor: 'var(--primary-color)' },
                         },
                       }}
                     />
                   </Grid>
+                )}
                 <Grid item xs={12} md={4}>
                   <TextField
                     label="가로(mm)"
@@ -10343,7 +10860,7 @@ const EstimateManagement: React.FC = () => {
                 {recommendedPleatCount > 0 && 
                   isFinite(recommendedPleatCount) &&
                   editRow.productType !== '블라인드' &&
-                  editRow.curtainType !== '속커튼' && (
+                  editRow.curtainType === '겉커튼' && (
                     <Grid item xs={12}>
                       <Box
                         sx={{
@@ -10363,30 +10880,6 @@ const EstimateManagement: React.FC = () => {
                         <Typography variant="body2" sx={{ color: '#666' }}>
                           가로 {editRow.widthMM}mm, 제품명 {editRow.productName}{' '}
                           기준으로 계산된 추천 폭수입니다.
-                        </Typography>
-                      </Box>
-                    </Grid>
-                  )}
-                                {recommendedPleatAmount && editRow.curtainType !== '속커튼' && (
-                    <Grid item xs={12}>
-                      <Box
-                        sx={{
-                          p: 2,
-                          backgroundColor: '#fff3e0',
-                          borderRadius: 1,
-                          border: '1px solid #ff9800',
-                          color: '#e65100',
-                        }}
-                      >
-                        <Typography
-                          variant="subtitle2"
-                          sx={{ fontWeight: 'bold', mb: 1 }}
-                        >
-                          추천 주름양: {recommendedPleatAmount}배
-                        </Typography>
-                        <Typography variant="body2" sx={{ color: '#666' }}>
-                          가로 {editRow.widthMM}mm, 제품명 {editRow.productName}, 폭수 {recommendedPleatCount}폭{' '}
-                          기준으로 계산된 추천 주름양입니다.
                         </Typography>
                       </Box>
                     </Grid>
@@ -10439,13 +10932,62 @@ const EstimateManagement: React.FC = () => {
                 },
               }}
             >
-              {estimates.map((estimate, idx) => (
-                <Tab
-                  key={estimate.id}
-                  label={generateEstimateTabText(estimate)}
-                  sx={{ minWidth: 120 }}
-                />
-              ))}
+              {estimates.map((estimate, idx) => {
+                const isFinal = isFinalEstimate(estimate);
+                return (
+                  <Tab
+                    key={estimate.id}
+                    label={
+                      <Box 
+                        sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+                        onContextMenu={(e) => handleContextMenu(e, idx)}
+                      >
+                        <span style={{ 
+                          color: isFinal ? 'var(--primary-color)' : 'inherit',
+                          fontWeight: isFinal ? 'bold' : 'normal'
+                        }}>
+                          {generateEstimateTabText(estimate)}
+                        </span>
+                        {unsavedChanges.has(idx) && (
+                          <Box
+                            component="span"
+                            sx={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              backgroundColor: '#ff6b6b',
+                              display: 'inline-block'
+                            }}
+                          />
+                        )}
+                        <IconButton
+                          size="small"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            await handleCloseTab(idx);
+                          }}
+                          sx={{
+                            ml: 1,
+                            p: 0.5,
+                            color: 'var(--text-color)',
+                            '&:hover': {
+                              backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                              color: '#ff6b6b'
+                            }
+                          }}
+                        >
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    }
+                    sx={{ 
+                      minWidth: 120,
+                      color: isFinal ? 'var(--primary-color)' : 'var(--text-color)',
+                      fontWeight: isFinal ? 'bold' : 'normal'
+                    }}
+                  />
+                );
+              })}
               <Tab
                 icon={<AddIcon />}
                 aria-label="새 견적서"
@@ -10684,10 +11226,7 @@ const EstimateManagement: React.FC = () => {
                                 }
                               }}
                               onDoubleClick={() => handleRowClick(idx)}
-                              onContextMenu={(e) => {
-                                e.preventDefault();
-                                handleRowClick(idx);
-                              }}
+                              onContextMenu={(e) => handleRowContextMenu(e, idx, row)}
                             >
                               {isBulkEditMode && (
                                 <TableCell sx={{ width: 50, fontSize: '12pt' }}>
@@ -10887,29 +11426,7 @@ const EstimateManagement: React.FC = () => {
                                   backgroundColor: 'var(--hover-color-strong)', // 테마에 맞는 hover 색상
                                 }
                               }}
-                                                              onContextMenu={(e) => {
-                                  e.preventDefault();
-                                  if (isRail) {
-                                  // 레일 편집의 경우에도 올바른 인덱스 사용
-                                  const originalRows = estimates[activeTab].rows;
-                                  const originalIndex = originalRows.findIndex(r => r.id === row.id);
-                                  if (originalIndex !== -1) {
-                                    handleRailEdit(originalIndex);
-                                  }
-                                  } else {
-                                    // 옵션 행의 경우 시공 옵션 수정 모달 열기
-                                    setEditingOption({
-                                      optionName: row.optionLabel || row.productName,
-                                      vendor: row.vendor,
-                                      salePrice: row.salePrice,
-                                      purchaseCost: row.purchaseCost,
-                                      details: row.details,
-                                      note: row.note
-                                    });
-                                    setEditOptionQuantity(row.quantity || 1);
-                                    setEditOptionDialogOpen(true);
-                                  }
-                                }}
+                                                                                            onContextMenu={(e) => handleRowContextMenu(e, idx, row)}
                               onDoubleClick={
                                 isRail ? () => {
                                   // 레일 편집의 경우에도 올바른 인덱스 사용
@@ -11089,10 +11606,18 @@ const EstimateManagement: React.FC = () => {
                                     
                                     // 각 컬럼별로 다른 부분 표시
                                     if (field.key === 'lineDir') {
-                                      return quantityByType.curtain > 0 ? `커튼 ${quantityByType.curtain}조` : '';
+                                      return quantityByType.curtain > 0 ? (
+                                        <span style={{ fontSize: 'calc(inherit - 1.5px)' }}>
+                                          커튼 {quantityByType.curtain}조
+                                        </span>
+                                      ) : '';
                                     }
                                     if (field.key === 'lineLen') {
-                                      return quantityByType.blind > 0 ? `블라인드 ${quantityByType.blind}개` : '';
+                                      return quantityByType.blind > 0 ? (
+                                        <span style={{ fontSize: 'calc(inherit - 1.5px)' }}>
+                                          블라인드 {quantityByType.blind}개
+                                        </span>
+                                      ) : '';
                                     }
                                     if (field.key === 'pleatAmount') {
                                       return quantityByType.other > 0 ? `기타 ${quantityByType.other}개` : '';
@@ -11118,8 +11643,12 @@ const EstimateManagement: React.FC = () => {
                                   if (field.key === 'margin') {
                                     // showMarginSum이 true일 때만 마진 합계 표시
                                     if (!showMarginSum) return '';
-                                    const sum = filteredRows.reduce((acc, row) => acc + (Number(row.margin) || 0), 0);
-                                    return sum ? sum.toLocaleString() : '';
+                                    // 할인 관련 값들이 변경될 때 실시간으로 계산되는 마진합계 사용
+                                    return sumMargin ? (
+                                      <span style={{ color: 'var(--primary-color, #6a1b9a)', fontWeight: 'bold' }}>
+                                        {sumMargin.toLocaleString()}
+                                      </span>
+                                    ) : '';
                                   }
                                   return '';
                                 })()}
@@ -11177,7 +11706,7 @@ const EstimateManagement: React.FC = () => {
                 alignItems: 'center',
               }}
             >
-              <span style={{ color: '#40c4ff', marginRight: 32 }}>
+              <span style={{ color: '#000000', marginRight: 32 }}>
                 소비자금액(VAT포함): {sumTotalPrice.toLocaleString()} 원
               </span>
               <Button
@@ -11199,9 +11728,9 @@ const EstimateManagement: React.FC = () => {
                 HunterDouglas
               </Button>
               {discountAmountNumber > 0 && (
-                <span style={{ color: '#76ff03', marginRight: 32 }}>
-                  할인후금액(VAT포함): {discountedTotal?.toLocaleString()} 원
-                </span>
+                               <span style={{ color: 'var(--primary-color, #6a1b9a)', marginRight: 32 }}>
+                 할인후금액(VAT포함): {discountedTotal?.toLocaleString()} 원
+               </span>
               )}
               <Button
                 variant="contained"
@@ -11314,6 +11843,7 @@ const EstimateManagement: React.FC = () => {
                 sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
                 onClick={handleOutputClick}
                 endIcon={<ArrowDownIcon />}
+                data-testid="output-button"
               >
                 출력하기
               </Button>
@@ -11329,21 +11859,30 @@ const EstimateManagement: React.FC = () => {
                   vertical: 'top',
                   horizontal: 'left',
                 }}
+                PaperProps={{
+                  sx: {
+                    backgroundColor: '#fff',
+                    color: '#222',
+                    border: '1px solid #e0e0e0',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                    minWidth: 140,
+                  },
+                }}
               >
-                <MenuItem onClick={() => handleOutputOption('print')}>
-                  <PrintIcon sx={{ mr: 1, fontSize: 20 }} />
+                <MenuItem onClick={() => handleOutputOption('print')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(25, 118, 210, 0.08)' } }}>
+                  <PrintIcon sx={{ mr: 1, fontSize: 20, color: '#1976d2' }} />
                   프린트
                 </MenuItem>
-                <MenuItem onClick={() => handleOutputOption('pdf')}>
-                  <PdfIcon sx={{ mr: 1, fontSize: 20 }} />
+                <MenuItem onClick={() => handleOutputOption('pdf')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(233, 30, 99, 0.08)' } }}>
+                  <PdfIcon sx={{ mr: 1, fontSize: 20, color: '#e91e63' }} />
                   PDF
                 </MenuItem>
-                <MenuItem onClick={() => handleOutputOption('jpg')}>
-                  <ImageIcon sx={{ mr: 1, fontSize: 20 }} />
+                <MenuItem onClick={() => handleOutputOption('jpg')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(255, 193, 7, 0.08)' } }}>
+                  <ImageIcon sx={{ mr: 1, fontSize: 20, color: '#ffc107' }} />
                   JPG
                 </MenuItem>
-                <MenuItem onClick={() => handleOutputOption('share')}>
-                  <ShareIcon sx={{ mr: 1, fontSize: 20 }} />
+                <MenuItem onClick={() => handleOutputOption('share')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(33, 150, 243, 0.08)' } }}>
+                  <ShareIcon sx={{ mr: 1, fontSize: 20, color: '#2196f3' }} />
                   공유
                 </MenuItem>
               </Menu>
@@ -11915,6 +12454,7 @@ const EstimateManagement: React.FC = () => {
                             key={key}
                             hover
                             onDoubleClick={() => handleLoadSavedEstimate(est)}
+                            onContextMenu={e => handleEstimateListContextMenu(e, est)}
                             sx={{
                               cursor: 'pointer',
                               backgroundColor: backgroundColor,
@@ -11973,108 +12513,41 @@ const EstimateManagement: React.FC = () => {
                                   const currentIndex = sortedSameAddressEstimates.findIndex(e => e.id === est.id);
                                   const isFinal = isFinalEstimate(est);
                                   
-                                  // 단독 견적서인 경우 - 넘버링 "1"로 표시하고 클릭 가능하게
-                                  if (sameAddressEstimates.length === 1) {
-                                    return (
-                                  <Chip
-                                        label="1"
-                                    size="small"
-                                        variant="outlined"
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          e.nativeEvent.stopImmediatePropagation();
-                                          handleToggleFinalStatus(est);
-                                        }}
-                                        onMouseDown={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          e.nativeEvent.stopImmediatePropagation();
-                                        }}
-                                    sx={{
-                                      ml: 1,
-                                          borderColor: 'var(--primary-color)',
-                                          color: 'var(--primary-color)',
-                                      fontSize: '0.7rem',
-                                      height: '20px',
-                                          cursor: 'pointer',
-                                          '&:hover': {
-                                            backgroundColor: 'var(--primary-color)',
-                                            color: 'var(--on-primary-color)',
-                                          },
-                                        }}
-                                      />
-                                    );
-                                  }
+                                  // 넘버링 표시 (단독 견적서도 "1"로 표시)
+                                  const numbering = currentIndex + 1;
                                   
-                                  // 다중 견적서인 경우
-                                  if (isFinal) {
-                                    // Final 견적들 중에서 현재 견적의 순서 찾기
-                                    const finalEstimates = sortedSameAddressEstimates.filter(e => isFinalEstimate(e));
-                                    const finalIndex = finalEstimates.findIndex(e => e.id === est.id);
-                                    const finalNumber = finalIndex + 1;
-                                    
-                                    return (
-                                      <Chip
-                                        label={finalEstimates.length > 1 ? `Final${finalNumber}` : "Final"}
-                                        size="small"
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          e.nativeEvent.stopImmediatePropagation();
-                                          handleToggleFinalStatus(est);
-                                        }}
-                                        onMouseDown={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          e.nativeEvent.stopImmediatePropagation();
-                                        }}
-                                        sx={{
-                                          ml: 1,
-                                          backgroundColor: 'var(--primary-color)',
-                                          color: 'var(--on-primary-color)',
-                                          fontSize: '0.7rem',
-                                          height: '20px',
-                                          cursor: 'pointer',
-                                          '&:hover': {
-                                            backgroundColor: 'var(--primary-hover-color)',
-                                          },
-                                        }}
-                                      />
-                                    );
-                                  } else {
-                                    // 넘버링 상태인 경우
-                                    return (
-                                      <Chip
-                                        label={`${currentIndex + 1}`}
-                                        size="small"
-                                        variant="outlined"
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          e.nativeEvent.stopImmediatePropagation();
-                                          handleToggleFinalStatus(est);
-                                        }}
-                                        onMouseDown={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          e.nativeEvent.stopImmediatePropagation();
-                                        }}
-                                        sx={{
-                                          ml: 1,
-                                          borderColor: 'var(--primary-color)',
-                                          color: 'var(--primary-color)',
-                                          fontSize: '0.7rem',
-                                          height: '20px',
-                                          cursor: 'pointer',
-                                          '&:hover': {
-                                            backgroundColor: 'var(--primary-color)',
-                                            color: 'var(--on-primary-color)',
-                                          },
-                                        }}
-                                      />
-                                    );
-                                  }
+                                  return (
+                                    <Chip
+                                      label={`${numbering}`}
+                                      size="small"
+                                      variant={isFinal ? "filled" : "outlined"}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        e.nativeEvent.stopImmediatePropagation();
+                                        handleToggleFinalStatus(est);
+                                      }}
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        e.nativeEvent.stopImmediatePropagation();
+                                      }}
+                                      sx={{
+                                        ml: 1,
+                                        borderColor: 'var(--primary-color)',
+                                        color: isFinal ? '#ffffff' : 'var(--primary-color)',
+                                        backgroundColor: isFinal ? 'var(--primary-color)' : 'transparent',
+                                        fontSize: '0.7rem',
+                                        height: '20px',
+                                        cursor: 'pointer',
+                                        fontWeight: isFinal ? 'bold' : 'normal',
+                                        '&:hover': {
+                                          backgroundColor: isFinal ? 'var(--primary-hover-color)' : 'var(--primary-color)',
+                                          color: '#ffffff',
+                                        },
+                                      }}
+                                    />
+                                  );
                                 })()}
                               </TableCell>
                             )}
@@ -12255,14 +12728,22 @@ const EstimateManagement: React.FC = () => {
                                         mr: 1,
                                         minWidth: 80,
                                         backgroundColor: '#ffd700',
-                                        color: '#1a237e',
+                                        color: '#ffffff',
                                         '&:hover': {
                                           backgroundColor: '#ffed4e',
+                                          color: '#ffffff',
                                         },
                                       }}
-                                      onClick={() =>
-                                        handleProceedToContract(est)
-                                      }
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        console.log('계약진행버튼 클릭됨');
+                                        handleProceedToContract(est);
+                                      }}
+                                      onTouchStart={(e) => {
+                                        e.preventDefault();
+                                        console.log('계약진행버튼 터치 시작');
+                                      }}
                                     >
                                       계약진행
                                     </Button>
@@ -12333,7 +12814,7 @@ const EstimateManagement: React.FC = () => {
                                       mr: 1,
                                       fontWeight: 'bold',
                                       minWidth: isMobile ? 100 : 80,
-                                      color: '#fff',
+                                      color: '#ffffff',
                                       fontSize: isMobile ? 16 : 12,
                                       py: isMobile ? 1.5 : 0.5,
                                       px: isMobile ? 3 : 1,
@@ -12350,7 +12831,6 @@ const EstimateManagement: React.FC = () => {
                                       handleProceedToContract(est);
                                     }}
                                     onTouchStart={(e) => {
-                                      e.preventDefault();
                                       console.log('진행버튼 터치 시작');
                                     }}
                                   >
@@ -12368,7 +12848,7 @@ const EstimateManagement: React.FC = () => {
                                         mr: 1,
                                         fontWeight: 'bold',
                                         minWidth: isMobile ? 100 : 80,
-                                        color: '#fff',
+                                        color: '#ffffff',
                                         fontSize: isMobile ? 16 : 12,
                                         py: isMobile ? 1.5 : 0.5,
                                         px: isMobile ? 3 : 1,
@@ -12381,7 +12861,11 @@ const EstimateManagement: React.FC = () => {
                                       onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
+                                        console.log('계약진행중 버튼 클릭됨');
                                         handleViewContract(est);
+                                      }}
+                                      onTouchStart={(e) => {
+                                        console.log('계약진행중 버튼 터치 시작');
                                       }}
                                     >
                                       계약진행중
@@ -12405,7 +12889,11 @@ const EstimateManagement: React.FC = () => {
                                       onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
+                                        console.log('취소 버튼 클릭됨');
                                         handleCancelContract(est);
+                                      }}
+                                      onTouchStart={(e) => {
+                                        console.log('취소 버튼 터치 시작');
                                       }}
                                     >
                                       취소
@@ -12422,7 +12910,7 @@ const EstimateManagement: React.FC = () => {
                                       mr: 1,
                                       fontWeight: 'bold',
                                       minWidth: isMobile ? 100 : 80,
-                                      color: '#fff',
+                                      color: '#ffffff',
                                       fontSize: isMobile ? 16 : 12,
                                       py: isMobile ? 1.5 : 0.5,
                                       px: isMobile ? 3 : 1,
@@ -12435,7 +12923,11 @@ const EstimateManagement: React.FC = () => {
                                     onClick={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
+                                      console.log('계약완료 버튼 클릭됨');
                                       handleViewContract(est);
+                                    }}
+                                    onTouchStart={(e) => {
+                                      console.log('계약완료 버튼 터치 시작');
                                     }}
                                   >
                                     계약완료
@@ -13356,8 +13848,151 @@ const EstimateManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* 우클릭 드롭다운 메뉴 */}
+      <Menu
+        open={contextMenu !== null}
+        onClose={handleCloseContextMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenu !== null
+            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+            : undefined
+        }
+        sx={{
+          '& .MuiPaper-root': {
+            backgroundColor: '#ffffff',
+            color: '#333333',
+            border: '1px solid #e0e0e0',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+          },
+        }}
+      >
+        <MenuItem
+          onClick={() => handleContextMenuAction('save')}
+          sx={{
+            color: '#333333',
+            '&:hover': {
+              backgroundColor: 'rgba(64, 196, 255, 0.1)',
+            },
+          }}
+        >
+          <SaveIcon sx={{ mr: 1, fontSize: 20, color: '#40c4ff' }} />
+          저장하기
+        </MenuItem>
+        <MenuItem
+          onClick={() => handleContextMenuAction('saveAs')}
+          sx={{
+            color: '#333333',
+            '&:hover': {
+              backgroundColor: 'rgba(64, 196, 255, 0.1)',
+            },
+          }}
+        >
+          <ContentCopyIcon sx={{ mr: 1, fontSize: 20, color: '#40c4ff' }} />
+          새이름으로저장
+        </MenuItem>
+        <MenuItem
+          onClick={() => handleContextMenuAction('copy')}
+          sx={{
+            color: '#333333',
+            '&:hover': {
+              backgroundColor: 'rgba(64, 196, 255, 0.1)',
+            },
+          }}
+        >
+          <ContentCopyIcon sx={{ mr: 1, fontSize: 20, color: '#40c4ff' }} />
+          복사
+        </MenuItem>
+        <MenuItem
+          onClick={() => handleContextMenuAction('delete')}
+          sx={{
+            color: '#ff6b6b',
+            '&:hover': {
+              backgroundColor: 'rgba(255, 107, 107, 0.1)',
+            },
+          }}
+        >
+          <DeleteIcon sx={{ mr: 1, fontSize: 20, color: '#ff6b6b' }} />
+          삭제
+        </MenuItem>
+      </Menu>
+
+      {/* 견적서리스트 우클릭 메뉴 */}
+      <Menu
+        open={estimateListContextMenu !== null}
+        onClose={handleCloseEstimateListContextMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          estimateListContextMenu !== null
+            ? { top: estimateListContextMenu.mouseY, left: estimateListContextMenu.mouseX }
+            : undefined
+        }
+        PaperProps={{
+          sx: {
+            backgroundColor: '#fff',
+            color: '#222',
+            border: '1px solid #e0e0e0',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            minWidth: 160,
+          },
+        }}
+      >
+        <MenuItem onClick={() => handleEstimateListContextMenuAction('modify')} sx={{ color: '#1976d2', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(25, 118, 210, 0.08)' } }}>
+          수정하기
+        </MenuItem>
+        <MenuItem onClick={() => handleEstimateListContextMenuAction('contract')} sx={{ color: '#388e3c', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(56, 142, 60, 0.08)' } }}>
+          계약진행
+        </MenuItem>
+        <MenuItem onClick={() => handleEstimateListContextMenuAction('copy')} sx={{ color: '#fbc02d', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(251, 192, 45, 0.08)' } }}>
+          복사하기
+        </MenuItem>
+        <MenuItem onClick={() => handleEstimateListContextMenuAction('delete')} sx={{ color: '#d32f2f', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(211, 47, 47, 0.08)' } }}>
+          삭제하기
+        </MenuItem>
+        <MenuItem onClick={() => handleEstimateListContextMenuAction('print')} sx={{ color: '#512da8', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(81, 45, 168, 0.08)' } }}>
+          출력하기
+        </MenuItem>
+      </Menu>
+
+      {/* 견적서리스트 출력 서브메뉴 */}
+      <Menu
+        open={estimateListOutputSubmenu !== null}
+        onClose={handleCloseEstimateListOutputSubmenu}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          estimateListOutputSubmenu !== null
+            ? { top: estimateListOutputSubmenu.mouseY, left: estimateListOutputSubmenu.mouseX }
+            : undefined
+        }
+        PaperProps={{
+          sx: {
+            backgroundColor: '#fff',
+            color: '#222',
+            border: '1px solid #e0e0e0',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            minWidth: 140,
+          },
+        }}
+      >
+        <MenuItem onClick={() => handleEstimateListOutputAction('print')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(25, 118, 210, 0.08)' } }}>
+          <PrintIcon sx={{ mr: 1, fontSize: 20, color: '#1976d2' }} />
+          프린트
+        </MenuItem>
+        <MenuItem onClick={() => handleEstimateListOutputAction('pdf')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(233, 30, 99, 0.08)' } }}>
+          <PdfIcon sx={{ mr: 1, fontSize: 20, color: '#e91e63' }} />
+          PDF
+        </MenuItem>
+        <MenuItem onClick={() => handleEstimateListOutputAction('jpg')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(255, 193, 7, 0.08)' } }}>
+          <ImageIcon sx={{ mr: 1, fontSize: 20, color: '#ffc107' }} />
+          JPG
+        </MenuItem>
+        <MenuItem onClick={() => handleEstimateListOutputAction('share')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(33, 150, 243, 0.08)' } }}>
+          <ShareIcon sx={{ mr: 1, fontSize: 20, color: '#2196f3' }} />
+          공유
+        </MenuItem>
+      </Menu>
     </>
   );
 };
-
 export default EstimateManagement;
