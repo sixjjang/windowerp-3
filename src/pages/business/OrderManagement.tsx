@@ -1999,84 +1999,7 @@ const OrderManagement: React.FC = () => {
                       >
                         제품명
                       </TableCell>
-                      <TableCell
-                        sx={{
-                          backgroundColor: '#1976d2', // 추가: 같은 행 배경색
-                          border: '1px solid #1565c0',
-                          fontWeight: 'bold',
-                          textAlign: 'center',
-                          color: '#fff',
-                          fontSize: '0.875rem',
-                          py: 1.5,
-                        }}
-                      >
-                        주름방식
-                      </TableCell>
-                      <TableCell
-                        sx={{
-                          backgroundColor: '#1976d2', // 추가: 같은 행 배경색
-                          border: '1px solid #1565c0',
-                          fontWeight: 'bold',
-                          textAlign: 'center',
-                          color: '#fff',
-                          fontSize: '0.875rem',
-                          py: 1.5,
-                        }}
-                      >
-                        제작사이즈
-                      </TableCell>
-                      <TableCell
-                        sx={{
-                          backgroundColor: '#1976d2', // 추가: 같은 행 배경색
-                          border: '1px solid #1565c0',
-                          fontWeight: 'bold',
-                          textAlign: 'center',
-                          color: '#fff',
-                          fontSize: '0.875rem',
-                          py: 1.5,
-                        }}
-                      >
-                        m²
-                      </TableCell>
-                      <TableCell
-                        sx={{
-                          backgroundColor: '#1976d2', // 추가: 같은 행 배경색
-                          border: '1px solid #1565c0',
-                          fontWeight: 'bold',
-                          textAlign: 'center',
-                          color: '#fff',
-                          fontSize: '0.875rem',
-                          py: 1.5,
-                        }}
-                      >
-                        줄방향
-                      </TableCell>
-                      <TableCell
-                        sx={{
-                          backgroundColor: '#1976d2', // 추가: 같은 행 배경색
-                          border: '1px solid #1565c0',
-                          fontWeight: 'bold',
-                          textAlign: 'center',
-                          color: '#fff',
-                          fontSize: '0.875rem',
-                          py: 1.5,
-                        }}
-                      >
-                        줄길이
-                      </TableCell>
-                      <TableCell
-                        sx={{
-                          backgroundColor: '#1976d2', // 추가: 같은 행 배경색
-                          border: '1px solid #1565c0',
-                          fontWeight: 'bold',
-                          textAlign: 'center',
-                          color: '#fff',
-                          fontSize: '0.875rem',
-                          py: 1.5,
-                        }}
-                      >
-                        폭수
-                      </TableCell>
+
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -2098,7 +2021,7 @@ const OrderManagement: React.FC = () => {
                               py: 1.5,
                             }}
                           >
-                            {index + 1}
+                            {item.type === 'option' ? '옵션' : index + 1}
                           </TableCell>
                           <TableCell
                             sx={{
@@ -2128,69 +2051,7 @@ const OrderManagement: React.FC = () => {
                           >
                             {item.productName}
                           </TableCell>
-                          <TableCell
-                            sx={{
-                              border: '1px solid #e0e0e0',
-                              color: '#333',
-                              py: 1.5,
-                            }}
-                          >
-                            {item.pleatType || '-'}
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              border: '1px solid #e0e0e0',
-                              textAlign: 'center',
-                              color: '#333',
-                              fontWeight: 500,
-                              py: 1.5,
-                            }}
-                          >
-                            {item.productionWidth && item.productionHeight
-                              ? `${item.productionWidth} x ${item.productionHeight}`
-                              : '-'}
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              border: '1px solid #e0e0e0',
-                              textAlign: 'center',
-                              color: '#333',
-                              fontWeight: 500,
-                              py: 1.5,
-                            }}
-                          >
-                            {item.area ? item.area.toFixed(2) : '-'}
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              border: '1px solid #e0e0e0',
-                              textAlign: 'center',
-                              color: '#333',
-                              py: 1.5,
-                            }}
-                          >
-                            {item.lineDir || '-'}
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              border: '1px solid #e0e0e0',
-                              textAlign: 'center',
-                              color: '#333',
-                              py: 1.5,
-                            }}
-                          >
-                            {item.lineLen || '-'}
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              border: '1px solid #e0e0e0',
-                              textAlign: 'center',
-                              color: '#333',
-                              py: 1.5,
-                            }}
-                          >
-                            {item.widthCount || '-'}
-                          </TableCell>
+
                         </TableRow>
                         {item.showRequestNote && item.requestNote && (
                           <TableRow
@@ -2208,7 +2069,7 @@ const OrderManagement: React.FC = () => {
                               -
                             </TableCell>
                             <TableCell
-                              colSpan={10}
+                              colSpan={3}
                               sx={{ border: '1px solid #e0e0e0' }}
                             >
                               <Typography
@@ -2348,26 +2209,7 @@ const OrderManagement: React.FC = () => {
                       >
                         제품코드
                       </TableCell>
-                      <TableCell
-                        sx={{
-                          border: '1px solid #000',
-                          fontWeight: 'bold',
-                          textAlign: 'center',
-                          color: '#000',
-                        }}
-                      >
-                        주름방식
-                      </TableCell>
-                      <TableCell
-                        sx={{
-                          border: '1px solid #000',
-                          fontWeight: 'bold',
-                          textAlign: 'center',
-                          color: '#000',
-                        }}
-                      >
-                        폭수
-                      </TableCell>
+
                       <TableCell
                         sx={{
                           border: '1px solid #000',
@@ -2391,7 +2233,7 @@ const OrderManagement: React.FC = () => {
                               color: '#000',
                             }}
                           >
-                            {index + 1}
+                            {item.type === 'option' ? '옵션' : index + 1}
                           </TableCell>
                           <TableCell
                             sx={{ border: '1px solid #000', color: '#000' }}
@@ -2402,20 +2244,6 @@ const OrderManagement: React.FC = () => {
                             sx={{ border: '1px solid #000', color: '#000' }}
                           >
                             {item.productCode || '-'}
-                          </TableCell>
-                          <TableCell
-                            sx={{ border: '1px solid #000', color: '#000' }}
-                          >
-                            {item.pleatType || '-'}
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              border: '1px solid #000',
-                              textAlign: 'center',
-                              color: '#000',
-                            }}
-                          >
-                            {item.widthCount || '-'}
                           </TableCell>
                           <TableCell
                             sx={{
@@ -2441,7 +2269,7 @@ const OrderManagement: React.FC = () => {
                               -
                             </TableCell>
                             <TableCell
-                              colSpan={5}
+                              colSpan={3}
                               sx={{ border: '1px solid #000', color: '#000' }}
                             >
                               <Typography
@@ -3303,13 +3131,17 @@ const OrderManagement: React.FC = () => {
                           <TableCell>요청</TableCell>
                           <TableCell>공간</TableCell>
                           <TableCell>제품코드</TableCell>
-                          <TableCell>주름방식</TableCell>
-                          <TableCell>견적(가로x세로)</TableCell>
-                          <TableCell>제작(가로x세로)</TableCell>
-                          <TableCell>m²</TableCell>
-                          <TableCell>줄방향</TableCell>
-                          <TableCell>줄길이</TableCell>
-                          <TableCell>폭수</TableCell>
+                          {selectedOrder.items.some(item => item.type !== 'option') && (
+                            <>
+                              <TableCell>주름방식</TableCell>
+                              <TableCell>견적(가로x세로)</TableCell>
+                              <TableCell>제작(가로x세로)</TableCell>
+                              <TableCell>m²</TableCell>
+                              <TableCell>줄방향</TableCell>
+                              <TableCell>줄길이</TableCell>
+                              <TableCell>폭수</TableCell>
+                            </>
+                          )}
                           <TableCell>매입합계</TableCell>
                         </TableRow>
                       </TableHead>
@@ -3359,159 +3191,163 @@ const OrderManagement: React.FC = () => {
                                   }
                                 />
                               </TableCell>
-                              <TableCell>
-                                <FormControl size="small" sx={{ width: 120 }}>
-                                  <Select
-                                    value={item.pleatType || ''}
-                                    onChange={e =>
-                                      handleUpdateItem(item.id, {
-                                        pleatType: e.target.value,
-                                      })
-                                    }
-                                    displayEmpty
-                                  >
-                                    <MenuItem value="">선택</MenuItem>
-                                    <MenuItem value="민자">민자</MenuItem>
-                                    <MenuItem value="나비">나비</MenuItem>
-                                    <MenuItem value="직접입력">
-                                      직접입력
-                                    </MenuItem>
-                                  </Select>
-                                </FormControl>
-                                {item.pleatType === '직접입력' && (
-                                  <TextField
-                                    size="small"
-                                    sx={{ width: 120, mt: 1 }}
-                                    placeholder="주름방식 입력"
-                                    defaultValue={item.pleatType || ''}
-                                    onBlur={e =>
-                                      handleUpdateItem(item.id, {
-                                        pleatType: e.target.value,
-                                      })
-                                    }
-                                  />
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <TextField
-                                  size="small"
-                                  type="number"
-                                  sx={{ width: 80, mr: 1 }}
-                                  placeholder="가로"
-                                  defaultValue={item.estimateWidth || ''}
-                                  onBlur={e =>
-                                    handleUpdateItem(item.id, {
-                                      estimateWidth: Number(e.target.value),
-                                    })
-                                  }
-                                />
-                                <TextField
-                                  size="small"
-                                  type="number"
-                                  sx={{ width: 80 }}
-                                  placeholder="세로"
-                                  defaultValue={item.estimateHeight || ''}
-                                  onBlur={e =>
-                                    handleUpdateItem(item.id, {
-                                      estimateHeight: Number(e.target.value),
-                                    })
-                                  }
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <TextField
-                                  size="small"
-                                  type="number"
-                                  sx={{ width: 80, mr: 1 }}
-                                  defaultValue={item.productionWidth || ''}
-                                  onBlur={e =>
-                                    handleUpdateItem(item.id, {
-                                      productionWidth: Number(e.target.value),
-                                    })
-                                  }
-                                />
-                                <TextField
-                                  size="small"
-                                  type="number"
-                                  sx={{ width: 80 }}
-                                  defaultValue={item.productionHeight || ''}
-                                  onBlur={e =>
-                                    handleUpdateItem(item.id, {
-                                      productionHeight: Number(e.target.value),
-                                    })
-                                  }
-                                />
-                              </TableCell>
-                              <TableCell>
-                                {item.area ? item.area.toFixed(2) : '-'}
-                              </TableCell>
-                              <TableCell>
-                                <FormControl size="small" sx={{ width: 80 }}>
-                                  <Select
-                                    value={item.lineDir || ''}
-                                    onChange={e =>
-                                      handleUpdateItem(item.id, {
-                                        lineDir: e.target.value,
-                                      })
-                                    }
-                                    displayEmpty
-                                  >
-                                    <MenuItem value="">선택</MenuItem>
-                                    <MenuItem value="좌">좌</MenuItem>
-                                    <MenuItem value="우">우</MenuItem>
-                                  </Select>
-                                </FormControl>
-                              </TableCell>
-                              <TableCell>
-                                <FormControl size="small" sx={{ width: 100 }}>
-                                  <Select
-                                    value={String(item.lineLen || '')}
-                                    onChange={e =>
-                                      handleUpdateItem(item.id, {
-                                        lineLen: e.target.value,
-                                      })
-                                    }
-                                    displayEmpty
-                                  >
-                                    <MenuItem value="">선택</MenuItem>
-                                    <MenuItem value="90cm">90cm</MenuItem>
-                                    <MenuItem value="120cm">120cm</MenuItem>
-                                    <MenuItem value="150cm">150cm</MenuItem>
-                                    <MenuItem value="180cm">180cm</MenuItem>
-                                    <MenuItem value="직접입력">
-                                      직접입력
-                                    </MenuItem>
-                                  </Select>
-                                </FormControl>
-                                {String(item.lineLen || '') === '직접입력' && (
-                                  <TextField
-                                    size="small"
-                                    sx={{ width: 100, mt: 1 }}
-                                    placeholder="길이 입력"
-                                    defaultValue={String(item.lineLen || '')}
-                                    onBlur={e =>
-                                      handleUpdateItem(item.id, {
-                                        lineLen: e.target.value,
-                                      })
-                                    }
-                                  />
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <TextField
-                                  size="small"
-                                  type="number"
-                                  sx={{ width: 80 }}
-                                  defaultValue={item.widthCount || ''}
-                                  onBlur={e =>
-                                    handleUpdateItem(item.id, {
-                                      widthCount: e.target.value
-                                        ? Number(e.target.value)
-                                        : undefined,
-                                    })
-                                  }
-                                />
-                              </TableCell>
+                              {selectedOrder.items.some(item => item.type !== 'option') && (
+                                <>
+                                  <TableCell>
+                                    <FormControl size="small" sx={{ width: 120 }}>
+                                      <Select
+                                        value={item.pleatType || ''}
+                                        onChange={e =>
+                                          handleUpdateItem(item.id, {
+                                            pleatType: e.target.value,
+                                          })
+                                        }
+                                        displayEmpty
+                                      >
+                                        <MenuItem value="">선택</MenuItem>
+                                        <MenuItem value="민자">민자</MenuItem>
+                                        <MenuItem value="나비">나비</MenuItem>
+                                        <MenuItem value="직접입력">
+                                          직접입력
+                                        </MenuItem>
+                                      </Select>
+                                    </FormControl>
+                                    {item.pleatType === '직접입력' && (
+                                      <TextField
+                                        size="small"
+                                        sx={{ width: 120, mt: 1 }}
+                                        placeholder="주름방식 입력"
+                                        defaultValue={item.pleatType || ''}
+                                        onBlur={e =>
+                                          handleUpdateItem(item.id, {
+                                            pleatType: e.target.value,
+                                          })
+                                        }
+                                      />
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      sx={{ width: 80, mr: 1 }}
+                                      placeholder="가로"
+                                      defaultValue={item.estimateWidth || ''}
+                                      onBlur={e =>
+                                        handleUpdateItem(item.id, {
+                                          estimateWidth: Number(e.target.value),
+                                        })
+                                      }
+                                    />
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      sx={{ width: 80 }}
+                                      placeholder="세로"
+                                      defaultValue={item.estimateHeight || ''}
+                                      onBlur={e =>
+                                        handleUpdateItem(item.id, {
+                                          estimateHeight: Number(e.target.value),
+                                        })
+                                      }
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      sx={{ width: 80, mr: 1 }}
+                                      defaultValue={item.productionWidth || ''}
+                                      onBlur={e =>
+                                        handleUpdateItem(item.id, {
+                                          productionWidth: Number(e.target.value),
+                                        })
+                                      }
+                                    />
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      sx={{ width: 80 }}
+                                      defaultValue={item.productionHeight || ''}
+                                      onBlur={e =>
+                                        handleUpdateItem(item.id, {
+                                          productionHeight: Number(e.target.value),
+                                        })
+                                      }
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    {item.area ? item.area.toFixed(2) : '-'}
+                                  </TableCell>
+                                  <TableCell>
+                                    <FormControl size="small" sx={{ width: 80 }}>
+                                      <Select
+                                        value={item.lineDir || ''}
+                                        onChange={e =>
+                                          handleUpdateItem(item.id, {
+                                            lineDir: e.target.value,
+                                          })
+                                        }
+                                        displayEmpty
+                                      >
+                                        <MenuItem value="">선택</MenuItem>
+                                        <MenuItem value="좌">좌</MenuItem>
+                                        <MenuItem value="우">우</MenuItem>
+                                      </Select>
+                                    </FormControl>
+                                  </TableCell>
+                                  <TableCell>
+                                    <FormControl size="small" sx={{ width: 100 }}>
+                                      <Select
+                                        value={String(item.lineLen || '')}
+                                        onChange={e =>
+                                          handleUpdateItem(item.id, {
+                                            lineLen: e.target.value,
+                                          })
+                                        }
+                                        displayEmpty
+                                      >
+                                        <MenuItem value="">선택</MenuItem>
+                                        <MenuItem value="90cm">90cm</MenuItem>
+                                        <MenuItem value="120cm">120cm</MenuItem>
+                                        <MenuItem value="150cm">150cm</MenuItem>
+                                        <MenuItem value="180cm">180cm</MenuItem>
+                                        <MenuItem value="직접입력">
+                                          직접입력
+                                        </MenuItem>
+                                      </Select>
+                                    </FormControl>
+                                    {String(item.lineLen || '') === '직접입력' && (
+                                      <TextField
+                                        size="small"
+                                        sx={{ width: 100, mt: 1 }}
+                                        placeholder="길이 입력"
+                                        defaultValue={String(item.lineLen || '')}
+                                        onBlur={e =>
+                                          handleUpdateItem(item.id, {
+                                            lineLen: e.target.value,
+                                          })
+                                        }
+                                      />
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      sx={{ width: 80 }}
+                                      defaultValue={item.widthCount || ''}
+                                      onBlur={e =>
+                                        handleUpdateItem(item.id, {
+                                          widthCount: e.target.value
+                                            ? Number(e.target.value)
+                                            : undefined,
+                                        })
+                                      }
+                                    />
+                                  </TableCell>
+                                </>
+                              )}
                               <TableCell align="right">
                                 {getPurchaseTotal(item).toLocaleString()}
                               </TableCell>
@@ -3519,7 +3355,7 @@ const OrderManagement: React.FC = () => {
                             {item.showRequestNote && (
                               <TableRow>
                                 <TableCell />
-                                <TableCell colSpan={10}>
+                                <TableCell colSpan={selectedOrder.items.some(item => item.type !== 'option') ? 10 : 3}>
                                   <TextField
                                     fullWidth
                                     size="small"
@@ -4538,26 +4374,30 @@ const OrderManagement: React.FC = () => {
                           >
                             제작사이즈
                           </TableCell>
-                          <TableCell
-                            sx={{
-                              color: 'white',
-                              fontWeight: 'bold',
-                              fontSize: '0.75rem',
-                              minWidth: 60,
-                            }}
-                          >
-                            m²
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              color: 'white',
-                              fontWeight: 'bold',
-                              fontSize: '0.75rem',
-                              minWidth: 60,
-                            }}
-                          >
-                            폭수
-                          </TableCell>
+                          {order.items.some(item => item.type !== 'option') && (
+                            <>
+                              <TableCell
+                                sx={{
+                                  color: 'white',
+                                  fontWeight: 'bold',
+                                  fontSize: '0.75rem',
+                                  minWidth: 60,
+                                }}
+                              >
+                                m²
+                              </TableCell>
+                              <TableCell
+                                sx={{
+                                  color: 'white',
+                                  fontWeight: 'bold',
+                                  fontSize: '0.75rem',
+                                  minWidth: 60,
+                                }}
+                              >
+                                폭수
+                              </TableCell>
+                            </>
+                          )}
                           <TableCell
                             sx={{
                               color: 'white',
@@ -4649,16 +4489,20 @@ const OrderManagement: React.FC = () => {
                                     ? item.width
                                     : '-'}
                             </TableCell>
-                            <TableCell
-                              sx={{ color: '#e0e6ed', fontSize: '0.75rem' }}
-                            >
-                              {item.area ? item.area.toFixed(2) : '-'}
-                            </TableCell>
-                            <TableCell
-                              sx={{ color: '#e0e6ed', fontSize: '0.75rem' }}
-                            >
-                              {item.widthCount || '-'}
-                            </TableCell>
+                            {order.items.some(item => item.type !== 'option') && (
+                              <>
+                                <TableCell
+                                  sx={{ color: '#e0e6ed', fontSize: '0.75rem' }}
+                                >
+                                  {item.area ? item.area.toFixed(2) : '-'}
+                                </TableCell>
+                                <TableCell
+                                  sx={{ color: '#e0e6ed', fontSize: '0.75rem' }}
+                                >
+                                  {item.widthCount || '-'}
+                                </TableCell>
+                              </>
+                            )}
                             <TableCell
                               sx={{ color: '#e0e6ed', fontSize: '0.75rem' }}
                             >
@@ -4688,7 +4532,7 @@ const OrderManagement: React.FC = () => {
                         {/* 합계 행 */}
                         <TableRow sx={{ bgcolor: 'var(--surface-color)' }}>
                           <TableCell
-                            colSpan={8}
+                            colSpan={order.items.some(item => item.type !== 'option') ? 8 : 6}
                             sx={{
                               color: 'var(--secondary-text-color)',
                               fontWeight: 'bold',
@@ -4712,7 +4556,7 @@ const OrderManagement: React.FC = () => {
                         </TableRow>
                         <TableRow sx={{ bgcolor: 'var(--surface-color)' }}>
                           <TableCell
-                            colSpan={8}
+                            colSpan={order.items.some(item => item.type !== 'option') ? 8 : 6}
                             sx={{
                               color: 'var(--secondary-text-color)',
                               fontWeight: 'bold',
@@ -4736,7 +4580,7 @@ const OrderManagement: React.FC = () => {
                         </TableRow>
                         <TableRow sx={{ bgcolor: 'var(--hover-color)' }}>
                           <TableCell
-                            colSpan={8}
+                            colSpan={order.items.some(item => item.type !== 'option') ? 8 : 6}
                             sx={{
                               color: 'var(--primary-color)',
                               fontWeight: 'bold',

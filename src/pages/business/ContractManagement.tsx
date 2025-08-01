@@ -2186,12 +2186,12 @@ const ContractManagement: React.FC = () => {
         fullScreen={isMobile}
         PaperProps={{
           sx: {
-            backgroundColor: '#23272b',
-            color: '#e0e6ed',
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
           },
         }}
       >
-        <DialogTitle>
+        <DialogTitle sx={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-color)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {isMobile && (
               <IconButton
@@ -2202,48 +2202,48 @@ const ContractManagement: React.FC = () => {
                     setSelectedEstimate(null);
                   }
                 }}
-                sx={{ color: '#e0e6ed', mr: 1 }}
+                sx={{ color: 'var(--text-color)', mr: 1 }}
               >
                 <ArrowBackIcon />
               </IconButton>
             )}
-            <ContractIcon sx={{ color: '#0091ea' }} />
-            <Typography variant={isMobile ? "h5" : "h6"}>계약 생성</Typography>
+            <ContractIcon sx={{ color: 'var(--primary-color)' }} />
+            <Typography variant={isMobile ? "h5" : "h6"} sx={{ color: 'var(--text-color)' }}>계약 생성</Typography>
           </Box>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-color)' }}>
           <Stepper
             activeStep={currentStep - 1}
-            sx={{ mb: 3, color: '#e0e6ed' }}
+            sx={{ mb: 3, color: 'var(--text-color)' }}
           >
             {['계약금 지불', '계약서 서명', '계약 완료'].map(label => (
               <Step key={label}>
-                <StepLabel sx={{ color: '#e0e6ed' }}>{label}</StepLabel>
+                <StepLabel sx={{ color: 'var(--text-color)' }}>{label}</StepLabel>
               </Step>
             ))}
           </Stepper>
 
           {selectedEstimate && (
             <Box
-              sx={{ mb: 3, p: 2, backgroundColor: '#263040', borderRadius: 1 }}
+              sx={{ mb: 3, p: 2, backgroundColor: 'var(--background-color)', borderRadius: 1, border: '1px solid var(--border-color)' }}
             >
-              <Typography variant="subtitle1" sx={{ color: '#e0e6ed', mb: 1 }}>
+              <Typography variant="subtitle1" sx={{ color: 'var(--text-color)', mb: 1 }}>
                 선택된 견적서
               </Typography>
-              <Typography variant="body2" sx={{ color: '#b0b8c1' }}>
+              <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)' }}>
                 견적번호: {selectedEstimate.estimateNo}
               </Typography>
-              <Typography variant="body2" sx={{ color: '#b0b8c1' }}>
+              <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)' }}>
                 고객명: {selectedEstimate.customerName}
               </Typography>
-              <Typography variant="body2" sx={{ color: '#b0b8c1' }}>
+              <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)' }}>
                 프로젝트: {selectedEstimate.projectName}
               </Typography>
-              <Typography variant="body2" sx={{ color: '#b0b8c1' }}>
+              <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)' }}>
                 소비자금액:{' '}
                 {(selectedEstimate.totalAmount || 0).toLocaleString()}원
               </Typography>
-              <Typography variant="body2" sx={{ color: '#b0b8c1' }}>
+              <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)' }}>
                 할인후 금액:{' '}
                 {(
                   selectedEstimate.discountedAmount ||
@@ -2257,12 +2257,12 @@ const ContractManagement: React.FC = () => {
 
           {currentStep === 1 && selectedEstimate && (
             <Box>
-              <Typography variant="h6" sx={{ mb: 2, color: '#e0e6ed' }}>
+              <Typography variant="h6" sx={{ mb: 2, color: 'var(--text-color)' }}>
                 계약금 지불 정보
               </Typography>
               <Alert
                 severity="info"
-                sx={{ mb: 2, backgroundColor: '#1976d2', color: '#e0e6ed' }}
+                sx={{ mb: 2, backgroundColor: 'var(--primary-color)', color: 'var(--text-color)' }}
               >
                 메모를 입력하면 배송관리 화면의 메인 카드 우측 상단에
                 표시됩니다.
@@ -2286,7 +2286,7 @@ const ContractManagement: React.FC = () => {
 
           {currentStep === 2 && (
             <Box>
-              <Typography variant="h6" sx={{ mb: 2, color: '#e0e6ed' }}>
+              <Typography variant="h6" sx={{ mb: 2, color: 'var(--text-color)' }}>
                 계약서 서명
               </Typography>
               <ContractAgreement
@@ -2330,12 +2330,12 @@ const ContractManagement: React.FC = () => {
 
           {currentStep === 3 && (
             <Box>
-              <Typography variant="h6" sx={{ mb: 2, color: '#e0e6ed' }}>
+              <Typography variant="h6" sx={{ mb: 2, color: 'var(--text-color)' }}>
                 계약 완료
               </Typography>
               <Alert
                 severity="success"
-                sx={{ backgroundColor: '#1b5e20', color: '#e0e6ed' }}
+                sx={{ backgroundColor: 'var(--primary-color)', color: 'var(--text-color)' }}
               >
                 계약이 성공적으로 생성되었습니다!
               </Alert>
@@ -2343,22 +2343,23 @@ const ContractManagement: React.FC = () => {
                 sx={{
                   mt: 2,
                   p: 2,
-                  backgroundColor: '#263040',
+                  backgroundColor: 'var(--background-color)',
                   borderRadius: 1,
+                  border: '1px solid var(--border-color)',
                 }}
               >
-                <Typography variant="body1" sx={{ color: '#e0e6ed', mb: 1 }}>
+                <Typography variant="body1" sx={{ color: 'var(--text-color)', mb: 1 }}>
                   <strong>계약번호:</strong>{' '}
                   {selectedEstimate &&
                     `C${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(contracts.length + 1).padStart(3, '0')}`}
                 </Typography>
-                <Typography variant="body1" sx={{ color: '#e0e6ed', mb: 1 }}>
+                <Typography variant="body1" sx={{ color: 'var(--text-color)', mb: 1 }}>
                   <strong>고객명:</strong> {selectedEstimate?.customerName}
                 </Typography>
-                <Typography variant="body1" sx={{ color: '#e0e6ed', mb: 1 }}>
+                <Typography variant="body1" sx={{ color: 'var(--text-color)', mb: 1 }}>
                   <strong>프로젝트:</strong> {selectedEstimate?.projectName}
                 </Typography>
-                <Typography variant="body1" sx={{ color: '#e0e6ed' }}>
+                <Typography variant="body1" sx={{ color: 'var(--text-color)' }}>
                   <strong>총 금액:</strong>{' '}
                   {(selectedEstimate?.totalAmount || 0).toLocaleString()}원
                 </Typography>
@@ -2368,14 +2369,17 @@ const ContractManagement: React.FC = () => {
         </DialogContent>
         <DialogActions sx={{ 
           p: isMobile ? 2 : 1,
-          gap: isMobile ? 1 : 0.5
+          gap: isMobile ? 1 : 0.5,
+          backgroundColor: 'var(--surface-color)',
+          color: 'var(--text-color)'
         }}>
           <Button 
             onClick={() => setDialogOpen(false)}
             size={isMobile ? "large" : "medium"}
             sx={{
               minWidth: isMobile ? 80 : 60,
-              fontSize: isMobile ? 16 : 14
+              fontSize: isMobile ? 16 : 14,
+              color: 'var(--text-color)'
             }}
           >
             취소
@@ -2386,7 +2390,8 @@ const ContractManagement: React.FC = () => {
             size={isMobile ? "large" : "medium"}
             sx={{
               minWidth: isMobile ? 80 : 60,
-              fontSize: isMobile ? 16 : 14
+              fontSize: isMobile ? 16 : 14,
+              color: 'var(--text-color)'
             }}
           >
             이전
@@ -2399,7 +2404,12 @@ const ContractManagement: React.FC = () => {
               size={isMobile ? "large" : "medium"}
               sx={{
                 minWidth: isMobile ? 80 : 60,
-                fontSize: isMobile ? 16 : 14
+                fontSize: isMobile ? 16 : 14,
+                backgroundColor: 'var(--primary-color)',
+                color: 'var(--text-color)',
+                '&:hover': {
+                  backgroundColor: 'var(--hover-color)',
+                }
               }}
             >
               다음
@@ -2417,27 +2427,27 @@ const ContractManagement: React.FC = () => {
         fullScreen={isMobile}
         PaperProps={{
           sx: {
-            backgroundColor: '#23272b',
-            color: '#e0e6ed',
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
           },
         }}
       >
-        <DialogTitle>
+        <DialogTitle sx={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-color)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {isMobile && (
               <IconButton
                 onClick={() => setEditViewDialogOpen(false)}
-                sx={{ color: '#e0e6ed', mr: 1 }}
+                sx={{ color: 'var(--text-color)', mr: 1 }}
               >
                 <ArrowBackIcon />
               </IconButton>
             )}
-            <Typography variant={isMobile ? "h5" : "h6"}>
+            <Typography variant={isMobile ? "h5" : "h6"} sx={{ color: 'var(--text-color)' }}>
               {viewOnly ? '계약 정보 보기' : '계약 정보 수정'}
             </Typography>
           </Box>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-color)' }}>
           {selectedContract && (
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12} sm={6}>
@@ -2452,6 +2462,15 @@ const ContractManagement: React.FC = () => {
                       contractDate: e.target.value,
                     })
                   }
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: 'var(--border-color)' },
+                      '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                    '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -2460,6 +2479,13 @@ const ContractManagement: React.FC = () => {
                   value={selectedContract.contractNo}
                   fullWidth
                   InputProps={{ readOnly: true }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: 'var(--border-color)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                    '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -2474,6 +2500,15 @@ const ContractManagement: React.FC = () => {
                       customerName: e.target.value,
                     })
                   }
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: 'var(--border-color)' },
+                      '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                    '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -2488,6 +2523,15 @@ const ContractManagement: React.FC = () => {
                       contact: e.target.value,
                     })
                   }
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: 'var(--border-color)' },
+                      '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                    '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  }}
                 />
               </Grid>
               <Grid item xs={12}>
@@ -2502,6 +2546,15 @@ const ContractManagement: React.FC = () => {
                       address: e.target.value,
                     })
                   }
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: 'var(--border-color)' },
+                      '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                    '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -2517,6 +2570,15 @@ const ContractManagement: React.FC = () => {
                       totalAmount: Number(e.target.value),
                     })
                   }
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: 'var(--border-color)' },
+                      '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                    '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -2532,6 +2594,15 @@ const ContractManagement: React.FC = () => {
                       discountedAmount: Number(e.target.value),
                     })
                   }
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: 'var(--border-color)' },
+                      '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                    '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -2547,6 +2618,15 @@ const ContractManagement: React.FC = () => {
                       depositAmount: Number(e.target.value),
                     })
                   }
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: 'var(--border-color)' },
+                      '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                    '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -2556,11 +2636,18 @@ const ContractManagement: React.FC = () => {
                   value={selectedContract.remainingAmount}
                   fullWidth
                   InputProps={{ readOnly: true }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: 'var(--border-color)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                    '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
-                  <InputLabel>상태</InputLabel>
+                  <InputLabel sx={{ color: 'var(--text-secondary-color)' }}>상태</InputLabel>
                   <Select
                     value={selectedContract.status}
                     label="상태"
@@ -2571,6 +2658,36 @@ const ContractManagement: React.FC = () => {
                       })
                     }
                     readOnly={viewOnly}
+                    sx={{
+                      color: 'var(--text-color)',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--border-color)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--hover-color)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary-color)',
+                      },
+                      '& .MuiSelect-icon': {
+                        color: 'var(--text-color)',
+                      },
+                    }}
+                    MenuProps={{
+                      PaperProps: {
+                        sx: {
+                          backgroundColor: 'var(--surface-color)',
+                          color: 'var(--text-color)',
+                          border: '1px solid var(--border-color)',
+                          '& .MuiMenuItem-root': {
+                            color: 'var(--text-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          },
+                        },
+                      },
+                    }}
                   >
                     <MenuItem value="draft">작성중</MenuItem>
                     <MenuItem value="pending">대기중</MenuItem>
@@ -2588,6 +2705,13 @@ const ContractManagement: React.FC = () => {
                   }
                   fullWidth
                   InputProps={{ readOnly: true }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: 'var(--border-color)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                    '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  }}
                 />
               </Grid>
               <Grid item xs={12}>
@@ -2604,6 +2728,15 @@ const ContractManagement: React.FC = () => {
                       memo: e.target.value,
                     })
                   }
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: 'var(--border-color)' },
+                      '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                    '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -2641,9 +2774,15 @@ const ContractManagement: React.FC = () => {
                     '& .MuiOutlinedInput-root': {
                       cursor: viewOnly ? 'default' : 'pointer',
                       '&:hover': {
-                        backgroundColor: viewOnly ? 'transparent' : 'rgba(255, 255, 255, 0.04)',
+                        backgroundColor: viewOnly ? 'transparent' : 'var(--hover-color)',
                       },
+                      '& fieldset': { borderColor: 'var(--border-color)' },
+                      '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
                     },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                    '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                    '& .MuiFormHelperText-root': { color: 'var(--text-secondary-color)' },
                   }}
                 />
               </Grid>
@@ -2681,9 +2820,14 @@ const ContractManagement: React.FC = () => {
                     '& .MuiOutlinedInput-root': {
                       cursor: viewOnly ? 'default' : 'pointer',
                       '&:hover': {
-                        backgroundColor: viewOnly ? 'transparent' : 'rgba(255, 255, 255, 0.04)',
+                        backgroundColor: viewOnly ? 'transparent' : 'var(--hover-color)',
                       },
+                      '& fieldset': { borderColor: 'var(--border-color)' },
+                      '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
                     },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                    '& .MuiInputBase-input': { color: 'var(--text-color)' },
                   }}
                 />
               </Grid>
@@ -2692,14 +2836,17 @@ const ContractManagement: React.FC = () => {
         </DialogContent>
         <DialogActions sx={{ 
           p: isMobile ? 2 : 1,
-          gap: isMobile ? 1 : 0.5
+          gap: isMobile ? 1 : 0.5,
+          backgroundColor: 'var(--surface-color)',
+          color: 'var(--text-color)'
         }}>
           <Button 
             onClick={() => setEditViewDialogOpen(false)}
             size={isMobile ? "large" : "medium"}
             sx={{
               minWidth: isMobile ? 80 : 60,
-              fontSize: isMobile ? 16 : 14
+              fontSize: isMobile ? 16 : 14,
+              color: 'var(--text-color)'
             }}
           >
             닫기
@@ -2712,7 +2859,13 @@ const ContractManagement: React.FC = () => {
                 size={isMobile ? "large" : "medium"}
                 sx={{
                   minWidth: isMobile ? 80 : 60,
-                  fontSize: isMobile ? 16 : 14
+                  fontSize: isMobile ? 16 : 14,
+                  color: 'var(--text-color)',
+                  borderColor: 'var(--border-color)',
+                  '&:hover': {
+                    borderColor: 'var(--hover-color)',
+                    backgroundColor: 'var(--hover-color)',
+                  }
                 }}
               >
                 계약만 저장
@@ -2723,7 +2876,12 @@ const ContractManagement: React.FC = () => {
                 size={isMobile ? "large" : "medium"}
                 sx={{
                   minWidth: isMobile ? 80 : 60,
-                  fontSize: isMobile ? 16 : 14
+                  fontSize: isMobile ? 16 : 14,
+                  backgroundColor: 'var(--primary-color)',
+                  color: 'var(--text-color)',
+                  '&:hover': {
+                    backgroundColor: 'var(--hover-color)',
+                  }
                 }}
               >
                 📅 계약+실측일정 저장
@@ -2740,40 +2898,43 @@ const ContractManagement: React.FC = () => {
         fullScreen={isMobile}
         PaperProps={{
           sx: {
-            backgroundColor: '#23272b',
-            color: '#e0e6ed',
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
           },
         }}
       >
-        <DialogTitle>
+        <DialogTitle sx={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-color)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {isMobile && (
               <IconButton
                 onClick={() => setDeleteDialogOpen(false)}
-                sx={{ color: '#e0e6ed', mr: 1 }}
+                sx={{ color: 'var(--text-color)', mr: 1 }}
               >
                 <ArrowBackIcon />
               </IconButton>
             )}
-            <Typography variant={isMobile ? "h5" : "h6"}>계약 삭제 확인</Typography>
+            <Typography variant={isMobile ? "h5" : "h6"} sx={{ color: 'var(--text-color)' }}>계약 삭제 확인</Typography>
           </Box>
         </DialogTitle>
-        <DialogContent>
-          <Typography sx={{ fontSize: isMobile ? 16 : 14 }}>
+        <DialogContent sx={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-color)' }}>
+          <Typography sx={{ fontSize: isMobile ? 16 : 14, color: 'var(--text-color)' }}>
             정말로 '{contractToDelete?.contractNo}' 계약을 삭제하시겠습니까? 이
             작업은 되돌릴 수 없습니다.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ 
           p: isMobile ? 2 : 1,
-          gap: isMobile ? 1 : 0.5
+          gap: isMobile ? 1 : 0.5,
+          backgroundColor: 'var(--surface-color)',
+          color: 'var(--text-color)'
         }}>
           <Button 
             onClick={() => setDeleteDialogOpen(false)}
             size={isMobile ? "large" : "medium"}
             sx={{
               minWidth: isMobile ? 80 : 60,
-              fontSize: isMobile ? 16 : 14
+              fontSize: isMobile ? 16 : 14,
+              color: 'var(--text-color)'
             }}
           >
             취소
@@ -2785,7 +2946,12 @@ const ContractManagement: React.FC = () => {
             size={isMobile ? "large" : "medium"}
             sx={{
               minWidth: isMobile ? 80 : 60,
-              fontSize: isMobile ? 16 : 14
+              fontSize: isMobile ? 16 : 14,
+              backgroundColor: '#d32f2f',
+              color: 'white',
+              '&:hover': {
+                backgroundColor: '#b71c1c',
+              }
             }}
           >
             삭제

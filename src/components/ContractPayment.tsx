@@ -137,162 +137,239 @@ const ContractPayment: React.FC<ContractPaymentProps> = ({
 
   return (
     <Box>
-      <Grid container spacing={2}>
-        <Grid item xs={12} sm={6}>
-          <TextField
-            label="소비자금액"
-            type="text"
-            value={totalAmount.toLocaleString()}
-            fullWidth
-            size="small"
-            InputProps={{
-              readOnly: true,
-            }}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <TextField
-            label="할인 후 금액"
-            type="text"
-            value={discountedDisplay}
-            onChange={handleDiscountedChange}
-            onFocus={handleDiscountedFocus}
-            onBlur={handleDiscountedBlur}
-            fullWidth
-            size="small"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <TextField
-            label="계약금"
-            type="text"
-            value={depositDisplay}
-            onChange={handleDepositChange}
-            onFocus={handleDepositFocus}
-            onBlur={handleDepositBlur}
-            fullWidth
-            size="small"
-            placeholder="0"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <TextField
-            label="잔금"
-            type="text"
-            value={(currentDiscountedAmount - depositAmount).toLocaleString()}
-            fullWidth
-            size="small"
-            InputProps={{
-              readOnly: true,
-            }}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <FormControl fullWidth size="small">
-            <InputLabel>결제수단</InputLabel>
-            <Select
-              value={paymentMethod}
-              onChange={(e: SelectChangeEvent) =>
-                setPaymentMethod(e.target.value)
-              }
-              label="결제수단"
-            >
-              <MenuItem value="cash">현금</MenuItem>
-              <MenuItem value="card">카드</MenuItem>
-              <MenuItem value="transfer">계좌이체</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <TextField
-            label="결제일"
-            type="date"
-            value={paymentDate}
-            onChange={e => setPaymentDate(e.target.value)}
-            fullWidth
-            size="small"
-            InputLabelProps={{
-              shrink: true,
-            }}
-            onClick={e => {
-              const input = e.target as HTMLInputElement;
-              if (input.showPicker) {
-                input.showPicker();
-              } else {
-                input.click();
-              }
-            }}
-            sx={{
-              cursor: 'pointer',
-              '& .MuiOutlinedInput-root': {
-                cursor: 'pointer',
-                '&:hover': {
-                  backgroundColor: 'rgba(255, 255, 255, 0.04)',
+              <Grid container spacing={2}>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="소비자금액"
+              type="text"
+              value={totalAmount.toLocaleString()}
+              fullWidth
+              size="small"
+              InputProps={{
+                readOnly: true,
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: 'var(--border-color)' },
                 },
-              },
-            }}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <TextField
-            label="실측일자"
-            type="datetime-local"
-            value={measurementDate}
-            onChange={e => setMeasurementDate(e.target.value)}
-            fullWidth
-            size="small"
-            InputLabelProps={{
-              shrink: true,
-            }}
-            onClick={e => {
-              const input = e.target as HTMLInputElement;
-              if (input.showPicker) {
-                input.showPicker();
-              } else {
-                input.click();
-              }
-            }}
-            sx={{
-              cursor: 'pointer',
-              '& .MuiOutlinedInput-root': {
-                cursor: 'pointer',
-                '&:hover': {
-                  backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                '& .MuiInputBase-input': { color: 'var(--text-color)' },
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="할인 후 금액"
+              type="text"
+              value={discountedDisplay}
+              onChange={handleDiscountedChange}
+              onFocus={handleDiscountedFocus}
+              onBlur={handleDiscountedBlur}
+              fullWidth
+              size="small"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: 'var(--border-color)' },
+                  '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
                 },
-              },
-            }}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <TextField
-            label="시공일자"
-            type="datetime-local"
-            value={constructionDate}
-            onChange={e => setConstructionDate(e.target.value)}
-            fullWidth
-            size="small"
-            InputLabelProps={{
-              shrink: true,
-            }}
-            onClick={e => {
-              const input = e.target as HTMLInputElement;
-              if (input.showPicker) {
-                input.showPicker();
-              } else {
-                input.click();
-              }
-            }}
-            sx={{
-              cursor: 'pointer',
-              '& .MuiOutlinedInput-root': {
-                cursor: 'pointer',
-                '&:hover': {
-                  backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                '& .MuiInputBase-input': { color: 'var(--text-color)' },
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="계약금"
+              type="text"
+              value={depositDisplay}
+              onChange={handleDepositChange}
+              onFocus={handleDepositFocus}
+              onBlur={handleDepositBlur}
+              fullWidth
+              size="small"
+              placeholder="0"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: 'var(--border-color)' },
+                  '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
                 },
-              },
-            }}
-          />
-        </Grid>
+                '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                '& .MuiInputBase-input': { color: 'var(--text-color)' },
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="잔금"
+              type="text"
+              value={(currentDiscountedAmount - depositAmount).toLocaleString()}
+              fullWidth
+              size="small"
+              InputProps={{
+                readOnly: true,
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: 'var(--border-color)' },
+                },
+                '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                '& .MuiInputBase-input': { color: 'var(--text-color)' },
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth size="small">
+              <InputLabel sx={{ color: 'var(--text-secondary-color)' }}>결제수단</InputLabel>
+              <Select
+                value={paymentMethod}
+                onChange={(e: SelectChangeEvent) =>
+                  setPaymentMethod(e.target.value)
+                }
+                label="결제수단"
+                sx={{
+                  color: 'var(--text-color)',
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--border-color)',
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--hover-color)',
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--primary-color)',
+                  },
+                  '& .MuiSelect-icon': {
+                    color: 'var(--text-color)',
+                  },
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      backgroundColor: 'var(--surface-color)',
+                      color: 'var(--text-color)',
+                      border: '1px solid var(--border-color)',
+                      '& .MuiMenuItem-root': {
+                        color: 'var(--text-color)',
+                        '&:hover': {
+                          backgroundColor: 'var(--hover-color)',
+                        },
+                      },
+                    },
+                  },
+                }}
+              >
+                <MenuItem value="cash">현금</MenuItem>
+                <MenuItem value="card">카드</MenuItem>
+                <MenuItem value="transfer">계좌이체</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="결제일"
+              type="date"
+              value={paymentDate}
+              onChange={e => setPaymentDate(e.target.value)}
+              fullWidth
+              size="small"
+              InputLabelProps={{
+                shrink: true,
+              }}
+              onClick={e => {
+                const input = e.target as HTMLInputElement;
+                if (input.showPicker) {
+                  input.showPicker();
+                } else {
+                  input.click();
+                }
+              }}
+              sx={{
+                cursor: 'pointer',
+                '& .MuiOutlinedInput-root': {
+                  cursor: 'pointer',
+                  '&:hover': {
+                    backgroundColor: 'var(--hover-color)',
+                  },
+                  '& fieldset': { borderColor: 'var(--border-color)' },
+                  '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                },
+                '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                '& .MuiInputBase-input': { color: 'var(--text-color)' },
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="실측일자"
+              type="datetime-local"
+              value={measurementDate}
+              onChange={e => setMeasurementDate(e.target.value)}
+              fullWidth
+              size="small"
+              InputLabelProps={{
+                shrink: true,
+              }}
+              onClick={e => {
+                const input = e.target as HTMLInputElement;
+                if (input.showPicker) {
+                  input.showPicker();
+                } else {
+                  input.click();
+                }
+              }}
+              sx={{
+                cursor: 'pointer',
+                '& .MuiOutlinedInput-root': {
+                  cursor: 'pointer',
+                  '&:hover': {
+                    backgroundColor: 'var(--hover-color)',
+                  },
+                  '& fieldset': { borderColor: 'var(--border-color)' },
+                  '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                },
+                '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                '& .MuiInputBase-input': { color: 'var(--text-color)' },
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="시공일자"
+              type="datetime-local"
+              value={constructionDate}
+              onChange={e => setConstructionDate(e.target.value)}
+              fullWidth
+              size="small"
+              InputLabelProps={{
+                shrink: true,
+              }}
+              onClick={e => {
+                const input = e.target as HTMLInputElement;
+                if (input.showPicker) {
+                  input.showPicker();
+                } else {
+                  input.click();
+                }
+              }}
+              sx={{
+                cursor: 'pointer',
+                '& .MuiOutlinedInput-root': {
+                  cursor: 'pointer',
+                  '&:hover': {
+                    backgroundColor: 'var(--hover-color)',
+                  },
+                  '& fieldset': { borderColor: 'var(--border-color)' },
+                  '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                },
+                '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+                '& .MuiInputBase-input': { color: 'var(--text-color)' },
+              }}
+            />
+          </Grid>
         <Grid item xs={12}>
           <TextField
             label="메모"
@@ -305,14 +382,14 @@ const ContractPayment: React.FC<ContractPaymentProps> = ({
             placeholder="계약 관련 메모를 입력하세요 (배송관리 화면의 메모에 표시됩니다)"
             sx={{
               '& .MuiOutlinedInput-root': {
-                '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.23)' },
-                '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.4)' },
-                '&.Mui-focused fieldset': { borderColor: '#1976d2' },
+                '& fieldset': { borderColor: 'var(--border-color)' },
+                '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
               },
-              '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255, 0.7)' },
-              '& .MuiInputBase-input': { color: '#e0e6ed' },
+              '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' },
+              '& .MuiInputBase-input': { color: 'var(--text-color)' },
               '& .MuiInputBase-input::placeholder': {
-                color: 'rgba(255, 255, 255, 0.5)',
+                color: 'var(--text-secondary-color)',
               },
             }}
           />
@@ -325,13 +402,32 @@ const ContractPayment: React.FC<ContractPaymentProps> = ({
               variant="outlined" 
               color="secondary" 
               onClick={handleSaveSchedule}
-              sx={{ mr: 1 }}
+              sx={{ 
+                mr: 1,
+                color: 'var(--text-color)',
+                borderColor: 'var(--border-color)',
+                '&:hover': {
+                  borderColor: 'var(--hover-color)',
+                  backgroundColor: 'var(--hover-color)',
+                }
+              }}
             >
               📅 스케줄 저장
             </Button>
           )}
         </Box>
-        <Button variant="contained" color="primary" onClick={handleSave}>
+        <Button 
+          variant="contained" 
+          color="primary" 
+          onClick={handleSave}
+          sx={{
+            backgroundColor: 'var(--primary-color)',
+            color: 'var(--text-color)',
+            '&:hover': {
+              backgroundColor: 'var(--hover-color)',
+            }
+          }}
+        >
           저장하고 다음으로
         </Button>
       </Box>

@@ -133,8 +133,8 @@ const ContractAgreement: React.FC<ContractAgreementProps> = ({
         p: 2,
         width: '100%',
         maxWidth: 600,
-        backgroundColor: '#263040',
-        border: '1px solid #2e3a4a',
+        backgroundColor: 'var(--surface-color)',
+        border: '1px solid var(--border-color)',
       }}
     >
       <Box
@@ -145,26 +145,26 @@ const ContractAgreement: React.FC<ContractAgreementProps> = ({
           mb: 2,
         }}
       >
-        <Typography variant="h6" sx={{ color: '#e0e6ed' }}>
+        <Typography variant="h6" sx={{ color: 'var(--text-color)' }}>
           계약 동의
         </Typography>
         <IconButton
           onClick={() => setShowSettingsDialog(true)}
-          sx={{ color: '#b0b8c1' }}
+          sx={{ color: 'var(--text-color)' }}
         >
           <SettingsIcon />
         </IconButton>
       </Box>
 
       <Box sx={{ my: 2 }}>
-        <Typography variant="body1" paragraph sx={{ color: '#e0e6ed' }}>
+        <Typography variant="body1" paragraph sx={{ color: 'var(--text-color)' }}>
           계약 내용에 대한 동의
         </Typography>
         {agreementItems.map((item, index) => (
           <Typography
             key={index}
             variant="body2"
-            sx={{ color: '#b0b8c1' }}
+            sx={{ color: 'var(--text-secondary-color)' }}
             paragraph
           >
             {index + 1}. {item}
@@ -172,21 +172,21 @@ const ContractAgreement: React.FC<ContractAgreementProps> = ({
         ))}
       </Box>
 
-      <Divider sx={{ my: 2, borderColor: '#2e3a4a' }} />
+      <Divider sx={{ my: 2, borderColor: 'var(--border-color)' }} />
 
       {agreementConfirmed && (
         <Box
           sx={{
             mb: 2,
             p: 2,
-            backgroundColor: '#1b5e20',
+            backgroundColor: 'var(--primary-color)',
             borderRadius: 1,
-            border: '1px solid #2e7d32',
+            border: '1px solid var(--border-color)',
           }}
         >
           <Typography
             variant="body2"
-            sx={{ color: '#e0e6ed', textAlign: 'center' }}
+            sx={{ color: 'var(--text-color)', textAlign: 'center' }}
           >
             ✓ 동의가 확인되었습니다. 계약 완료 버튼을 눌러 계약을 완료하세요.
           </Typography>
@@ -200,13 +200,13 @@ const ContractAgreement: React.FC<ContractAgreementProps> = ({
               checked={isAgreed}
               onChange={handleAgree}
               sx={{
-                color: '#0091ea',
-                '&.Mui-checked': { color: '#0091ea' },
+                color: 'var(--primary-color)',
+                '&.Mui-checked': { color: 'var(--primary-color)' },
               }}
             />
           }
           label="위 내용에 동의합니다"
-          sx={{ color: '#e0e6ed' }}
+          sx={{ color: 'var(--text-color)' }}
         />
       </Box>
 
@@ -216,10 +216,10 @@ const ContractAgreement: React.FC<ContractAgreementProps> = ({
           onClick={() => setShowSignaturePad(true)}
           disabled={!isAgreed}
           sx={{
-            color: '#b0b8c1',
-            borderColor: '#2e3a4a',
-            '&:hover': { backgroundColor: '#263040', borderColor: '#3a4a5a' },
-            '&:disabled': { color: '#666', borderColor: '#444' },
+            color: 'var(--text-color)',
+            borderColor: 'var(--border-color)',
+            '&:hover': { backgroundColor: 'var(--hover-color)', borderColor: 'var(--hover-color)' },
+            '&:disabled': { color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' },
           }}
         >
           서명하기
@@ -229,10 +229,10 @@ const ContractAgreement: React.FC<ContractAgreementProps> = ({
           onClick={handleAgreementConfirm}
           disabled={!isAgreed}
           sx={{
-            backgroundColor: '#0091ea',
-            color: '#fff',
-            '&:hover': { backgroundColor: '#0064b7' },
-            '&:disabled': { backgroundColor: '#666', color: '#999' },
+            backgroundColor: 'var(--primary-color)',
+            color: 'var(--text-color)',
+            '&:hover': { backgroundColor: 'var(--hover-color)' },
+            '&:disabled': { backgroundColor: 'var(--text-secondary-color)', color: 'var(--text-color)' },
           }}
         >
           동의 확인
@@ -242,15 +242,22 @@ const ContractAgreement: React.FC<ContractAgreementProps> = ({
             variant="contained"
             onClick={() => handleComplete(signature ? 'signature' : 'checkbox')}
             sx={{
-              backgroundColor: '#4caf50',
-              color: '#fff',
-              '&:hover': { backgroundColor: '#388e3c' },
+              backgroundColor: 'var(--primary-color)',
+              color: 'var(--text-color)',
+              '&:hover': { backgroundColor: 'var(--hover-color)' },
             }}
           >
             계약 완료
           </Button>
         )}
-        <Button onClick={handlePrint} startIcon={<PrintIcon />}>
+        <Button 
+          onClick={handlePrint} 
+          startIcon={<PrintIcon />}
+          sx={{
+            color: 'var(--text-color)',
+            '&:hover': { backgroundColor: 'var(--hover-color)' },
+          }}
+        >
           계약서 출력
         </Button>
       </Box>
@@ -265,22 +272,22 @@ const ContractAgreement: React.FC<ContractAgreementProps> = ({
         disableAutoFocus
         PaperProps={{
           sx: {
-            backgroundColor: '#23272b',
-            color: '#e0e6ed',
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
           },
         }}
       >
-        <DialogTitle sx={{ color: '#e0e6ed' }}>전자 서명</DialogTitle>
-        <DialogContent>
+        <DialogTitle sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>전자 서명</DialogTitle>
+        <DialogContent sx={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-color)' }}>
           <SignatureCanvas
             onSave={handleSignatureSave}
             onClear={() => setSignature(undefined)}
           />
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid #2e3a4a' }}>
+        <DialogActions sx={{ borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--surface-color)' }}>
           <Button
             onClick={() => setShowSignaturePad(false)}
-            sx={{ color: '#b0b8c1' }}
+            sx={{ color: 'var(--text-color)' }}
           >
             취소
           </Button>
@@ -295,16 +302,16 @@ const ContractAgreement: React.FC<ContractAgreementProps> = ({
         fullWidth
         PaperProps={{
           sx: {
-            backgroundColor: '#23272b',
-            color: '#e0e6ed',
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
           },
         }}
       >
-        <DialogTitle sx={{ color: '#e0e6ed' }}>계약 동의 항목 설정</DialogTitle>
-        <DialogContent>
+        <DialogTitle sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>계약 동의 항목 설정</DialogTitle>
+        <DialogContent sx={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-color)' }}>
           <List>
             {agreementItems.map((item, index) => (
-              <ListItem key={index} sx={{ borderBottom: '1px solid #2e3a4a' }}>
+              <ListItem key={index} sx={{ borderBottom: '1px solid var(--border-color)' }}>
                 {editingItem?.index === index ? (
                   <TextField
                     fullWidth
@@ -313,22 +320,23 @@ const ContractAgreement: React.FC<ContractAgreementProps> = ({
                       setEditingItem({ ...editingItem, text: e.target.value })
                     }
                     sx={{
-                      input: { color: '#e0e6ed' },
+                      '& .MuiInputBase-input': { color: 'var(--text-color)' },
                       '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: '#2e3a4a' },
-                        '&:hover fieldset': { borderColor: '#3a4a5a' },
+                        '& fieldset': { borderColor: 'var(--border-color)' },
+                        '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                        '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
                       },
                     }}
                   />
                 ) : (
                   <ListItemText
                     primary={`${index + 1}. ${item}`}
-                    sx={{ color: '#e0e6ed' }}
+                    sx={{ color: 'var(--text-color)' }}
                   />
                 )}
                 <ListItemSecondaryAction>
                   {editingItem?.index === index ? (
-                    <Button onClick={handleSaveEdit} sx={{ color: '#4caf50' }}>
+                    <Button onClick={handleSaveEdit} sx={{ color: 'var(--primary-color)' }}>
                       저장
                     </Button>
                   ) : (
@@ -336,7 +344,7 @@ const ContractAgreement: React.FC<ContractAgreementProps> = ({
                       <IconButton
                         edge="end"
                         onClick={() => handleEditItem(index)}
-                        sx={{ color: '#0091ea', mr: 1 }}
+                        sx={{ color: 'var(--primary-color)', mr: 1 }}
                       >
                         <EditIcon />
                       </IconButton>
@@ -360,10 +368,14 @@ const ContractAgreement: React.FC<ContractAgreementProps> = ({
               value={newItem}
               onChange={e => setNewItem(e.target.value)}
               sx={{
-                input: { color: '#e0e6ed' },
+                '& .MuiInputBase-input': { color: 'var(--text-color)' },
                 '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: '#2e3a4a' },
-                  '&:hover fieldset': { borderColor: '#3a4a5a' },
+                  '& fieldset': { borderColor: 'var(--border-color)' },
+                  '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                },
+                '& .MuiInputBase-input::placeholder': {
+                  color: 'var(--text-secondary-color)',
                 },
               }}
             />
@@ -372,22 +384,22 @@ const ContractAgreement: React.FC<ContractAgreementProps> = ({
               onClick={handleAddItem}
               startIcon={<AddIcon />}
               sx={{
-                backgroundColor: '#0091ea',
-                color: '#fff',
-                '&:hover': { backgroundColor: '#0064b7' },
+                backgroundColor: 'var(--primary-color)',
+                color: 'var(--text-color)',
+                '&:hover': { backgroundColor: 'var(--hover-color)' },
               }}
             >
               추가
             </Button>
           </Box>
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid #2e3a4a', p: 2 }}>
+        <DialogActions sx={{ borderTop: '1px solid var(--border-color)', p: 2, backgroundColor: 'var(--surface-color)' }}>
           <Button onClick={handleResetToDefault} sx={{ color: '#f44336' }}>
             기본값으로 초기화
           </Button>
           <Button
             onClick={() => setShowSettingsDialog(false)}
-            sx={{ color: '#b0b8c1' }}
+            sx={{ color: 'var(--text-color)' }}
           >
             닫기
           </Button>

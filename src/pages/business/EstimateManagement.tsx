@@ -60,6 +60,7 @@ import {
   ArrowBack as ArrowBackIcon,
   PushPin as PushPinIcon,
   PushPinOutlined as PushPinOutlinedIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { create } from 'zustand';
 import { evaluate } from 'mathjs';
@@ -1812,7 +1813,7 @@ const EstimateManagement: React.FC = () => {
   // 1. 상태 추가
   const [periodMode, setPeriodMode] = useState<
     'all' | 'week' | 'month' | 'quarter' | 'half' | 'year'
-  >('all');
+  >('month');
   const [selectedYear, setSelectedYear] = useState<string>('');
   const [selectedQuarter, setSelectedQuarter] = useState<string>('1');
   const [selectedHalf, setSelectedHalf] = useState<string>('1');
@@ -2187,6 +2188,7 @@ const EstimateManagement: React.FC = () => {
       showProjectName: false,
       showType: false,
       showAddress: true,
+      showName: false, // 견적서명 표시 비활성화 (사용자 요청에 따라 삭제)
       showProducts: false,
       showTotalAmount: true,
       showDiscountedAmount: true,
@@ -2908,10 +2910,10 @@ const EstimateManagement: React.FC = () => {
         return savedDate >= weekAgo && savedDate <= now;
       }
       case 'month': {
-        return (
-          savedDate.getFullYear() === now.getFullYear() &&
-          savedDate.getMonth() === now.getMonth()
-        );
+        // 최근 30일간의 견적서 표시
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setDate(now.getDate() - 30);
+        return savedDate >= thirtyDaysAgo && savedDate <= now;
       }
       case 'quarter': {
         if (!selectedYear) return true;
@@ -3931,6 +3933,50 @@ const EstimateManagement: React.FC = () => {
     setRowContextMenu(null);
   };
 
+  // 우클릭 메뉴에서 일괄변경 시작하는 함수
+  const handleBulkEditFromContextMenu = (rowIndex: number) => {
+    // 해당 행이 제품인지 확인 (filteredRows 기준)
+    const targetRow = filteredRows[rowIndex];
+    
+    if (targetRow.type !== 'product') {
+      alert('제품에만 일괄변경을 적용할 수 있습니다.');
+      return;
+    }
+
+    // 같은 공간명을 가진 제품들을 찾아서 선택
+    const targetSpace = targetRow.space || '';
+    const baseSpaceName = getBaseSpaceName(targetSpace);
+    
+    if (!baseSpaceName) {
+      alert('공간명이 없어서 일괄변경을 적용할 수 없습니다.');
+      return;
+    }
+
+    // 같은 공간명을 가진 제품들의 인덱스를 찾아서 선택 (filteredRows 기준)
+    const selectedIndices = new Set<number>();
+    
+    filteredRows.forEach((row, index) => {
+      if (row.type === 'product') {
+        const rowSpace = row.space || '';
+        const rowBaseSpaceName = getBaseSpaceName(rowSpace);
+        if (rowBaseSpaceName === baseSpaceName) {
+          selectedIndices.add(index);
+        }
+      }
+    });
+
+    if (selectedIndices.size === 0) {
+      alert('일괄변경할 제품을 찾을 수 없습니다.');
+      return;
+    }
+
+    // 일괄변경 모드 활성화 및 제품 선택
+    setIsBulkEditMode(true);
+    setSelectedRowsForBulkEdit(selectedIndices);
+    setIsBulkEditProductSelection(true);
+    setProductDialogOpen(true);
+  };
+
   const handleRowContextMenuAction = (action: string) => {
     if (!rowContextMenu) return;
 
@@ -3950,6 +3996,9 @@ const EstimateManagement: React.FC = () => {
         break;
       case 'addOption':
         handleAddOption(rowIndex);
+        break;
+      case 'bulkEdit':
+        handleBulkEditFromContextMenu(rowIndex);
         break;
       case 'copy':
         handleCopyRow(row.id);
@@ -5558,6 +5607,14 @@ const EstimateManagement: React.FC = () => {
 
   // 할인 관련 상태 변경 시 discountedTotalInput 동기화
   useEffect(() => {
+    // 견적서에 행이 없으면 할인 관련 값들을 비움
+    if (estimates[activeTab]?.rows.length === 0) {
+      setDiscountedTotalInput('');
+      setDiscountAmount('');
+      setDiscountRate('');
+      return;
+    }
+    
     if (discountAmountNumber > 0 && sumTotalPrice > 0) {
       const calculatedDiscountedTotal = sumTotalPrice - discountAmountNumber;
       // discountedTotalInput이 비어있거나 계산된 값과 다를 때만 업데이트
@@ -5570,7 +5627,7 @@ const EstimateManagement: React.FC = () => {
         setDiscountedTotalInput(sumTotalPrice.toString());
       }
     }
-  }, [discountAmountNumber, sumTotalPrice]);
+  }, [discountAmountNumber, sumTotalPrice, estimates[activeTab]?.rows.length]);
 
   // 견적서 로드 시 할인 계산 수행 (sumTotalPrice가 준비된 후)
   useEffect(() => {
@@ -7353,6 +7410,7 @@ const EstimateManagement: React.FC = () => {
     projectName: '프로젝트명',
     type: '타입',
     address: '주소',
+    name: '견적서명',
     products: '포함제품',
     totalAmount: '총금액',
     discountedAmount: '할인후금액',
@@ -8466,10 +8524,26 @@ const EstimateManagement: React.FC = () => {
         onClose={() => setEstimateListSettingsOpen(false)}
         maxWidth="lg"
         fullWidth
+        PaperProps={{
+          sx: {
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
+            borderRadius: 3,
+          },
+        }}
       >
-        <DialogTitle>견적서 LIST 표시 설정</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+        <DialogTitle sx={{ 
+          backgroundColor: 'var(--surface-color)',
+          color: 'var(--text-color)',
+          borderBottom: '1px solid var(--border-color)'
+        }}>
+          견적서 LIST 표시 설정
+        </DialogTitle>
+        <DialogContent sx={{ 
+          backgroundColor: 'var(--surface-color)',
+          color: 'var(--text-color)',
+        }}>
+          <Typography variant="body2" sx={{ mb: 2, color: 'var(--text-secondary-color)' }}>
             견적서 LIST에 표시할 항목을 선택하고 순서를 조정하세요
           </Typography>
           {estimateListColumnOrder.map((columnKey: string, idx: number) => (
@@ -8490,13 +8564,34 @@ const EstimateManagement: React.FC = () => {
                       e.target.checked,
                   }))
                 }
+                sx={{
+                  color: 'var(--primary-color)',
+                  '&.Mui-checked': {
+                    color: 'var(--primary-color)',
+                  },
+                }}
               />
-              <span style={{ minWidth: 100 }}>{columnLabels[columnKey]}</span>
+              <span style={{ 
+                minWidth: 100, 
+                color: 'var(--text-color)',
+                fontSize: '14px'
+              }}>
+                {columnLabels[columnKey]}
+              </span>
               <IconButton
                 size="small"
                 onClick={() => handleMoveColumnUp(columnKey)}
                 disabled={idx === 0}
-                sx={{ ml: 1 }}
+                sx={{ 
+                  ml: 1,
+                  color: 'var(--text-secondary-color)',
+                  '&:hover': {
+                    backgroundColor: 'var(--hover-color)',
+                  },
+                  '&.Mui-disabled': {
+                    color: 'var(--text-disabled-color)',
+                  },
+                }}
               >
                 <ArrowUpIcon fontSize="small" />
               </IconButton>
@@ -8504,6 +8599,15 @@ const EstimateManagement: React.FC = () => {
                 size="small"
                 onClick={() => handleMoveColumnDown(columnKey)}
                 disabled={idx === estimateListColumnOrder.length - 1}
+                sx={{ 
+                  color: 'var(--text-secondary-color)',
+                  '&:hover': {
+                    backgroundColor: 'var(--hover-color)',
+                  },
+                  '&.Mui-disabled': {
+                    color: 'var(--text-disabled-color)',
+                  },
+                }}
               >
                 <ArrowDownIcon fontSize="small" />
               </IconButton>
@@ -8513,18 +8617,45 @@ const EstimateManagement: React.FC = () => {
             variant="outlined"
             size="small"
             onClick={handleResetColumnOrder}
-            sx={{ color: '#b0b8c1', borderColor: '#2e3a4a', mt: 2 }}
+            sx={{ 
+              color: 'var(--text-secondary-color)', 
+              borderColor: 'var(--border-color)', 
+              mt: 2,
+              '&:hover': {
+                backgroundColor: 'var(--hover-color)',
+                borderColor: 'var(--primary-color)',
+              },
+            }}
           >
             초기화
           </Button>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEstimateListSettingsOpen(false)}>
+        <DialogActions sx={{ 
+          backgroundColor: 'var(--surface-color)',
+          borderTop: '1px solid var(--border-color)',
+          p: 2,
+        }}>
+          <Button 
+            onClick={() => setEstimateListSettingsOpen(false)}
+            sx={{
+              color: 'var(--text-secondary-color)',
+              '&:hover': {
+                backgroundColor: 'var(--hover-color)',
+              },
+            }}
+          >
             취소
           </Button>
           <Button
             onClick={() => setEstimateListSettingsOpen(false)}
             variant="contained"
+            sx={{
+              backgroundColor: 'var(--primary-color)',
+              color: 'white',
+              '&:hover': {
+                backgroundColor: 'var(--primary-hover-color)',
+              },
+            }}
           >
             저장
           </Button>
@@ -8537,9 +8668,25 @@ const EstimateManagement: React.FC = () => {
         onClose={() => setEstimateDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
+            borderRadius: 3,
+          },
+        }}
       >
-        <DialogTitle>견적서 검색</DialogTitle>
-        <DialogContent>
+        <DialogTitle sx={{ 
+          backgroundColor: 'var(--surface-color)',
+          color: 'var(--text-color)',
+          borderBottom: '1px solid var(--border-color)'
+        }}>
+          견적서 검색
+        </DialogTitle>
+        <DialogContent sx={{ 
+          backgroundColor: 'var(--surface-color)',
+          color: 'var(--text-color)',
+        }}>
           <TextField
             fullWidth
             label="견적서 검색"
@@ -8548,17 +8695,36 @@ const EstimateManagement: React.FC = () => {
               setEstimateSearch(e.target.value)
             }
             placeholder="견적서명, 제품명, 거래처, 브랜드 등으로 검색"
-            sx={{ mb: 2 }}
+            sx={{ 
+              mb: 2,
+              input: { color: 'var(--text-color)' },
+              label: { color: 'var(--text-secondary-color)' },
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: 'var(--border-color)' },
+                '&:hover fieldset': { borderColor: 'var(--primary-color)' },
+              },
+            }}
           />
 
           {/* 탭 구분 */}
-          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+          <Box sx={{ borderBottom: 1, borderColor: 'var(--border-color)', mb: 2 }}>
             <Tabs
               value={estimateSearchTab}
               onChange={(
                 e: React.SyntheticEvent,
                 newValue: 'current' | 'saved'
               ) => setEstimateSearchTab(newValue)}
+              sx={{
+                '& .MuiTab-root': {
+                  color: 'var(--text-secondary-color)',
+                },
+                '& .Mui-selected': {
+                  color: 'var(--primary-color)',
+                },
+                '& .MuiTabs-indicator': {
+                  backgroundColor: 'var(--primary-color)',
+                }
+              }}
             >
               <Tab
                 label={`현재 견적서 (${filteredEstimates.length})`}
@@ -8573,8 +8739,27 @@ const EstimateManagement: React.FC = () => {
 
           {/* 현재 견적서 탭 */}
           {estimateSearchTab === 'current' && (
-            <TableContainer>
-              <Table size="small">
+            <TableContainer sx={{ 
+              backgroundColor: 'var(--surface-color)',
+              '& .MuiTable-root': {
+                backgroundColor: 'var(--surface-color)',
+              },
+            }}>
+              <Table size="small" sx={{ 
+                backgroundColor: 'var(--surface-color)',
+                '& .MuiTableCell-root': {
+                  color: 'var(--text-color)',
+                  borderColor: 'var(--border-color)',
+                },
+                '& .MuiTableHead-root .MuiTableCell-root': {
+                  backgroundColor: 'var(--surface-color)',
+                  color: 'var(--text-secondary-color)',
+                  fontWeight: 'bold',
+                },
+                '& .MuiTableBody-root .MuiTableRow-root:hover': {
+                  backgroundColor: 'var(--hover-color)',
+                },
+              }}>
                 <TableHead>
                   <TableRow>
                     <TableCell>견적서명</TableCell>
@@ -8616,6 +8801,14 @@ const EstimateManagement: React.FC = () => {
                             setActiveTab(idx);
                             setEstimateDialogOpen(false);
                           }}
+                          sx={{
+                            color: 'var(--text-secondary-color)',
+                            borderColor: 'var(--border-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                              borderColor: 'var(--primary-color)',
+                            },
+                          }}
                         >
                           선택
                         </Button>
@@ -8629,8 +8822,27 @@ const EstimateManagement: React.FC = () => {
 
           {/* 저장된 견적서 탭 */}
           {estimateSearchTab === 'saved' && (
-            <TableContainer>
-              <Table size="small">
+            <TableContainer sx={{ 
+              backgroundColor: 'var(--surface-color)',
+              '& .MuiTable-root': {
+                backgroundColor: 'var(--surface-color)',
+              },
+            }}>
+              <Table size="small" sx={{ 
+                backgroundColor: 'var(--surface-color)',
+                '& .MuiTableCell-root': {
+                  color: 'var(--text-color)',
+                  borderColor: 'var(--border-color)',
+                },
+                '& .MuiTableHead-root .MuiTableCell-root': {
+                  backgroundColor: 'var(--surface-color)',
+                  color: 'var(--text-secondary-color)',
+                  fontWeight: 'bold',
+                },
+                '& .MuiTableBody-root .MuiTableRow-root:hover': {
+                  backgroundColor: 'var(--hover-color)',
+                },
+              }}>
                 <TableHead>
                   <TableRow>
                     <TableCell>견적서명</TableCell>
@@ -8641,7 +8853,7 @@ const EstimateManagement: React.FC = () => {
                 <TableBody>
                   {filteredSavedEstimates.map((savedEstimate: any, index: number) => (
                     <TableRow
-                                              key={`saved-estimate-${savedEstimate.id || 'no-id'}-${savedEstimate.estimateNo || 'no-estimate-no'}-${index}`}
+                      key={`saved-estimate-${savedEstimate.id || 'no-id'}-${savedEstimate.estimateNo || 'no-estimate-no'}-${index}`}
                       hover
                       sx={{
                         cursor: 'pointer',
@@ -8657,8 +8869,8 @@ const EstimateManagement: React.FC = () => {
                         }
                       }}
                     >
-                      <TableCell>{savedEstimate.name}</TableCell>
-                      <TableCell>
+                      <TableCell sx={{ color: 'var(--text-color)' }}>{savedEstimate.name}</TableCell>
+                      <TableCell sx={{ color: 'var(--text-color)' }}>
                         {savedEstimate.rows
                           .map((row: any) => row.productName)
                           .filter(Boolean)
@@ -8686,6 +8898,14 @@ const EstimateManagement: React.FC = () => {
                             size="small"
                             variant="outlined"
                             onClick={() => handleLoadSavedEstimate(savedEstimate)}
+                            sx={{
+                              color: 'var(--text-secondary-color)',
+                              borderColor: 'var(--border-color)',
+                              '&:hover': {
+                                backgroundColor: 'var(--hover-color)',
+                                borderColor: 'var(--primary-color)',
+                              },
+                            }}
                           >
                             불러오기
                           </Button>
@@ -8698,8 +8918,22 @@ const EstimateManagement: React.FC = () => {
             </TableContainer>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEstimateDialogOpen(false)}>닫기</Button>
+        <DialogActions sx={{ 
+          backgroundColor: 'var(--surface-color)',
+          borderTop: '1px solid var(--border-color)',
+          p: 2,
+        }}>
+          <Button 
+            onClick={() => setEstimateDialogOpen(false)}
+            sx={{
+              color: 'var(--text-secondary-color)',
+              '&:hover': {
+                backgroundColor: 'var(--hover-color)',
+              },
+            }}
+          >
+            닫기
+          </Button>
         </DialogActions>
       </Dialog>
       {/* 개선된 제품 검색 모달 */}
@@ -10168,18 +10402,32 @@ const EstimateManagement: React.FC = () => {
           수정하기
         </MenuItem>
         {rowContextMenu?.row.type === 'product' && (
-          <MenuItem 
-            onClick={() => handleRowContextMenuAction('addOption')} 
-            sx={{ 
-              color: '#4caf50',
-              '&:hover': {
-                backgroundColor: 'rgba(76, 175, 80, 0.1)',
-              },
-            }}
-          >
-            <AddIcon fontSize="small" sx={{ mr: 1 }} />
-            옵션추가
-          </MenuItem>
+          <>
+            <MenuItem 
+              onClick={() => handleRowContextMenuAction('addOption')} 
+              sx={{ 
+                color: '#4caf50',
+                '&:hover': {
+                  backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                },
+              }}
+            >
+              <AddIcon fontSize="small" sx={{ mr: 1 }} />
+              옵션추가
+            </MenuItem>
+            <MenuItem 
+              onClick={() => handleRowContextMenuAction('bulkEdit')} 
+              sx={{ 
+                color: '#9c27b0',
+                '&:hover': {
+                  backgroundColor: 'rgba(156, 39, 176, 0.1)',
+                },
+              }}
+            >
+              <SettingsIcon fontSize="small" sx={{ mr: 1 }} />
+              일괄변경
+            </MenuItem>
+          </>
         )}
         <MenuItem 
           onClick={() => handleRowContextMenuAction('copy')} 
@@ -10511,26 +10759,28 @@ const EstimateManagement: React.FC = () => {
                         </Select>
                       </FormControl>
                     </Grid>
-                    <Grid item xs={12} md={4}>
-                      <TextField
-                        label="폭수"
-                        type="number"
-                        value={editRow.widthCount || ''}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                          handleEditChange('widthCount', e.target.value)
-                        }
-                        fullWidth
-                        size="small"
-                        sx={{
-                          input: { color: 'var(--text-color)' },
-                          label: { color: 'var(--text-secondary-color)' },
-                          '& .MuiOutlinedInput-root': {
-                            '& fieldset': { borderColor: 'var(--border-color)' },
-                            '&:hover fieldset': { borderColor: 'var(--primary-color)' },
-                          },
-                        }}
-                      />
-                    </Grid>
+                    {editRow.curtainType !== '속커튼' && (
+                      <Grid item xs={12} md={4}>
+                        <TextField
+                          label="폭수"
+                          type="number"
+                          value={editRow.widthCount || ''}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            handleEditChange('widthCount', e.target.value)
+                          }
+                          fullWidth
+                          size="small"
+                          sx={{
+                            input: { color: 'var(--text-color)' },
+                            label: { color: 'var(--text-secondary-color)' },
+                            '& .MuiOutlinedInput-root': {
+                              '& fieldset': { borderColor: 'var(--border-color)' },
+                              '&:hover fieldset': { borderColor: 'var(--primary-color)' },
+                            },
+                          }}
+                        />
+                      </Grid>
+                    )}
                     <Grid item xs={12} md={4}>
                       {editRow.curtainType === '속커튼' &&
                         editRow.pleatType === '민자' ? (
@@ -10652,25 +10902,27 @@ const EstimateManagement: React.FC = () => {
                         />
                       )}
                     </Grid>
-                    <Grid item xs={12} md={4}>
-                      <TextField
-                        label="주름양(직접입력)"
-                        value={editRow.pleatAmountCustom || ''}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                          handleEditChange('pleatAmountCustom', e.target.value)
-                        }
-                        fullWidth
-                        size="small"
-                        sx={{
-                          input: { color: 'var(--text-color)' },
-                          label: { color: 'var(--text-secondary-color)' },
-                          '& .MuiOutlinedInput-root': {
-                            '& fieldset': { borderColor: 'var(--border-color)' },
-                            '&:hover fieldset': { borderColor: 'var(--primary-color)' },
-                          },
-                        }}
-                      />
-                    </Grid>
+                    {editRow.curtainType !== '속커튼' && (
+                      <Grid item xs={12} md={4}>
+                        <TextField
+                          label="주름양(직접입력)"
+                          value={editRow.pleatAmountCustom || ''}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            handleEditChange('pleatAmountCustom', e.target.value)
+                          }
+                          fullWidth
+                          size="small"
+                          sx={{
+                            input: { color: 'var(--text-color)' },
+                            label: { color: 'var(--text-secondary-color)' },
+                            '& .MuiOutlinedInput-root': {
+                              '& fieldset': { borderColor: 'var(--border-color)' },
+                              '&:hover fieldset': { borderColor: 'var(--primary-color)' },
+                            },
+                          }}
+                        />
+                      </Grid>
+                    )}
                     {/* 헌터더글라스 거래처일 때만 판매금액 입력 필드 표시 */}
                     {(editRow.vendor?.includes('헌터더글라스') ||
                       editRow.vendor
@@ -11054,30 +11306,26 @@ const EstimateManagement: React.FC = () => {
         {/* 견적서 내용 */}
         <Grid item xs={12}>
           <Paper sx={{ p: 2, pt: 0, backgroundColor: 'var(--surface-color)' }}>
-            {/* 일괄 변경 모드 컨트롤 */}
-            {estimates[activeTab]?.rows.length > 0 && (
+            {/* 저장하기 버튼 및 일괄변경 모드 상태 */}
+            {estimates[activeTab]?.rows.length > 0 ? (
               <Box sx={{ 
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: 2, 
                 mb: 2, 
                 p: 1, 
-                backgroundColor: isBulkEditMode ? 'rgba(255, 193, 7, 0.1)' : 'transparent',
-                border: isBulkEditMode ? '1px solid #ffc107' : 'none',
+                backgroundColor: isBulkEditMode ? 'rgba(156, 39, 176, 0.1)' : 'transparent',
+                border: isBulkEditMode ? '1px solid #9c27b0' : 'none',
                 borderRadius: 1
               }}>
-                <Button
-                  variant={isBulkEditMode ? 'contained' : 'outlined'}
-                  color={isBulkEditMode ? 'warning' : 'primary'}
-                  onClick={handleBulkEditModeToggle}
-                  startIcon={<EditIcon />}
-                  size="small"
-                >
-                  {isBulkEditMode ? '일괄 변경 모드 종료' : '일괄 변경 모드'}
-                </Button>
-                
                 {isBulkEditMode && (
-                  <>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Typography variant="body2" color="primary" sx={{ fontWeight: 'bold' }}>
+                      일괄변경 모드 활성화
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      선택된 행: {selectedRowsForBulkEdit.size}개
+                    </Typography>
                     <Button
                       variant="outlined"
                       color="secondary"
@@ -11086,9 +11334,6 @@ const EstimateManagement: React.FC = () => {
                     >
                       전체 선택
                     </Button>
-                    <Typography variant="body2" color="text.secondary">
-                      선택된 행: {selectedRowsForBulkEdit.size}개
-                    </Typography>
                     <Button
                       variant="contained"
                       color="success"
@@ -11098,11 +11343,157 @@ const EstimateManagement: React.FC = () => {
                     >
                       제품 변경
                     </Button>
-                  </>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      onClick={() => {
+                        setIsBulkEditMode(false);
+                        setSelectedRowsForBulkEdit(new Set());
+                      }}
+                      size="small"
+                    >
+                      모드 종료
+                    </Button>
+                  </Box>
                 )}
-                
-                {/* 저장하기 버튼을 일괄 변경 모드 우측으로 이동 */}
-                <Box sx={{ marginLeft: 'auto', display: 'flex', gap: 1 }}>
+                <Box sx={{ display: 'flex', gap: 1, flex: 1 }}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    sx={{
+                      backgroundColor: '#0091ea',
+                      color: '#fff',
+                      '&:hover': { backgroundColor: '#0064b7' },
+                      minWidth: 120,
+                      fontSize: 13,
+                      py: 0.5,
+                      px: 1.5,
+                    }}
+                    onClick={() => setProductDialogOpen(true)}
+                  >
+                    제품 검색
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    color="secondary"
+                    sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
+                    onClick={handleOpenOptionDialog}
+                  >
+                    옵션추가
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    color="warning"
+                    sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
+                    onClick={handleAddRailOption}
+                  >
+                    레일추가
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    sx={{ minWidth: 60, fontSize: 13, py: 0.5, px: 1.5 }}
+                    onClick={() => setFilterModalOpen(true)}
+                  >
+                    필터
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
+                    onClick={handleOutputClick}
+                    endIcon={<ArrowDownIcon />}
+                    data-testid="output-button"
+                  >
+                    출력하기
+                  </Button>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    color="success"
+                    sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
+                    onClick={handleSaveEstimate}
+                  >
+                    저장하기
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    color="warning"
+                    sx={{ minWidth: 100, fontSize: 13, py: 0.5, px: 1.5 }}
+                    onClick={handleSaveAsNewEstimate}
+                  >
+                    새견적 저장
+                  </Button>
+                </Box>
+              </Box>
+            ) : (
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 2, 
+                mb: 2, 
+                p: 1
+              }}>
+                <Box sx={{ display: 'flex', gap: 1, flex: 1 }}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    sx={{
+                      backgroundColor: '#0091ea',
+                      color: '#fff',
+                      '&:hover': { backgroundColor: '#0064b7' },
+                      minWidth: 120,
+                      fontSize: 13,
+                      py: 0.5,
+                      px: 1.5,
+                    }}
+                    onClick={() => setProductDialogOpen(true)}
+                  >
+                    제품 검색
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    color="secondary"
+                    sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
+                    onClick={handleOpenOptionDialog}
+                  >
+                    옵션추가
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    color="warning"
+                    sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
+                    onClick={handleAddRailOption}
+                  >
+                    레일추가
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    sx={{ minWidth: 60, fontSize: 13, py: 0.5, px: 1.5 }}
+                    onClick={() => setFilterModalOpen(true)}
+                  >
+                    필터
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
+                    onClick={handleOutputClick}
+                    endIcon={<ArrowDownIcon />}
+                    data-testid="output-button"
+                  >
+                    출력하기
+                  </Button>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1 }}>
                   <Button
                     variant="outlined"
                     size="small"
@@ -11124,6 +11515,47 @@ const EstimateManagement: React.FC = () => {
                 </Box>
               </Box>
             )}
+
+            {/* 출력하기 드롭다운 메뉴 */}
+            <Menu
+              anchorEl={outputAnchorEl}
+              open={Boolean(outputAnchorEl)}
+              onClose={handleOutputClose}
+              anchorOrigin={{
+                vertical: 'bottom',
+                horizontal: 'left',
+              }}
+              transformOrigin={{
+                vertical: 'top',
+                horizontal: 'left',
+              }}
+              PaperProps={{
+                sx: {
+                  backgroundColor: '#fff',
+                  color: '#222',
+                  border: '1px solid #e0e0e0',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                  minWidth: 140,
+                },
+              }}
+            >
+              <MenuItem onClick={() => handleOutputOption('print')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(25, 118, 210, 0.08)' } }}>
+                <PrintIcon sx={{ mr: 1, fontSize: 20, color: '#1976d2' }} />
+                프린트
+              </MenuItem>
+              <MenuItem onClick={() => handleOutputOption('pdf')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(233, 30, 99, 0.08)' } }}>
+                <PdfIcon sx={{ mr: 1, fontSize: 20, color: '#e91e63' }} />
+                PDF
+              </MenuItem>
+              <MenuItem onClick={() => handleOutputOption('jpg')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(255, 193, 7, 0.08)' } }}>
+                <ImageIcon sx={{ mr: 1, fontSize: 20, color: '#ffc107' }} />
+                JPG
+              </MenuItem>
+              <MenuItem onClick={() => handleOutputOption('share')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(33, 150, 243, 0.08)' } }}>
+                <ShareIcon sx={{ mr: 1, fontSize: 20, color: '#2196f3' }} />
+                공유
+              </MenuItem>
+            </Menu>
             {(() => {
               return estimates[activeTab]?.rows.length > 0 ? (
                 <TableContainer sx={{ backgroundColor: 'var(--surface-color)', borderRadius: 1 }}>
@@ -11666,28 +12098,14 @@ const EstimateManagement: React.FC = () => {
               ) : (
                 <TableContainer>
                   <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>구분</TableCell>
-                        {FILTER_FIELDS.map(
-                          field =>
-                            columnVisibility[field.key] && (
-                              <TableCell key={field.key}>
-                                {field.label}
-                              </TableCell>
-                            )
-                        )}
-                        <TableCell>작업</TableCell>
-                      </TableRow>
-                    </TableHead>
                     <TableBody>
                       <TableRow>
                         <TableCell
                           colSpan={FILTER_FIELDS.length + 2}
                           align="center"
-                          sx={{ color: '#666' }}
+                          sx={{ color: '#666', fontSize: 'calc(14px + 2px)' }}
                         >
-                          데이터가 없습니다
+                          제품을 추가하여 견적을 시작하세요.
                         </TableCell>
                       </TableRow>
                     </TableBody>
@@ -11793,100 +12211,7 @@ const EstimateManagement: React.FC = () => {
                 />
               </Box>
             )}
-            {/* 버튼들 */}
-            <Box sx={{ display: 'flex', gap: 1, mt: 2, mb: 1 }}>
-              <Button
-                variant="contained"
-                size="small"
-                sx={{
-                  backgroundColor: '#0091ea',
-                  color: '#fff',
-                  '&:hover': { backgroundColor: '#0064b7' },
-                  minWidth: 120,
-                  fontSize: 13,
-                  py: 0.5,
-                  px: 1.5,
-                }}
-                onClick={() => setProductDialogOpen(true)}
-              >
-                제품 검색
-              </Button>
-              <Button
-                variant="outlined"
-                size="small"
-                color="secondary"
-                sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
-                onClick={handleOpenOptionDialog}
-              >
-                옵션추가
-              </Button>
-              <Button
-                variant="outlined"
-                size="small"
-                color="warning"
-                sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
-                onClick={handleAddRailOption}
-              >
-                레일추가
-              </Button>
-              <Button
-                variant="outlined"
-                size="small"
-                sx={{ minWidth: 60, fontSize: 13, py: 0.5, px: 1.5 }}
-                onClick={() => setFilterModalOpen(true)}
-              >
-                필터
-              </Button>
-              <Button
-                variant="outlined"
-                size="small"
-                sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
-                onClick={handleOutputClick}
-                endIcon={<ArrowDownIcon />}
-                data-testid="output-button"
-              >
-                출력하기
-              </Button>
-              <Menu
-                anchorEl={outputAnchorEl}
-                open={Boolean(outputAnchorEl)}
-                onClose={handleOutputClose}
-                anchorOrigin={{
-                  vertical: 'bottom',
-                  horizontal: 'left',
-                }}
-                transformOrigin={{
-                  vertical: 'top',
-                  horizontal: 'left',
-                }}
-                PaperProps={{
-                  sx: {
-                    backgroundColor: '#fff',
-                    color: '#222',
-                    border: '1px solid #e0e0e0',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                    minWidth: 140,
-                  },
-                }}
-              >
-                <MenuItem onClick={() => handleOutputOption('print')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(25, 118, 210, 0.08)' } }}>
-                  <PrintIcon sx={{ mr: 1, fontSize: 20, color: '#1976d2' }} />
-                  프린트
-                </MenuItem>
-                <MenuItem onClick={() => handleOutputOption('pdf')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(233, 30, 99, 0.08)' } }}>
-                  <PdfIcon sx={{ mr: 1, fontSize: 20, color: '#e91e63' }} />
-                  PDF
-                </MenuItem>
-                <MenuItem onClick={() => handleOutputOption('jpg')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(255, 193, 7, 0.08)' } }}>
-                  <ImageIcon sx={{ mr: 1, fontSize: 20, color: '#ffc107' }} />
-                  JPG
-                </MenuItem>
-                <MenuItem onClick={() => handleOutputOption('share')} sx={{ color: '#222', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(33, 150, 243, 0.08)' } }}>
-                  <ShareIcon sx={{ mr: 1, fontSize: 20, color: '#2196f3' }} />
-                  공유
-                </MenuItem>
-              </Menu>
-            </Box>
+
           </Paper>
         </Grid>
 
@@ -12193,10 +12518,32 @@ const EstimateManagement: React.FC = () => {
                             }
                             sx={{
                               ml: 1,
-                              color: '#e0e6ed',
+                              color: 'var(--text-color)',
                               minWidth: 80,
+                              backgroundColor: 'var(--surface-color)',
                               '.MuiOutlinedInput-notchedOutline': {
-                                borderColor: '#2e3a4a',
+                                borderColor: 'var(--border-color)',
+                              },
+                              '.MuiSelect-icon': {
+                                color: 'var(--text-color)',
+                              },
+                              '& .MuiSelect-select': {
+                                color: 'var(--text-color)',
+                              },
+                            }}
+                            MenuProps={{
+                              PaperProps: {
+                                sx: {
+                                  backgroundColor: 'var(--surface-color)',
+                                  color: 'var(--text-color)',
+                                  border: '1px solid var(--border-color)',
+                                  '& .MuiMenuItem-root': {
+                                    color: 'var(--text-color)',
+                                    '&:hover': {
+                                      backgroundColor: 'var(--hover-color)',
+                                    },
+                                  },
+                                },
                               },
                             }}
                           >
@@ -12214,10 +12561,32 @@ const EstimateManagement: React.FC = () => {
                             }
                             sx={{
                               ml: 1,
-                              color: '#e0e6ed',
+                              color: 'var(--text-color)',
                               minWidth: 80,
+                              backgroundColor: 'var(--surface-color)',
                               '.MuiOutlinedInput-notchedOutline': {
-                                borderColor: '#2e3a4a',
+                                borderColor: 'var(--border-color)',
+                              },
+                              '.MuiSelect-icon': {
+                                color: 'var(--text-color)',
+                              },
+                              '& .MuiSelect-select': {
+                                color: 'var(--text-color)',
+                              },
+                            }}
+                            MenuProps={{
+                              PaperProps: {
+                                sx: {
+                                  backgroundColor: 'var(--surface-color)',
+                                  color: 'var(--text-color)',
+                                  border: '1px solid var(--border-color)',
+                                  '& .MuiMenuItem-root': {
+                                    color: 'var(--text-color)',
+                                    '&:hover': {
+                                      backgroundColor: 'var(--hover-color)',
+                                    },
+                                  },
+                                },
                               },
                             }}
                           >
@@ -12238,10 +12607,32 @@ const EstimateManagement: React.FC = () => {
                             }
                             sx={{
                               ml: 1,
-                              color: '#e0e6ed',
+                              color: 'var(--text-color)',
                               minWidth: 80,
+                              backgroundColor: 'var(--surface-color)',
                               '.MuiOutlinedInput-notchedOutline': {
-                                borderColor: '#2e3a4a',
+                                borderColor: 'var(--border-color)',
+                              },
+                              '.MuiSelect-icon': {
+                                color: 'var(--text-color)',
+                              },
+                              '& .MuiSelect-select': {
+                                color: 'var(--text-color)',
+                              },
+                            }}
+                            MenuProps={{
+                              PaperProps: {
+                                sx: {
+                                  backgroundColor: 'var(--surface-color)',
+                                  color: 'var(--text-color)',
+                                  border: '1px solid var(--border-color)',
+                                  '& .MuiMenuItem-root': {
+                                    color: 'var(--text-color)',
+                                    '&:hover': {
+                                      backgroundColor: 'var(--hover-color)',
+                                    },
+                                  },
+                                },
                               },
                             }}
                           >
@@ -12259,10 +12650,32 @@ const EstimateManagement: React.FC = () => {
                             }
                             sx={{
                               ml: 1,
-                              color: '#e0e6ed',
+                              color: 'var(--text-color)',
                               minWidth: 80,
+                              backgroundColor: 'var(--surface-color)',
                               '.MuiOutlinedInput-notchedOutline': {
-                                borderColor: '#2e3a4a',
+                                borderColor: 'var(--border-color)',
+                              },
+                              '.MuiSelect-icon': {
+                                color: 'var(--text-color)',
+                              },
+                              '& .MuiSelect-select': {
+                                color: 'var(--text-color)',
+                              },
+                            }}
+                            MenuProps={{
+                              PaperProps: {
+                                sx: {
+                                  backgroundColor: 'var(--surface-color)',
+                                  color: 'var(--text-color)',
+                                  border: '1px solid var(--border-color)',
+                                  '& .MuiMenuItem-root': {
+                                    color: 'var(--text-color)',
+                                    '&:hover': {
+                                      backgroundColor: 'var(--hover-color)',
+                                    },
+                                  },
+                                },
                               },
                             }}
                           >
@@ -12280,10 +12693,32 @@ const EstimateManagement: React.FC = () => {
                           }
                           sx={{
                             ml: 1,
-                            color: '#e0e6ed',
+                            color: 'var(--text-color)',
                             minWidth: 80,
+                            backgroundColor: 'var(--surface-color)',
                             '.MuiOutlinedInput-notchedOutline': {
-                              borderColor: '#2e3a4a',
+                              borderColor: 'var(--border-color)',
+                            },
+                            '.MuiSelect-icon': {
+                              color: 'var(--text-color)',
+                            },
+                            '& .MuiSelect-select': {
+                              color: 'var(--text-color)',
+                            },
+                          }}
+                          MenuProps={{
+                            PaperProps: {
+                              sx: {
+                                backgroundColor: 'var(--surface-color)',
+                                color: 'var(--text-color)',
+                                border: '1px solid var(--border-color)',
+                                '& .MuiMenuItem-root': {
+                                  color: 'var(--text-color)',
+                                  '&:hover': {
+                                    backgroundColor: 'var(--hover-color)',
+                                  },
+                                },
+                              },
                             },
                           }}
                         >
@@ -12765,42 +13200,10 @@ const EstimateManagement: React.FC = () => {
                                         handleUpdateExistingContract(est)
                                       }
                                     >
-                                      기존계약업데이트
+                                      update
                                     </Button>
-                                    <IconButton
-                                      size="small"
-                                      onClick={() =>
-                                        handleEditFinalEstimate(est)
-                                      }
-                                      sx={{
-                                        mr: 1,
-                                        color: '#40c4ff',
-                                        '&:hover': {
-                                          backgroundColor:
-                                            'rgba(64, 196, 255, 0.1)',
-                                        },
-                                      }}
-                                      title="Final 견적서 수정"
-                                    >
-                                      <EditIcon fontSize="small" />
-                                    </IconButton>
-                                    <IconButton
-                                      size="small"
-                                      onClick={() =>
-                                        handleAddNewFinalEstimate(est)
-                                      }
-                                      sx={{
-                                        mr: 1,
-                                        color: '#ff9800',
-                                        '&:hover': {
-                                          backgroundColor:
-                                            'rgba(255, 152, 0, 0.1)',
-                                        },
-                                      }}
-                                      title="새 Final 견적서 생성"
-                                    >
-                                      <AddIcon fontSize="small" />
-                                    </IconButton>
+
+
                                   </>
                                 )}
 
