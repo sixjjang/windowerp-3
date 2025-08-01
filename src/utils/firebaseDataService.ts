@@ -745,7 +745,7 @@ export const productService = {
 // 옵션 데이터 서비스
 export const optionService = {
   // 옵션 목록 가져오기
-  async getOptions() {
+  async getOptions(): Promise<any[]> {
     try {
       const optionsRef = collection(db, 'options');
       const q = query(optionsRef, orderBy('createdAt', 'desc'));

@@ -113,4 +113,9 @@ export interface TabPanelProps {
 export interface BuildingInfo {
   buildingName: string;
   unitInfo: string;
+}
+
+export interface EstimateRow {
+  pleatMultiplier?: string;
+  pleatCount?: number;
 } 

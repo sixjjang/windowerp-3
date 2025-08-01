@@ -102,6 +102,9 @@ export interface EstimateRow {
   minOrderQty?: number;
   largePlainPrice?: number;
   largePlainCost?: number;
+  // === 자동계산 관련 ===
+  pleatMultiplier?: string;
+  pleatCount?: number;
 }
 
 export interface OptionItem {
@@ -148,4 +151,6 @@ export interface Estimate {
   createdAt?: string;
   updatedAt?: string;
   products?: string;
+  // 계약 관련 필드
+  contractNo?: string;
 }
