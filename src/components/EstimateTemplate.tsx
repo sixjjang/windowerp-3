@@ -332,13 +332,49 @@ const TemplateSettingsModal: React.FC<{
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>템플릿 설정</DialogTitle>
-      <DialogContent>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      maxWidth="md" 
+      fullWidth
+      PaperProps={{
+        sx: {
+          backgroundColor: 'var(--surface-color)',
+          color: 'var(--text-color)',
+          '& .MuiDialogTitle-root': {
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
+            borderBottom: '1px solid var(--border-color)'
+          },
+          '& .MuiDialogContent-root': {
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)'
+          },
+          '& .MuiDialogActions-root': {
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
+            borderTop: '1px solid var(--border-color)'
+          }
+        }
+      }}
+    >
+      <DialogTitle sx={{ color: 'var(--text-color)' }}>템플릿 설정</DialogTitle>
+      <DialogContent sx={{ color: 'var(--text-color)' }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'var(--border-color)', mb: 2 }}>
           <Tabs
             value={activeTab}
             onChange={(e, newValue) => setActiveTab(newValue)}
+            sx={{
+              '& .MuiTab-root': {
+                color: 'var(--text-color)',
+                '&.Mui-selected': {
+                  color: 'var(--primary-color)'
+                }
+              },
+              '& .MuiTabs-indicator': {
+                backgroundColor: 'var(--primary-color)'
+              }
+            }}
           >
             <Tab label="템플릿 설정" />
             <Tab label="회사 정보" />
@@ -351,7 +387,7 @@ const TemplateSettingsModal: React.FC<{
         {activeTab === 0 && (
           <>
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>
+              <Typography variant="h6" sx={{ mb: 2, color: 'var(--text-color)' }}>
                 템플릿 이름
               </Typography>
               <input
@@ -360,12 +396,20 @@ const TemplateSettingsModal: React.FC<{
                 onChange={e =>
                   setTemplate({ ...template, name: e.target.value })
                 }
-                style={{ width: '100%', padding: '8px', fontSize: '16px' }}
+                style={{ 
+                  width: '100%', 
+                  padding: '8px', 
+                  fontSize: '16px',
+                  backgroundColor: 'var(--surface-color)',
+                  color: 'var(--text-color)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px'
+                }}
               />
             </Box>
 
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>
+              <Typography variant="h6" sx={{ mb: 2, color: 'var(--text-color)' }}>
                 출력할 항목 선택
               </Typography>
               <Grid container spacing={2}>
@@ -376,9 +420,19 @@ const TemplateSettingsModal: React.FC<{
                         <Checkbox
                           checked={template.fields.includes(field.key)}
                           onChange={() => handleFieldToggle(field.key)}
+                          sx={{
+                            color: 'var(--primary-color)',
+                            '&.Mui-checked': {
+                              color: 'var(--primary-color)'
+                            }
+                          }}
                         />
                       }
-                      label={field.label}
+                      label={
+                        <Typography sx={{ color: 'var(--text-color)' }}>
+                          {field.label}
+                        </Typography>
+                      }
                     />
                   </Grid>
                 ))}
@@ -386,7 +440,7 @@ const TemplateSettingsModal: React.FC<{
             </Box>
 
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>
+              <Typography variant="h6" sx={{ mb: 2, color: 'var(--text-color)' }}>
                 표시 옵션
               </Typography>
               <Grid container spacing={2}>
@@ -401,9 +455,19 @@ const TemplateSettingsModal: React.FC<{
                             showHeader: e.target.checked,
                           })
                         }
+                        sx={{
+                          color: 'var(--primary-color)',
+                          '&.Mui-checked': {
+                            color: 'var(--primary-color)'
+                          }
+                        }}
                       />
                     }
-                    label="헤더 표시"
+                    label={
+                      <Typography sx={{ color: 'var(--text-color)' }}>
+                        헤더 표시
+                      </Typography>
+                    }
                   />
                 </Grid>
                 <Grid item xs={6}>
@@ -417,9 +481,19 @@ const TemplateSettingsModal: React.FC<{
                             showCustomerInfo: e.target.checked,
                           })
                         }
+                        sx={{
+                          color: 'var(--primary-color)',
+                          '&.Mui-checked': {
+                            color: 'var(--primary-color)'
+                          }
+                        }}
                       />
                     }
-                    label="고객 정보 표시"
+                    label={
+                      <Typography sx={{ color: 'var(--text-color)' }}>
+                        고객 정보 표시
+                      </Typography>
+                    }
                   />
                 </Grid>
                 <Grid item xs={6}>
@@ -433,9 +507,19 @@ const TemplateSettingsModal: React.FC<{
                             showCompanyInfo: e.target.checked,
                           })
                         }
+                        sx={{
+                          color: 'var(--primary-color)',
+                          '&.Mui-checked': {
+                            color: 'var(--primary-color)'
+                          }
+                        }}
                       />
                     }
-                    label="회사 정보 표시"
+                    label={
+                      <Typography sx={{ color: 'var(--text-color)' }}>
+                        회사 정보 표시
+                      </Typography>
+                    }
                   />
                 </Grid>
                 <Grid item xs={6}>
@@ -449,9 +533,19 @@ const TemplateSettingsModal: React.FC<{
                             showFooter: e.target.checked,
                           })
                         }
+                        sx={{
+                          color: 'var(--primary-color)',
+                          '&.Mui-checked': {
+                            color: 'var(--primary-color)'
+                          }
+                        }}
                       />
                     }
-                    label="푸터 표시"
+                    label={
+                      <Typography sx={{ color: 'var(--text-color)' }}>
+                        푸터 표시
+                      </Typography>
+                    }
                   />
                 </Grid>
                 <Grid item xs={6}>
@@ -465,9 +559,19 @@ const TemplateSettingsModal: React.FC<{
                             showStamp: e.target.checked,
                           })
                         }
+                        sx={{
+                          color: 'var(--primary-color)',
+                          '&.Mui-checked': {
+                            color: 'var(--primary-color)'
+                          }
+                        }}
                       />
                     }
-                    label="회사 도장 표시"
+                    label={
+                      <Typography sx={{ color: 'var(--text-color)' }}>
+                        회사 도장 표시
+                      </Typography>
+                    }
                   />
                 </Grid>
               </Grid>
@@ -478,7 +582,7 @@ const TemplateSettingsModal: React.FC<{
         {/* 회사 정보 탭 */}
         {activeTab === 1 && (
           <Box sx={{ mb: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>
+            <Typography variant="h6" sx={{ mb: 2, color: 'var(--text-color)' }}>
               회사 정보 설정
             </Typography>
             
@@ -676,10 +780,10 @@ const TemplateSettingsModal: React.FC<{
         {/* 안내 문구 탭 */}
         {activeTab === 3 && (
           <Box sx={{ mb: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>
+            <Typography variant="h6" sx={{ mb: 2, color: 'var(--text-color)' }}>
               안내 문구 설정
             </Typography>
-            <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+            <Typography variant="body2" sx={{ mb: 2, color: 'var(--text-secondary-color)' }}>
               견적서 하단에 표시될 안내 문구를 입력하세요. 줄바꿈은 자동으로
               반영됩니다.
             </Typography>
@@ -691,13 +795,32 @@ const TemplateSettingsModal: React.FC<{
               value={noticeText}
               onChange={e => setNoticeText(e.target.value)}
               placeholder="• 본 견적서는 발행일로부터 30일간 유효합니다.&#10;• 견적서에 명시되지 않은 추가 작업은 별도 견적이 필요합니다.&#10;• 설치 및 배송 조건은 별도 협의하시기 바랍니다.&#10;• 문의사항이 있으시면 언제든 연락주시기 바랍니다."
+              sx={{
+                '& .MuiInputBase-input': {
+                  color: 'var(--text-color)'
+                },
+                '& .MuiInputLabel-root': {
+                  color: 'var(--text-color)'
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'var(--border-color)'
+                },
+                '&:hover .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'var(--primary-color)'
+                },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'var(--primary-color)'
+                }
+              }}
             />
           </Box>
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>취소</Button>
-        <Button onClick={handleSave} variant="contained">
+        <Button onClick={onClose} sx={{ color: 'var(--text-color)' }}>
+          취소
+        </Button>
+        <Button onClick={handleSave} variant="contained" sx={{ backgroundColor: 'var(--primary-color)' }}>
           저장
         </Button>
       </DialogActions>
@@ -889,11 +1012,40 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
             <Typography variant="h6">견적서 양식</Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <FormControl size="small" sx={{ minWidth: 150 }}>
-                <InputLabel>템플릿 선택</InputLabel>
+                <InputLabel sx={{ color: 'var(--text-color)' }}>템플릿 선택</InputLabel>
                 <Select
                   value={selectedTemplate}
                   onChange={e => handleTemplateChange(e.target.value)}
                   label="템플릿 선택"
+                  sx={{
+                    color: 'var(--text-color)',
+                    '& .MuiSelect-icon': {
+                      color: 'var(--text-color)',
+                    },
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'var(--border-color)',
+                    },
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'var(--primary-color)',
+                    },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'var(--primary-color)',
+                    },
+                  }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        backgroundColor: 'var(--surface-color)',
+                        color: 'var(--text-color)',
+                        '& .MuiMenuItem-root': {
+                          color: 'var(--text-color)',
+                          '&:hover': {
+                            backgroundColor: 'var(--hover-color)',
+                          },
+                        },
+                      },
+                    },
+                  }}
                 >
                   <MenuItem value="template1">
                     {templates.template1.name}

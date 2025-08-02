@@ -122,6 +122,52 @@ export interface OptionItem {
   optionType?: string; // OptionManagement에서 사용
 }
 
+// 시공기사 관련 타입
+export interface Installer {
+  id: string;
+  vendorName: string;
+  vendorPhone: string;
+  installerName: string;
+  installerPhone: string;
+  vehicleNumber: string;
+  memo: string;
+  createdAt: string;
+}
+
+// AS접수 관련 타입
+export interface ASRequest {
+  id: string;
+  orderId: string;
+  orderNo: string;
+  address: string;
+  customerName: string;
+  contact: string;
+  installationDate: string;
+  asRequestDate: string;
+  selectedProducts: string[];
+  processingMethod: '거래처AS' | '판매자AS' | '고객직접';
+  problem: string;
+  solution: string;
+  cost: number;
+  memo: string;
+  isCompleted: boolean;
+  status: 'AS처리중' | 'AS완료'; // AS상태 추가
+  asProcessDate?: string; // AS처리일자 추가
+  createdAt: string;
+}
+
+// 수금내역 관련 타입
+export interface PaymentRecord {
+  id: string;
+  orderId: string;
+  orderNo: string;
+  paymentDate: string;
+  paymentMethod: string;
+  amount: number;
+  remainingAmount: number;
+  createdAt: string;
+}
+
 export interface Estimate {
   id: number;
   name: string;
@@ -137,6 +183,8 @@ export interface Estimate {
   // 추가 필드들
   totalAmount?: number;
   discountedAmount?: number;
+  discountAmount?: string; // 할인금액
+  discountRate?: string; // 할인율
   measurementRequired?: boolean | 'direct';
   measurementInfo?: {
     measuredAt?: string;
@@ -153,4 +201,11 @@ export interface Estimate {
   products?: string;
   // 계약 관련 필드
   contractNo?: string;
+  // 주문관리 추가 필드들
+  measurementDate?: string; // 실측일자 (년,월,일,시,30분단위)
+  installationDate?: string; // 시공일자 (년,월,일,시,30분단위)
+  installerId?: string; // 시공기사 ID
+  installerName?: string; // 시공기사명
+  // 제품준비 상태 추가
+  productStatus?: '제품준비' | '납품완료';
 }
