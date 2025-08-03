@@ -65,6 +65,12 @@ import {
   Description as DescriptionIcon,
   Assignment as AssignmentIcon,
   Chat as ChatIcon,
+  FolderOpen as FolderOpenIcon,
+  AttachMoney as AttachMoneyIcon,
+  Build as BuildIcon,
+  FilterList as FilterListIcon,
+  EditNote as EditNoteIcon,
+  SaveAlt as SaveAltIcon,
 } from '@mui/icons-material';
 import { create } from 'zustand';
 import { evaluate } from 'mathjs';
@@ -666,6 +672,23 @@ const OrderManagement: React.FC = () => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [savedOrders, setSavedOrders] = useState<any[]>([]);
 
+  // 주문서 편집 모드 상태
+  const [isOrderEditMode, setIsOrderEditMode] = useState(false);
+
+  // 저장된 주문서 목록 표시항목 설정 상태
+  const [savedOrderColumnVisibility, setSavedOrderColumnVisibility] = useState({
+    address: true,
+    customerName: true,
+    contact: true,
+    estimateNo: true,
+    estimateDate: true,
+    installationDate: true,
+    totalAmount: true,
+    discountedAmount: true,
+    actions: true
+  });
+  const [savedOrderColumnSettingsOpen, setSavedOrderColumnSettingsOpen] = useState(false);
+
   // 시공기사 관련 상태
   const [installerModalOpen, setInstallerModalOpen] = useState(false);
   const [installerList, setInstallerList] = useState<any[]>([]);
@@ -710,7 +733,11 @@ const OrderManagement: React.FC = () => {
     paymentDate: getLocalDate(),
     paymentMethod: '',
     amount: 0,
-    remainingAmount: 0
+    remainingAmount: 0,
+    refundAmount: 0,
+    refundMethod: '',
+    refundDate: getLocalDate(),
+    refundMemo: ''
   });
 
   // AS접수 및 수금내역 데이터 (주문번호별 관리)
@@ -722,6 +749,13 @@ const OrderManagement: React.FC = () => {
     mouseX: number;
     mouseY: number;
     order: any;
+  } | null>(null);
+
+  // 주문서 탭 컨텍스트 메뉴 상태
+  const [tabContextMenu, setTabContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    orderIndex: number;
   } | null>(null);
 
   // 계약 관련 상태
@@ -744,7 +778,7 @@ const OrderManagement: React.FC = () => {
     try {
       const existingInstallers = loadInstallers();
       const newInstallerData = {
-        id: Date.now().toString(),
+        id: Date.now(),
         ...newInstaller,
         createdAt: new Date().toISOString()
       };
@@ -763,7 +797,7 @@ const OrderManagement: React.FC = () => {
       
       if (!existingVendor) {
         const newVendor = {
-          id: Date.now().toString(),
+          id: Date.now(),
           name: newInstaller.vendorName,
           contact: newInstaller.vendorPhone,
           type: '시공업체',
@@ -1053,6 +1087,7 @@ const OrderManagement: React.FC = () => {
       const updatedOrders = [...orders];
       updatedOrders[activeTab] = updatedOrder;
       setOrders(updatedOrders);
+      setIsOrderEditMode(true);
       
       // 계약 목록 모달 닫기
       setContractListModalOpen(false);
@@ -1125,6 +1160,7 @@ const OrderManagement: React.FC = () => {
   const [modalDeliveryDate, setModalDeliveryDate] = useState<string>('');
   const [purchaseOrderType, setPurchaseOrderType] = useState<'basic' | 'simple'>('basic');
   const [purchaseOrderMemo, setPurchaseOrderMemo] = useState<string>('');
+  const [purchaseOrderDate, setPurchaseOrderDate] = useState<string>(getLocalDate());
   const [purchaseOrderItems, setPurchaseOrderItems] = useState<any[]>([]);
   const [vendorPurchaseOrders, setVendorPurchaseOrders] = useState<{[orderId: string]: any[]}>({});
   const [deliveryInfo, setDeliveryInfo] = useState<{[key: string]: {method: string, date: string, company: string, contact: string, address: string}}>({});
@@ -1146,6 +1182,7 @@ const OrderManagement: React.FC = () => {
     productName: true,
     width: true,
     details: true,
+    productionContent: false, // 제작내용 컬럼 (기본값: 숨김)
     widthMM: true,
     heightMM: true,
     area: true,
@@ -1282,6 +1319,88 @@ const OrderManagement: React.FC = () => {
     return calculatedPleatAmount.toFixed(2);
   };
 
+  // 제작내용 계산 함수
+  const calculateProductionContent = (row: any): string => {
+    if (!row) return '';
+
+    // 블라인드 제품인 경우: 연결된 옵션들의 세부내용을 연결
+    if (row.productType === '블라인드') {
+      const currentOrder = orders[activeTab];
+      if (!currentOrder?.rows) return '';
+
+      // 현재 제품 다음부터 다음 제품 전까지의 옵션들을 찾기
+      const currentIndex = currentOrder.rows.findIndex(r => r.id === row.id);
+      if (currentIndex === -1) return '';
+
+      const optionDetails: string[] = [];
+      let i = currentIndex + 1;
+      
+      // 다음 제품을 만날 때까지 옵션들의 세부내용 수집
+      while (i < currentOrder.rows.length && currentOrder.rows[i].type === 'option') {
+        if (currentOrder.rows[i].details) {
+          optionDetails.push(currentOrder.rows[i].details);
+        }
+        i++;
+      }
+
+      return optionDetails.join(' + ');
+    }
+
+    // 커튼 제품인 경우
+    if (row.curtainType === '속커튼' || row.curtainType === '겉커튼') {
+      const widthMM = row.widthMM || 0;
+      const heightMM = row.heightMM || 0;
+      const pleatType = row.pleatType || '';
+      
+      if (widthMM <= 0 || heightMM <= 0) return '';
+
+      // 커튼전동 옵션 확인
+      const hasCurtainMotor = checkCurtainMotorOption(row);
+      const heightAdjustment = hasCurtainMotor ? 45 : 30;
+      const adjustedHeight = heightMM - heightAdjustment;
+
+      if (row.curtainType === '속커튼') {
+        if (pleatType === '민자') {
+          const areaMM = (widthMM * heightMM) / 1000000; // m² 단위
+          return `${areaMM.toFixed(2)}㎡ * ${adjustedHeight}mm`;
+        } else if (pleatType === '나비') {
+          return `${widthMM}mm * ${adjustedHeight}mm`;
+        }
+      } else if (row.curtainType === '겉커튼') {
+        if (pleatType === '민자') {
+          return `제작높이 : ${adjustedHeight}mm`;
+        } else if (pleatType === '나비') {
+          return `${widthMM}mm * ${adjustedHeight}mm`;
+        }
+      }
+    }
+
+    return '';
+  };
+
+  // 커튼전동 옵션 확인 함수
+  const checkCurtainMotorOption = (row: any): boolean => {
+    if (!row || row.productType === '블라인드') return false;
+
+    const currentOrder = orders[activeTab];
+    if (!currentOrder?.rows) return false;
+
+    const currentIndex = currentOrder.rows.findIndex(r => r.id === row.id);
+    if (currentIndex === -1) return false;
+
+    // 현재 제품 다음부터 다음 제품 전까지의 옵션들을 확인
+    let i = currentIndex + 1;
+    while (i < currentOrder.rows.length && currentOrder.rows[i].type === 'option') {
+      const optionName = currentOrder.rows[i].productName || '';
+      if (optionName.includes('전동') || optionName.includes('모터') || optionName.includes('커튼전동')) {
+        return true;
+      }
+      i++;
+    }
+
+    return false;
+  };
+
   // 할인 관련 계산
   const sumTotalPrice = orders[activeTab]?.rows?.reduce((sum, row) => sum + (Number(row?.totalPrice) || 0), 0) || 0;
   const discountAmountNumber = Number(discountAmount.replace(/,/g, '')) || 0;
@@ -1326,11 +1445,7 @@ const OrderManagement: React.FC = () => {
   const handleDiscountRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rate = Number(e.target.value);
     setDiscountRate(e.target.value);
-    if (rate && sumTotalPrice) {
-      const amount = Math.round((sumTotalPrice * rate) / 100);
-      setDiscountAmount(amount.toString());
-      setDiscountedTotalInput((sumTotalPrice - amount).toString());
-    }
+    // 할인율이 변경되면 useEffect에서 자동으로 계산됨
   };
 
   // 할인 후 금액 변경 핸들러
@@ -1343,6 +1458,46 @@ const OrderManagement: React.FC = () => {
       const rate = ((amount / sumTotalPrice) * 100).toFixed(2);
       setDiscountRate(rate);
     }
+  };
+
+  // 할인율 기준으로 할인금액과 할인후금액 자동 계산
+  const calculateDiscountFromRate = () => {
+    if (discountRate && sumTotalPrice) {
+      const rate = Number(discountRate);
+      const amount = Math.round((sumTotalPrice * rate) / 100);
+      setDiscountAmount(amount.toString());
+      setDiscountedTotalInput((sumTotalPrice - amount).toString());
+    }
+  };
+
+  // 소비자금액이 변경될 때 할인율 기준으로 자동 계산
+  useEffect(() => {
+    if (showDiscount && discountRate) {
+      calculateDiscountFromRate();
+    }
+  }, [sumTotalPrice, discountRate, showDiscount]);
+
+  // 저장된 주문서 목록 표시항목 토글 핸들러
+  const handleSavedOrderColumnToggle = (field: string) => {
+    setSavedOrderColumnVisibility(prev => ({
+      ...prev,
+      [field]: !prev[field as keyof typeof prev]
+    }));
+  };
+
+  // 저장된 주문서 목록 표시항목 초기화
+  const handleSavedOrderColumnReset = () => {
+    setSavedOrderColumnVisibility({
+      address: true,
+      customerName: true,
+      contact: true,
+      estimateNo: true,
+      estimateDate: true,
+      installationDate: true,
+      totalAmount: true,
+      discountedAmount: true,
+      actions: true
+    });
   };
 
   // 컬럼 표시/숨김 토글
@@ -1364,6 +1519,7 @@ const OrderManagement: React.FC = () => {
       productName: true,
       width: true,
       details: true,
+      productionContent: false, // 제작내용 컬럼 (기본값: 숨김)
       widthMM: true,
       heightMM: true,
       area: true,
@@ -1827,6 +1983,21 @@ const OrderManagement: React.FC = () => {
       ...updatedOrders[activeTab],
       rows: updatedRows
     };
+    setOrders(updatedOrders);
+    
+    // 행 삭제 후 모든 제품의 제작내용과 세부내용 자동 업데이트
+    const updatedRowsWithContent = updatedRows.map((row) => {
+      if (row.type === 'product') {
+        return {
+          ...row,
+          productionContent: calculateProductionContent(row),
+          details: updateDetailsInRealTime(row)
+        };
+      }
+      return row;
+    });
+    
+    updatedOrders[activeTab].rows = updatedRowsWithContent;
     setOrders(updatedOrders);
     
     // 선택 상태 초기화
@@ -2384,6 +2555,23 @@ const OrderManagement: React.FC = () => {
     updatedOrders[activeTab].rows = updatedRows;
     setOrders(updatedOrders);
     
+    // 옵션 추가 후 관련 제품들의 제작내용과 세부내용 자동 업데이트
+    if (selectedRowIndex !== null) {
+      const updatedRowsWithContent = updatedRows.map((row, index) => {
+        if (row.type === 'product') {
+          return {
+            ...row,
+            productionContent: calculateProductionContent(row),
+            details: updateDetailsInRealTime(row)
+          };
+        }
+        return row;
+      });
+      
+      updatedOrders[activeTab].rows = updatedRowsWithContent;
+      setOrders(updatedOrders);
+    }
+    
     setSnackbarMessage(`${option.optionName} 옵션이 추가되었습니다.`);
     setSnackbarOpen(true);
   };
@@ -2456,8 +2644,19 @@ const OrderManagement: React.FC = () => {
         return row;
       });
       
+      // 옵션 수정 후 관련 제품들의 세부내용 자동 업데이트
+      const updatedRowsWithDetails = updatedRows.map((row) => {
+        if (row.type === 'product') {
+          return {
+            ...row,
+            details: updateDetailsInRealTime(row)
+          };
+        }
+        return row;
+      });
+      
       const updatedOrders = [...orders];
-      updatedOrders[activeTab].rows = updatedRows;
+      updatedOrders[activeTab].rows = updatedRowsWithDetails;
       setOrders(updatedOrders);
       
       setSnackbarMessage(`${editingOption.optionName} 옵션의 수량이 ${editOptionQuantity}개로 수정되었습니다.`);
@@ -2857,6 +3056,8 @@ const OrderManagement: React.FC = () => {
   const handleOpenPurchaseOrderModal = (vendor: string, items: any[]) => {
     setSelectedVendor(vendor);
     setPurchaseOrderItems(items);
+    setPurchaseOrderDate(getLocalDate()); // 발주일자를 현재 날짜로 초기화
+    setPurchaseOrderMemo(''); // 메모 초기화
     const deliveryInfo = getDeliveryInfo(vendor);
     setModalDeliveryMethod(deliveryInfo.method);
     setModalDeliveryDate(deliveryInfo.date);
@@ -2869,13 +3070,19 @@ const OrderManagement: React.FC = () => {
   // 발주서 출력
   const handlePrintPurchaseOrder = (type: 'print' | 'jpg' | 'pdf' | 'kakao') => {
     // 발주서 출력 로직 구현
-    console.log('발주서 출력:', { type, vendor: selectedVendor, items: purchaseOrderItems });
+    console.log('발주서 출력:', { 
+      type, 
+      vendor: selectedVendor, 
+      items: purchaseOrderItems,
+      purchaseOrderDate: purchaseOrderDate,
+      purchaseOrderMemo: purchaseOrderMemo
+    });
     
     if (type === 'print') {
       window.print();
     } else if (type === 'jpg' || type === 'pdf') {
       // JPG/PDF 생성 로직
-      const fileName = `${selectedVendor}_${getLocalDate()}_${orders[activeTab]?.address || '주소'}.${type}`;
+      const fileName = `${selectedVendor}_${purchaseOrderDate}_${orders[activeTab]?.address || '주소'}.${type}`;
       console.log('파일명:', fileName);
     } else if (type === 'kakao') {
       // 카카오톡 공유 로직
@@ -2964,6 +3171,7 @@ const OrderManagement: React.FC = () => {
       };
       
       setOrders(updatedOrders);
+      setIsOrderEditMode(true);
       
       // 할인 설정 먼저 초기화
       setDiscountAmount('');
@@ -3028,7 +3236,7 @@ const OrderManagement: React.FC = () => {
 
     try {
       const newASRequest: ASRequest = {
-        id: Date.now().toString(),
+        id: Date.now(),
         orderId: selectedOrderForAS.id,
         orderNo: selectedOrderForAS.estimateNo,
         address: selectedOrderForAS.address,
@@ -3073,7 +3281,11 @@ const OrderManagement: React.FC = () => {
       paymentDate: getLocalDate(),
       paymentMethod: '',
       amount: 0,
-      remainingAmount: 0
+      remainingAmount: 0,
+      refundAmount: 0,
+      refundMethod: '',
+      refundDate: getLocalDate(),
+      refundMemo: ''
     });
     setPaymentModalOpen(true);
   };
@@ -3994,7 +4206,7 @@ const OrderManagement: React.FC = () => {
 
     try {
       const newPaymentRecord: PaymentRecord = {
-        id: Date.now().toString(),
+        id: Date.now(),
         orderId: selectedOrderForPayment.id,
         orderNo: selectedOrderForPayment.estimateNo,
         paymentDate: paymentRecord.paymentDate || getLocalDate(),
@@ -4054,6 +4266,96 @@ const OrderManagement: React.FC = () => {
     setContextMenu(null);
   };
 
+  // 주문서 탭 컨텍스트 메뉴 핸들러들
+  const handleTabContextMenu = (event: React.MouseEvent, orderIndex: number) => {
+    event.preventDefault();
+    setTabContextMenu({
+      mouseX: event.clientX + 2,
+      mouseY: event.clientY - 6,
+      orderIndex
+    });
+  };
+
+  const handleCloseTabContextMenu = () => {
+    setTabContextMenu(null);
+  };
+
+  const handleTabContextMenuAction = (action: string) => {
+    if (!tabContextMenu) return;
+
+    const orderIndex = tabContextMenu.orderIndex;
+    const order = orders[orderIndex];
+
+    switch (action) {
+      case 'save':
+        // 현재 주문서 저장
+        handleSaveOrder();
+        break;
+      case 'saveAsNew':
+        // 새 주문서로 저장
+        handleSaveAsNewOrder();
+        break;
+      case 'copy':
+        // 주문서 복사
+        const copiedOrder = { ...order };
+        copiedOrder.id = Date.now();
+        copiedOrder.estimateNo = generateOrderNo(orders);
+        copiedOrder.estimateDate = getLocalDate();
+        copiedOrder.rows = copiedOrder.rows?.map((row: any) => ({
+          ...row,
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 9)
+        })) || [];
+        
+        // 수금내역 및 AS접수내역도 복사
+        if (paymentRecords[order.estimateNo]) {
+          paymentRecords[order.estimateNo].forEach((record: any) => {
+            const copiedRecord = { ...record };
+            copiedRecord.id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+            copiedRecord.estimateNo = copiedOrder.estimateNo;
+            
+            if (!paymentRecords[copiedOrder.estimateNo]) {
+              paymentRecords[copiedOrder.estimateNo] = [];
+            }
+            paymentRecords[copiedOrder.estimateNo].push(copiedRecord);
+          });
+        }
+        
+        // AS접수내역 복사
+        if (asRequests[order.estimateNo]) {
+          asRequests[order.estimateNo].forEach((request: any) => {
+            const copiedRequest = { ...request };
+            copiedRequest.id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+            copiedRequest.estimateNo = copiedOrder.estimateNo;
+            
+            if (!asRequests[copiedOrder.estimateNo]) {
+              asRequests[copiedOrder.estimateNo] = [];
+            }
+            asRequests[copiedOrder.estimateNo].push(copiedRequest);
+          });
+        }
+        
+        const newOrders = [...orders, copiedOrder];
+        setOrders(newOrders);
+        setActiveTab(newOrders.length - 1);
+        setIsOrderEditMode(true);
+        setSnackbarMessage('주문서가 복사되었습니다.');
+        break;
+      case 'delete':
+        // 주문서 삭제
+        if (orders.length > 1) {
+          const newOrders = orders.filter((_, index) => index !== orderIndex);
+          setOrders(newOrders);
+          if (activeTab >= orderIndex) {
+            setActiveTab(Math.max(0, activeTab - 1));
+          }
+          setIsOrderEditMode(newOrders.length > 0);
+          setSnackbarMessage('주문서가 삭제되었습니다.');
+        }
+        break;
+    }
+    setTabContextMenu(null);
+  };
+
   // 우클릭 메뉴 액션 핸들러
   const handleContextMenuAction = (action: string) => {
     if (!contextMenu) return;
@@ -4100,10 +4402,10 @@ const OrderManagement: React.FC = () => {
             ...paymentRecords,
             [newOrderNoKey]: paymentRecords[originalOrderNo].map(record => ({
               ...record,
-              id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+              id: Date.now() + Math.floor(Math.random() * 1000),
               orderNo: newOrderNoKey,
               createdAt: new Date().toISOString()
-            }))
+            })) as PaymentRecord[]
           };
           setPaymentRecords(copiedPaymentRecords);
           localStorage.setItem('paymentRecords', JSON.stringify(copiedPaymentRecords));
@@ -4115,10 +4417,10 @@ const OrderManagement: React.FC = () => {
             ...asRequests,
             [newOrderNoKey]: asRequests[originalOrderNo].map(request => ({
               ...request,
-              id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+              id: Date.now() + Math.floor(Math.random() * 1000),
               orderNo: newOrderNoKey,
               createdAt: new Date().toISOString()
-            }))
+            })) as ASRequest[]
           };
           setAsRequests(copiedASRequests);
           localStorage.setItem('asRequests', JSON.stringify(copiedASRequests));
@@ -4243,6 +4545,9 @@ const OrderManagement: React.FC = () => {
 
   // 세부내용 실시간 업데이트 함수
   const updateDetailsInRealTime = (rowData: any) => {
+    let baseDetails = '';
+    
+    // 커튼 제품의 기본 정보 처리
     if (rowData.productType === '커튼' && rowData.curtainType && rowData.pleatType) {
       const curtainType = rowData.curtainType;
       const pleatType = rowData.pleatType;
@@ -4263,7 +4568,7 @@ const OrderManagement: React.FC = () => {
       currentDetails = currentDetails.replace(/^,\s*/, ''); // 앞쪽 콤마 제거
       currentDetails = currentDetails.replace(/,\s*$/, ''); // 뒤쪽 콤마 제거
       
-      // 새로운 커튼종류/주름방식 정보 추가 (기존 세부내용 앞에 추가)
+      // 새로운 커튼종류/주름방식 정보 추가
       let curtainInfo = `${curtainType}, ${pleatType}주름`;
       
       // 주름양과 폭수가 유효한 값이면 세부내용에 추가
@@ -4286,13 +4591,68 @@ const OrderManagement: React.FC = () => {
         }
       }
       
+      baseDetails = curtainInfo;
       if (currentDetails) {
-        return `${curtainInfo}, ${currentDetails}`;
+        baseDetails += `, ${currentDetails}`;
+      }
+    } else {
+      // 블라인드 제품의 경우 기존 세부내용 사용
+      baseDetails = rowData.details || '';
+    }
+    
+    // 연결된 옵션들의 세부내용 추가
+    const connectedOptionDetails = getConnectedOptionDetails(rowData);
+    
+    if (connectedOptionDetails) {
+      if (baseDetails) {
+        return `${baseDetails}, ${connectedOptionDetails}`;
       } else {
-        return curtainInfo;
+        return connectedOptionDetails;
       }
     }
-    return rowData.details || '';
+    
+    return baseDetails;
+  };
+
+  // 연결된 옵션들의 세부내용을 가져오는 함수
+  const getConnectedOptionDetails = (rowData: any): string => {
+    const currentOrder = orders[activeTab];
+    if (!currentOrder?.rows) return '';
+
+    // 현재 제품의 인덱스 찾기
+    const currentIndex = currentOrder.rows.findIndex(r => r.id === rowData.id);
+    if (currentIndex === -1) return '';
+
+    const optionDetails: string[] = [];
+    let i = currentIndex + 1;
+    
+    // 다음 제품을 만날 때까지 옵션들을 확인
+    while (i < currentOrder.rows.length && currentOrder.rows[i].type === 'option') {
+      const option = currentOrder.rows[i];
+      const optionName = option.productName || '';
+      const optionDetailsText = option.details || '';
+      
+             // 커튼 제품인 경우 커튼옵션만 필터링
+       if (rowData.productType === '커튼' || rowData.curtainType) {
+         if (optionName.includes('커튼옵션')) {
+           if (optionDetailsText) {
+             optionDetails.push(optionDetailsText);
+           }
+         }
+       }
+       // 블라인드 제품인 경우 블라인드옵션만 필터링
+       else if (rowData.productType === '블라인드') {
+         if (optionName.includes('블라인드옵션')) {
+           if (optionDetailsText) {
+             optionDetails.push(optionDetailsText);
+           }
+         }
+       }
+      
+      i++;
+    }
+
+    return optionDetails.join(', ');
   };
 
   const handleEditChange = (field: string, value: any) => {
@@ -4754,6 +5114,12 @@ const OrderManagement: React.FC = () => {
       }
     }
 
+    // 제작내용과 세부내용 자동 업데이트 (제품 정보 변경 시)
+    if (['productType', 'curtainType', 'pleatType', 'widthMM', 'heightMM', 'productName', 'productCode'].includes(field)) {
+      newEditRow.productionContent = calculateProductionContent(newEditRow);
+      newEditRow.details = updateDetailsInRealTime(newEditRow);
+    }
+
     // 상태 업데이트 (무한 루프 방지)
     setEditRow(newEditRow);
   };
@@ -5063,42 +5429,6 @@ const OrderManagement: React.FC = () => {
   return (
     <>
       <Box sx={{ p: isMobile ? 1 : 3 }}>
-        <Typography variant="h4" sx={{ 
-          mb: 3, 
-          fontWeight: 'bold',
-          fontSize: isMobile ? '1.5rem' : '2.125rem',
-          color: 'primary.main'
-        }}>
-          주문관리
-        </Typography>
-
-        {/* 주문서 탭 */}
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-          <Tabs 
-            value={activeTab} 
-            onChange={(_, newValue) => setActiveTab(newValue)}
-            variant="scrollable"
-            scrollButtons="auto"
-            sx={{
-              '& .MuiTab-root': {
-                fontSize: isMobile ? '0.875rem' : '1rem',
-                minHeight: isMobile ? '48px' : '56px',
-              }
-            }}
-          >
-            {filteredOrders.map((order, index) => (
-              <Tab 
-                key={order.id} 
-                label={`주문서-${order.estimateNo}`}
-                sx={{
-                  textTransform: 'none',
-                  fontWeight: 'medium',
-                }}
-              />
-            ))}
-          </Tabs>
-        </Box>
-
         {/* 주문서 관리 버튼 */}
         <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <Button
@@ -5106,6 +5436,7 @@ const OrderManagement: React.FC = () => {
             startIcon={<AddIcon />}
             onClick={() => {
               addOrder();
+              setIsOrderEditMode(true);
               // 새 주문서 추가 후 할인 설정 초기화
               setTimeout(() => {
                 setDiscountAmount('');
@@ -5132,7 +5463,10 @@ const OrderManagement: React.FC = () => {
           <Button
             variant="outlined"
             startIcon={<AssignmentIcon />}
-            onClick={() => setContractListModalOpen(true)}
+            onClick={() => {
+              setContractListModalOpen(true);
+              setIsOrderEditMode(true);
+            }}
             sx={{
               fontSize: isMobile ? '0.875rem' : '1rem',
               minHeight: isMobile ? '40px' : '48px',
@@ -5154,8 +5488,12 @@ const OrderManagement: React.FC = () => {
                 });
               }
               removeOrder(activeTab);
+              // 주문서가 1개 이하로 남으면 편집 모드 해제
+              if (orders.length <= 2) {
+                setIsOrderEditMode(false);
+              }
             }}
-            disabled={orders.length <= 1}
+            disabled={!isOrderEditMode}
             sx={{
               fontSize: isMobile ? '0.875rem' : '1rem',
               minHeight: isMobile ? '40px' : '48px',
@@ -5165,7 +5503,41 @@ const OrderManagement: React.FC = () => {
           </Button>
         </Box>
 
-        {/* 주문서 내용 */}
+        {/* 주문서 편집 모드일 때만 탭과 내용 표시 */}
+        {isOrderEditMode && (
+          <>
+            {/* 주문서 탭 */}
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+              <Tabs 
+                value={activeTab} 
+                onChange={(_, newValue) => setActiveTab(newValue)}
+                variant="scrollable"
+                scrollButtons="auto"
+                sx={{
+                  '& .MuiTab-root': {
+                    fontSize: isMobile ? '0.875rem' : '1rem',
+                    minHeight: isMobile ? '48px' : '56px',
+                  }
+                }}
+              >
+                {filteredOrders.map((order, index) => {
+                  const orderIndex = orders.findIndex(o => o.id === order.id);
+                  return (
+                    <Tab 
+                      key={order.id} 
+                      label={`주문서-${order.estimateNo}`}
+                      onContextMenu={(e) => orderIndex >= 0 && handleTabContextMenu(e, orderIndex)}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 'medium',
+                      }}
+                    />
+                  );
+                })}
+              </Tabs>
+            </Box>
+
+            {/* 주문서 내용 */}
         {orders[activeTab] && (
           <Paper sx={{ p: isMobile ? 1 : 2, mb: 2 }}>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>
@@ -5678,52 +6050,112 @@ const OrderManagement: React.FC = () => {
                 >
                   레일추가
                 </Button>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  sx={{ minWidth: 60, fontSize: 13, py: 0.5, px: 1.5 }}
-                  onClick={() => setFilterModalOpen(true)}
-                >
-                  필터
-                </Button>
-                <Button
-                  variant={isBulkEditMode ? "contained" : "outlined"}
-                  size="small"
-                  color={isBulkEditMode ? "warning" : "info"}
-                  sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
-                  onClick={handleBulkEditModeToggle}
-                >
-                  {isBulkEditMode ? "일괄변경" : "일괄변경"}
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
-                  onClick={handleOutputClick}
-                  endIcon={<ArrowDownIcon />}
-                >
-                  출력하기
-                </Button>
+                <Tooltip title="필터">
+                  <IconButton
+                    size="small"
+                    onClick={() => setFilterModalOpen(true)}
+                    sx={{ 
+                      color: 'var(--primary-color)',
+                      border: '1px solid var(--border-color)',
+                      '&:hover': {
+                        backgroundColor: 'var(--hover-color)',
+                        borderColor: 'var(--primary-color)',
+                      },
+                    }}
+                  >
+                    <SettingsIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="일괄변경">
+                  <IconButton
+                    size="small"
+                    onClick={handleBulkEditModeToggle}
+                    sx={{ 
+                      color: isBulkEditMode ? 'var(--warning-color, #ed6c02)' : 'var(--info-color, #0288d1)',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: isBulkEditMode ? 'rgba(237, 108, 2, 0.1)' : 'transparent',
+                      '&:hover': {
+                        backgroundColor: isBulkEditMode ? 'rgba(237, 108, 2, 0.2)' : 'rgba(2, 136, 209, 0.1)',
+                        borderColor: isBulkEditMode ? 'var(--warning-color)' : 'var(--info-color)',
+                      },
+                    }}
+                  >
+                    <EditNoteIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="출력하기">
+                  <IconButton
+                    size="small"
+                    onClick={handleOutputClick}
+                    sx={{ 
+                      color: 'var(--primary-color)',
+                      border: '1px solid var(--border-color)',
+                      '&:hover': {
+                        backgroundColor: 'var(--hover-color)',
+                        borderColor: 'var(--primary-color)',
+                      },
+                    }}
+                  >
+                    <PrintIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
               </Box>
               <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  color="success"
-                  sx={{ minWidth: 80, fontSize: 13, py: 0.5, px: 1.5 }}
-                  onClick={handleSaveOrder}
-                >
-                  저장하기
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  color="warning"
-                  sx={{ minWidth: 100, fontSize: 13, py: 0.5, px: 1.5 }}
-                  onClick={handleSaveAsNewOrder}
-                >
-                  새주문 저장
-                </Button>
+                <Tooltip title="저장하기">
+                  <IconButton
+                    size="small"
+                    onClick={handleSaveOrder}
+                    sx={{ 
+                      color: 'var(--success-color, #2e7d32)',
+                      border: '1px solid var(--border-color)',
+                      '&:hover': {
+                        backgroundColor: 'rgba(46, 125, 50, 0.1)',
+                        borderColor: 'var(--success-color)',
+                      },
+                    }}
+                  >
+                    <SaveIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="새주문 저장">
+                  <IconButton
+                    size="small"
+                    onClick={handleSaveAsNewOrder}
+                    sx={{ 
+                      color: 'var(--warning-color, #ed6c02)',
+                      border: '1px solid var(--border-color)',
+                      '&:hover': {
+                        backgroundColor: 'rgba(237, 108, 2, 0.1)',
+                        borderColor: 'var(--warning-color)',
+                      },
+                    }}
+                  >
+                    <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                      <SaveIcon fontSize="small" />
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          position: 'absolute',
+                          top: '-2px',
+                          right: '-2px',
+                          fontSize: '0.6rem',
+                          fontWeight: 'bold',
+                          color: 'var(--warning-color, #ed6c02)',
+                          backgroundColor: 'white',
+                          borderRadius: '50%',
+                          width: '12px',
+                          height: '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: '1px solid var(--warning-color, #ed6c02)',
+                        }}
+                      >
+                        N
+                      </Typography>
+                    </Box>
+                  </IconButton>
+                </Tooltip>
               </Box>
             </Box>
 
@@ -5751,6 +6183,7 @@ const OrderManagement: React.FC = () => {
                     {columnVisibility.productName && <TableCell>제품명</TableCell>}
                     {columnVisibility.width && <TableCell>폭</TableCell>}
                     {columnVisibility.details && <TableCell>세부내용</TableCell>}
+                    {columnVisibility.productionContent && <TableCell>제작내용</TableCell>}
                     {columnVisibility.widthMM && <TableCell>가로(mm)</TableCell>}
                     {columnVisibility.heightMM && <TableCell>세로(mm)</TableCell>}
                     {columnVisibility.area && <TableCell>면적(㎡)</TableCell>}
@@ -5845,10 +6278,27 @@ const OrderManagement: React.FC = () => {
                         </TableCell>
                       )}
                       {columnVisibility.width && <TableCell>{row.width}</TableCell>}
-                      {columnVisibility.details && <TableCell>{row.details}</TableCell>}
+                      {columnVisibility.details && (
+                        <TableCell>
+                          {row.productType === '블라인드' ? (
+                            <>
+                              {row.details.replace(/면적:\s*\d+\.?\d*\s*㎡\s*,?\s*/, '').trim()}
+                              {row.lineDirection && ` | 줄방향: ${row.lineDirection}`}
+                              {row.lineLength && ` | 줄길이: ${row.lineLength === '직접입력' ? row.customLineLength : row.lineLength}`}
+                            </>
+                          ) : (
+                            row.details
+                          )}
+                        </TableCell>
+                      )}
+                      {columnVisibility.productionContent && <TableCell>{calculateProductionContent(row)}</TableCell>}
                       {columnVisibility.widthMM && <TableCell>{row.widthMM}</TableCell>}
                       {columnVisibility.heightMM && <TableCell>{row.heightMM}</TableCell>}
-                      {columnVisibility.area && <TableCell>{row.area}</TableCell>}
+                      {columnVisibility.area && (
+                        <TableCell>
+                          {row.area}
+                        </TableCell>
+                      )}
                       {columnVisibility.lineDir && <TableCell>{row.lineDirection}</TableCell>}
                       {columnVisibility.lineLen && <TableCell>{row.lineLength === '직접입력' ? row.customLineLength : row.lineLength}</TableCell>}
                       {columnVisibility.pleatAmount && <TableCell>{row.pleatAmount}</TableCell>}
@@ -5914,9 +6364,16 @@ const OrderManagement: React.FC = () => {
                     {columnVisibility.productName && <TableCell></TableCell>}
                     {columnVisibility.width && <TableCell></TableCell>}
                     {columnVisibility.details && <TableCell></TableCell>}
+                    {columnVisibility.productionContent && <TableCell></TableCell>}
                     {columnVisibility.widthMM && <TableCell></TableCell>}
                     {columnVisibility.heightMM && <TableCell></TableCell>}
-                                          {columnVisibility.area && <TableCell>{orders[activeTab]?.rows?.reduce((sum, row) => sum + (Number(row?.area) || 0), 0).toFixed(1)}</TableCell>}
+                                          {columnVisibility.area && (
+                                            <TableCell>
+                                              {orders[activeTab]?.rows
+                                                ?.reduce((sum, row) => sum + (Number(row?.area) || 0), 0)
+                                                .toFixed(1)}
+                                            </TableCell>
+                                          )}
                     {columnVisibility.lineDir && <TableCell></TableCell>}
                     {columnVisibility.lineLen && <TableCell></TableCell>}
                     {columnVisibility.pleatAmount && <TableCell></TableCell>}
@@ -5979,6 +6436,24 @@ const OrderManagement: React.FC = () => {
                 onClick={handleToggleMarginSum}
               >
                 WINDOWSTORY
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                sx={{
+                  mx: 2,
+                  backgroundColor: '#ff9800',
+                  color: '#fff',
+                  '&:hover': { backgroundColor: '#f57c00' },
+                  fontWeight: 'bold',
+                  boxShadow: 'none',
+                  borderRadius: 1,
+                  minWidth: 100,
+                  paddingX: 2,
+                }}
+                onClick={() => setColumnVisibility(prev => ({ ...prev, productionContent: !prev.productionContent }))}
+              >
+                제작입력
               </Button>
               <Button
                 variant="contained"
@@ -6073,22 +6548,38 @@ const OrderManagement: React.FC = () => {
                     수금내역 및 AS접수내역
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={() => handleOpenPaymentModal(orders[activeTab])}
-                      sx={{ fontSize: '0.8rem' }}
-                    >
-                      수금입력
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={() => handleOpenASModal(orders[activeTab])}
-                      sx={{ fontSize: '0.8rem' }}
-                    >
-                      AS접수
-                    </Button>
+                    <Tooltip title="수금입력">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleOpenPaymentModal(orders[activeTab])}
+                        sx={{ 
+                          color: 'var(--primary-color)',
+                          border: '1px solid var(--border-color)',
+                          '&:hover': {
+                            backgroundColor: 'var(--hover-color)',
+                            borderColor: 'var(--primary-color)',
+                          },
+                        }}
+                      >
+                        <AttachMoneyIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="AS접수">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleOpenASModal(orders[activeTab])}
+                        sx={{ 
+                          color: 'var(--secondary-color, #f50057)',
+                          border: '1px solid var(--border-color)',
+                          '&:hover': {
+                            backgroundColor: 'rgba(245, 0, 87, 0.1)',
+                            borderColor: 'var(--secondary-color)',
+                          },
+                        }}
+                      >
+                        <BuildIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                   </Box>
                 </Box>
                 
@@ -6124,9 +6615,18 @@ const OrderManagement: React.FC = () => {
                         {currentOrderPaymentRecords.length > 0 ? (
                           <>
                             {currentOrderPaymentRecords.map((record, index) => (
-                              <Typography key={record.id} variant="body2" sx={{ color: '#333', mb: 0.5, pl: 2 }}>
-                                {index + 1}. {record.paymentDate} - {record.paymentMethod}로 {record.amount.toLocaleString()}원 수금
-                              </Typography>
+                              <Box key={record.id} sx={{ mb: 1, pl: 2 }}>
+                                <Typography variant="body2" sx={{ color: '#333', mb: 0.5 }}>
+                                  {index + 1}. {record.paymentDate} - {record.paymentMethod}로 {record.amount.toLocaleString()}원 수금
+                                </Typography>
+                                {/* 오입금 송금 정보 표시 */}
+                                {record.refundAmount && record.refundAmount > 0 && (
+                                  <Typography variant="body2" sx={{ color: '#d32f2f', ml: 2, fontSize: '0.875rem' }}>
+                                    ↳ {record.refundDate} - {record.refundMethod}로 {record.refundAmount.toLocaleString()}원 오입금 송금
+                                    {record.refundMemo && ` (${record.refundMemo})`}
+                                  </Typography>
+                                )}
+                              </Box>
                             ))}
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 2 }}>
                               <Typography variant="body2" sx={{ color: '#d32f2f', fontWeight: 'bold', mb: 0.5 }}>
@@ -6516,27 +7016,61 @@ const OrderManagement: React.FC = () => {
           </Paper>
         )}
 
+        </>
+        )}
 
-
-        {/* 주문서 목록 */}
+        {/* 주문서 목록 - 항상 최하단에 표시 */}
         <Paper sx={{ p: isMobile ? 1 : 2 }}>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#000' }}>
-            저장된 주문서 목록
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#000' }}>
+              저장된 주문서 목록
+            </Typography>
+            <IconButton
+              onClick={() => setSavedOrderColumnSettingsOpen(true)}
+              sx={{ 
+                color: 'var(--primary-color)',
+                border: '1px solid var(--border-color)',
+                '&:hover': {
+                  backgroundColor: 'var(--hover-color)',
+                  borderColor: 'var(--primary-color)',
+                },
+              }}
+            >
+              <SettingsIcon />
+            </IconButton>
+          </Box>
           {filteredSavedOrders.length > 0 ? (
             <TableContainer>
               <Table size={isMobile ? "small" : "medium"}>
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>주소</TableCell>
-                    <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>고객명</TableCell>
-                    <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>연락처</TableCell>
-                    <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>주문번호</TableCell>
-                    <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>주문일자</TableCell>
-                    <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>시공일자</TableCell>
-                    <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>소비자금액</TableCell>
-                    <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>할인후금액</TableCell>
-                    <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>액션</TableCell>
+                    {savedOrderColumnVisibility.address && (
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>주소</TableCell>
+                    )}
+                    {savedOrderColumnVisibility.customerName && (
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>고객명</TableCell>
+                    )}
+                    {savedOrderColumnVisibility.contact && (
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>연락처</TableCell>
+                    )}
+                    {savedOrderColumnVisibility.estimateNo && (
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>주문번호</TableCell>
+                    )}
+                    {savedOrderColumnVisibility.estimateDate && (
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>주문일자</TableCell>
+                    )}
+                    {savedOrderColumnVisibility.installationDate && (
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>시공일자</TableCell>
+                    )}
+                    {savedOrderColumnVisibility.totalAmount && (
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>소비자금액</TableCell>
+                    )}
+                    {savedOrderColumnVisibility.discountedAmount && (
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>할인후금액</TableCell>
+                    )}
+                    {savedOrderColumnVisibility.actions && (
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>액션</TableCell>
+                    )}
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -6651,49 +7185,81 @@ const OrderManagement: React.FC = () => {
                             </Box>
                           </Box>
                         </TableCell>
-                        <TableCell sx={{ color: '#000' }}>{order.customerName}</TableCell>
-                        <TableCell sx={{ color: '#000' }}>{order.contact}</TableCell>
-                        <TableCell sx={{ color: '#000' }}>{order.estimateNo}</TableCell>
-                        <TableCell sx={{ color: '#000' }}>{order.estimateDate}</TableCell>
-                        <TableCell sx={{ color: '#000' }}>{order.installationDate ? new Date(order.installationDate).toLocaleString('ko-KR', {
-                          year: 'numeric',
-                          month: '2-digit',
-                          day: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        }) : '-'}</TableCell>
-                        <TableCell sx={{ color: '#000' }}>{totalAmount.toLocaleString()}원</TableCell>
-                        <TableCell sx={{ color: '#000' }}>{discountedAmount.toLocaleString()}원</TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', gap: 0.5, flexDirection: isMobile ? 'column' : 'row' }}>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => handleLoadSavedOrder(order)}
-                              sx={{ minWidth: 'auto', px: 1 }}
-                            >
-                              로드
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="primary"
-                              onClick={() => handleOpenPaymentModal(order)}
-                              sx={{ minWidth: 'auto', px: 1 }}
-                            >
-                              수금입력
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="secondary"
-                              onClick={() => handleOpenASModal(order)}
-                              sx={{ minWidth: 'auto', px: 1 }}
-                            >
-                              AS접수
-                            </Button>
-                          </Box>
-                        </TableCell>
+                        {savedOrderColumnVisibility.customerName && (
+                          <TableCell sx={{ color: '#000' }}>{order.customerName}</TableCell>
+                        )}
+                        {savedOrderColumnVisibility.contact && (
+                          <TableCell sx={{ color: '#000' }}>{order.contact}</TableCell>
+                        )}
+                        {savedOrderColumnVisibility.estimateNo && (
+                          <TableCell sx={{ color: '#000' }}>{order.estimateNo}</TableCell>
+                        )}
+                        {savedOrderColumnVisibility.estimateDate && (
+                          <TableCell sx={{ color: '#000' }}>{order.estimateDate}</TableCell>
+                        )}
+                        {savedOrderColumnVisibility.installationDate && (
+                          <TableCell sx={{ color: '#000' }}>{order.installationDate ? new Date(order.installationDate).toLocaleString('ko-KR', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          }) : '-'}</TableCell>
+                        )}
+                        {savedOrderColumnVisibility.totalAmount && (
+                          <TableCell sx={{ color: '#000' }}>{totalAmount.toLocaleString()}원</TableCell>
+                        )}
+                        {savedOrderColumnVisibility.discountedAmount && (
+                          <TableCell sx={{ color: '#000' }}>{discountedAmount.toLocaleString()}원</TableCell>
+                        )}
+                                                {savedOrderColumnVisibility.actions && (
+                          <TableCell>
+                            <Box sx={{ display: 'flex', gap: 0.5, flexDirection: isMobile ? 'column' : 'row' }}>
+                              <Tooltip title="로드">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleLoadSavedOrder(order)}
+                                  sx={{ 
+                                    color: 'var(--primary-color)',
+                                    '&:hover': {
+                                      backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                                    },
+                                  }}
+                                >
+                                  <FolderOpenIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="수금입력">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleOpenPaymentModal(order)}
+                                  sx={{ 
+                                    color: 'var(--primary-color)',
+                                    '&:hover': {
+                                      backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                                    },
+                                  }}
+                                >
+                                  <AttachMoneyIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="AS접수">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleOpenASModal(order)}
+                                  sx={{ 
+                                    color: 'var(--secondary-color, #f50057)',
+                                    '&:hover': {
+                                      backgroundColor: 'rgba(245, 0, 87, 0.1)',
+                                    },
+                                  }}
+                                >
+                                  <BuildIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          </TableCell>
+                        )}
                       </TableRow>
                     );
                   })}
@@ -6759,6 +7325,7 @@ const OrderManagement: React.FC = () => {
                     <TableCell>공간</TableCell>
                     <TableCell>제품코드</TableCell>
                     <TableCell>세부내용</TableCell>
+                    <TableCell>제작내용</TableCell>
                     <TableCell>가로</TableCell>
                     <TableCell>세로</TableCell>
                     <TableCell>줄방향</TableCell>
@@ -6771,9 +7338,20 @@ const OrderManagement: React.FC = () => {
                     <TableRow key={index}>
                       <TableCell>{item.space}</TableCell>
                       <TableCell>{item.productCode}</TableCell>
-                      <TableCell>{item.details}</TableCell>
-                      <TableCell>{item.widthMM}</TableCell>
-                      <TableCell>{item.heightMM}</TableCell>
+                      <TableCell>
+                        {item.productType === '블라인드' ? (
+                          <>
+                            {item.details.replace(/면적:\s*\d+\.?\d*\s*㎡\s*,?\s*/, '').trim()}
+                            {item.lineDirection && ` | 줄방향: ${item.lineDirection}`}
+                            {item.lineLength && ` | 줄길이: ${item.lineLength === '직접입력' ? item.customLineLength : item.lineLength}`}
+                          </>
+                        ) : (
+                          item.details
+                        )}
+                      </TableCell>
+                      <TableCell>{calculateProductionContent(item)}</TableCell>
+                      <TableCell>{item.productType === '커튼' ? '' : item.widthMM}</TableCell>
+                      <TableCell>{item.productType === '커튼' ? '' : item.heightMM}</TableCell>
                       <TableCell>{item.lineDir}</TableCell>
                       <TableCell>{item.lineLen}</TableCell>
                       <TableCell>{item.quantity}</TableCell>
@@ -6798,6 +7376,30 @@ const OrderManagement: React.FC = () => {
               variant="outlined"
               size="small"
             />
+          </Box>
+          
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
+              발주 정보
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={6}>
+                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                  발주일자
+                </Typography>
+                <TextField
+                  type="date"
+                  value={purchaseOrderDate}
+                  onChange={(e) => setPurchaseOrderDate(e.target.value)}
+                  size="small"
+                  fullWidth
+                  sx={{
+                    '& .MuiInputBase-input': { color: '#000' },
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#ccc' }
+                  }}
+                />
+              </Grid>
+            </Grid>
           </Box>
           
           <Box sx={{ mb: 2 }}>
@@ -8991,7 +9593,10 @@ const OrderManagement: React.FC = () => {
                 <Grid item xs={12}>
                   <TextField
                     label="세부내용"
-                    value={editRow.details || ''}
+                    value={editRow.productType === '블라인드' ? 
+                      (editRow.details || '').replace(/면적:\s*\d+\.?\d*\s*㎡\s*,?\s*/, '').trim() : 
+                      (editRow.details || '')
+                    }
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       handleDetailsChange(e.target.value);
                     }}
@@ -9005,6 +9610,31 @@ const OrderManagement: React.FC = () => {
                       '& .MuiOutlinedInput-root': {
                         '& fieldset': { borderColor: 'var(--border-color)' },
                         '&:hover fieldset': { borderColor: 'var(--primary-color)' },
+                      },
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    label="제작내용"
+                    value={editRow.productionContent || ''}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      setEditRow((prev: any) => ({ ...prev, productionContent: e.target.value }));
+                    }}
+                    fullWidth
+                    size="small"
+                    multiline
+                    rows={2}
+                    placeholder="제작 시 필요한 세부사항을 입력하세요..."
+                    sx={{
+                      input: { color: 'var(--text-color)' },
+                      label: { color: 'var(--text-secondary-color)' },
+                      '& .MuiOutlinedInput-root': {
+                        '& fieldset': { borderColor: 'var(--border-color)' },
+                        '&:hover fieldset': { borderColor: 'var(--primary-color)' },
+                      },
+                      '& .MuiInputBase-input': {
+                        color: 'var(--text-color)',
                       },
                     }}
                   />
@@ -9589,6 +10219,81 @@ const OrderManagement: React.FC = () => {
               />
             </Grid>
             
+            {/* 오입금 송금 섹션 */}
+            <Grid item xs={12}>
+              <Typography variant="h6" sx={{ mt: 2, mb: 1, color: 'var(--text-color)' }}>
+                오입금 송금 정보
+              </Typography>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="오입금 송금 금액"
+                type="number"
+                value={paymentRecord.refundAmount || ''}
+                onChange={(e) => setPaymentRecord(prev => ({ ...prev, refundAmount: Number(e.target.value) }))}
+                fullWidth
+                size="small"
+                InputProps={{
+                  endAdornment: <Typography variant="body2">원</Typography>,
+                }}
+                placeholder="오입금 송금 금액을 입력하세요"
+              />
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth size="small">
+                <InputLabel sx={{ color: 'var(--text-secondary-color)' }}>오입금 송금 방법</InputLabel>
+                <Select
+                  value={paymentRecord.refundMethod || ''}
+                  onChange={(e) => setPaymentRecord(prev => ({ ...prev, refundMethod: e.target.value }))}
+                  label="오입금 송금 방법"
+                  sx={{
+                    '& .MuiSelect-select': {
+                      color: 'var(--text-primary-color)',
+                    },
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'var(--border-color)',
+                    },
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'var(--primary-color)',
+                    },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'var(--primary-color)',
+                    },
+                  }}
+                >
+                  <MenuItem value="계좌이체" sx={{ color: 'var(--text-primary-color)' }}>계좌이체</MenuItem>
+                  <MenuItem value="현금" sx={{ color: 'var(--text-primary-color)' }}>현금</MenuItem>
+                  <MenuItem value="카드환불" sx={{ color: 'var(--text-primary-color)' }}>카드환불</MenuItem>
+                  <MenuItem value="기타" sx={{ color: 'var(--text-primary-color)' }}>기타</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="오입금 송금 일자"
+                type="date"
+                value={paymentRecord.refundDate || ''}
+                onChange={(e) => setPaymentRecord(prev => ({ ...prev, refundDate: e.target.value }))}
+                fullWidth
+                size="small"
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <TextField
+                label="오입금 송금 메모"
+                value={paymentRecord.refundMemo || ''}
+                onChange={(e) => setPaymentRecord(prev => ({ ...prev, refundMemo: e.target.value }))}
+                fullWidth
+                size="small"
+                multiline
+                rows={2}
+                placeholder="오입금 송금 관련 메모를 입력하세요"
+              />
+            </Grid>
 
           </Grid>
         </DialogContent>
@@ -9692,7 +10397,7 @@ const OrderManagement: React.FC = () => {
               <TextField
                 label="AS접수일자"
                 type="datetime-local"
-                value={editingASRequest.asRequestDate || ''}
+                value={editingASRequest.asRequestDate ? new Date(editingASRequest.asRequestDate).toISOString().slice(0, 16) : ''}
                 onChange={(e) => setEditingASRequest(prev => ({ ...prev, asRequestDate: e.target.value }))}
                 fullWidth
                 size="small"
@@ -9969,6 +10674,164 @@ const OrderManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* 저장된 주문서 목록 표시항목 설정 모달 */}
+      <Dialog
+        open={savedOrderColumnSettingsOpen}
+        onClose={() => setSavedOrderColumnSettingsOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            backgroundColor: 'var(--background-color)',
+            color: 'var(--text-color)',
+          },
+        }}
+      >
+        <DialogTitle sx={{ 
+          borderBottom: '1px solid var(--border-color)',
+          color: 'var(--text-color)'
+        }}>
+          저장된 주문서 목록 표시항목 설정
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Typography variant="body2" sx={{ mb: 2, color: 'var(--text-secondary-color)' }}>
+            표시할 항목을 선택하세요:
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {Object.entries({
+              address: '주소',
+              customerName: '고객명',
+              contact: '연락처',
+              estimateNo: '주문번호',
+              estimateDate: '주문일자',
+              installationDate: '시공일자',
+              totalAmount: '소비자금액',
+              discountedAmount: '할인후금액',
+              actions: '액션'
+            }).map(([key, label]) => (
+              <FormControlLabel
+                key={key}
+                control={
+                  <Checkbox
+                    checked={savedOrderColumnVisibility[key as keyof typeof savedOrderColumnVisibility]}
+                    onChange={() => handleSavedOrderColumnToggle(key)}
+                    sx={{
+                      color: 'var(--border-color)',
+                      '&.Mui-checked': {
+                        color: 'var(--primary-color)',
+                      },
+                    }}
+                  />
+                }
+                label={label}
+                sx={{
+                  color: 'var(--text-color)',
+                  '& .MuiFormControlLabel-label': {
+                    fontSize: '0.875rem',
+                  },
+                }}
+              />
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={handleSavedOrderColumnReset}
+            variant="outlined"
+            sx={{
+              borderColor: 'var(--border-color)',
+              color: 'var(--text-color)',
+              '&:hover': {
+                borderColor: 'var(--primary-color)',
+              },
+            }}
+          >
+            초기화
+          </Button>
+          <Button 
+            onClick={() => setSavedOrderColumnSettingsOpen(false)}
+            variant="contained"
+            sx={{
+              backgroundColor: 'var(--primary-color)',
+              '&:hover': {
+                backgroundColor: 'var(--primary-dark-color)',
+              },
+            }}
+          >
+            확인
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 주문서 탭 컨텍스트 메뉴 */}
+      <Menu
+        open={tabContextMenu !== null}
+        onClose={handleCloseTabContextMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          tabContextMenu !== null
+            ? { top: tabContextMenu.mouseY, left: tabContextMenu.mouseX }
+            : undefined
+        }
+        PaperProps={{
+          sx: {
+            backgroundColor: 'var(--background-color)',
+            color: 'var(--text-color)',
+            border: '1px solid var(--border-color)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+          },
+        }}
+      >
+        <MenuItem 
+          onClick={() => handleTabContextMenuAction('save')}
+          sx={{
+            color: 'var(--text-color)',
+            '&:hover': {
+              backgroundColor: 'var(--hover-color)',
+            },
+          }}
+        >
+          <SaveIcon sx={{ mr: 1, fontSize: '1.2rem' }} />
+          저장
+        </MenuItem>
+        <MenuItem 
+          onClick={() => handleTabContextMenuAction('saveAsNew')}
+          sx={{
+            color: 'var(--text-color)',
+            '&:hover': {
+              backgroundColor: 'var(--hover-color)',
+            },
+          }}
+        >
+          <SaveAltIcon sx={{ mr: 1, fontSize: '1.2rem' }} />
+          새로운저장
+        </MenuItem>
+        <MenuItem 
+          onClick={() => handleTabContextMenuAction('copy')}
+          sx={{
+            color: 'var(--text-color)',
+            '&:hover': {
+              backgroundColor: 'var(--hover-color)',
+            },
+          }}
+        >
+          <ContentCopyIcon sx={{ mr: 1, fontSize: '1.2rem' }} />
+          복사
+        </MenuItem>
+        <MenuItem 
+          onClick={() => handleTabContextMenuAction('delete')}
+          sx={{
+            color: 'var(--error-color, #d32f2f)',
+            '&:hover': {
+              backgroundColor: 'rgba(211, 47, 47, 0.1)',
+            },
+          }}
+        >
+          <DeleteIcon sx={{ mr: 1, fontSize: '1.2rem' }} />
+          삭제
+        </MenuItem>
+      </Menu>
     </>
   );
 };

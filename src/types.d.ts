@@ -98,6 +98,7 @@ export interface EstimateRow {
   lineLength?: string;
   customLineLength?: string;
   spaceCustom?: string;
+  productionContent?: string; // 제작내용
   pleatAmountCustom?: string;
   minOrderQty?: number;
   largePlainPrice?: number;
@@ -136,7 +137,7 @@ export interface Installer {
 
 // AS접수 관련 타입
 export interface ASRequest {
-  id: string;
+  id: number;
   orderId: string;
   orderNo: string;
   address: string;
@@ -158,13 +159,17 @@ export interface ASRequest {
 
 // 수금내역 관련 타입
 export interface PaymentRecord {
-  id: string;
+  id: number;
   orderId: string;
   orderNo: string;
   paymentDate: string;
   paymentMethod: string;
   amount: number;
   remainingAmount: number;
+  refundAmount?: number; // 오입금 송금 금액
+  refundMethod?: string; // 오입금 송금 방법
+  refundDate?: string; // 오입금 송금 일자
+  refundMemo?: string; // 오입금 송금 메모
   createdAt: string;
 }
 
