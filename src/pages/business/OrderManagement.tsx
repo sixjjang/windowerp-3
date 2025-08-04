@@ -87,7 +87,7 @@ import { findLastIndex } from 'lodash';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '../../utils/notificationStore';
 import { UserContext } from '../../components/Layout';
-import { estimateService, customerService } from '../../utils/firebaseDataService';
+import { estimateService, customerService, optionService } from '../../utils/firebaseDataService';
 import { ensureFirebaseAuth, API_BASE } from '../../utils/auth';
 
 
@@ -993,6 +993,9 @@ const OrderManagement: React.FC = () => {
   // 발주서 기본 정보 상태
   const [purchaseOrderName, setPurchaseOrderName] = useState<string>('');
 
+  // 발주경로 설정 상태
+  const [purchasePathSettings, setPurchasePathSettings] = useState<{[key: string]: {purchasePath: 'product' | 'option', excludeFromPurchase: boolean}}>({});
+
   // 수금내역 관련 상태
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<any>(null);
@@ -1112,7 +1115,19 @@ const OrderManagement: React.FC = () => {
     setInstallerList(loadInstallers());
     loadASRequests();
     loadPaymentRecords();
+    loadPurchasePathSettings();
   }, []);
+
+  // 발주경로 설정 로드
+  const loadPurchasePathSettings = async () => {
+    try {
+      const settings = await optionService.getPurchasePathSettings();
+      setPurchasePathSettings(settings);
+    } catch (error) {
+      console.error('발주경로 설정 로드 실패:', error);
+      setPurchasePathSettings({});
+    }
+  };
 
   // AS접수 데이터 로드
   const loadASRequests = () => {
@@ -2254,31 +2269,38 @@ const OrderManagement: React.FC = () => {
     const originalIndex = rowIndex;
     const rowData = { ...currentRows[originalIndex] };
     
-    // 편집 모달이 열릴 때 사용자 수정 상태 초기화
-    setUserModifiedWidthCount(false);
+    // 편집 모달이 열릴 때 추천폭수 상태 초기화
     setRecommendedPleatCount(0);
     setRecommendedPleatAmount('');
 
-    // 겉커튼 민자에서 기존 폭수가 있지만 사용자가 수정하지 않은 경우를 위한 처리
-    if (rowData.productType === '커튼' && rowData.curtainType === '겉커튼' && rowData.pleatType === '민자' && rowData.widthMM && rowData.widthCount) {
-      // 기존 폭수가 추천폭수와 일치하는지 확인하여 사용자 수정 여부 판단
+    // 사용자 수정 여부를 판단하는 로컬 변수
+    let isUserModified = false;
+
+    // 겉커튼에서 기존 폭수가 있는 경우 사용자 수정 여부 판단
+    if (rowData.productType === '커튼' && rowData.curtainType === '겉커튼' && rowData.pleatType && rowData.widthMM && rowData.widthCount) {
       const product = productOptions.find(p => p.productCode === rowData.productCode);
       const widthMM = Number(rowData.widthMM) || 0;
       const productWidth = product ? Number(product.width) || 0 : 0;
       const currentWidthCount = Number(rowData.widthCount) || 0;
       
       if (widthMM > 0) {
-        const recommendedCount = getPleatCount(widthMM, productWidth, '민자', '겉커튼');
+        const recommendedCount = getPleatCount(widthMM, productWidth, rowData.pleatType, '겉커튼');
         const recommendedCountNum = Number(recommendedCount) || 0;
         
         // 기존 폭수가 추천폭수와 일치하면 사용자가 수정하지 않은 것으로 간주
         if (currentWidthCount === recommendedCountNum) {
-          setUserModifiedWidthCount(false);
+          isUserModified = false;
         } else {
-          setUserModifiedWidthCount(true);
+          isUserModified = true;
         }
       }
+    } else {
+      // 커튼이 아니거나 폭수가 없는 경우 기본값으로 설정
+      isUserModified = false;
     }
+
+    // 상태 업데이트
+    setUserModifiedWidthCount(isUserModified);
 
     // 커튼 제품이고 커튼타입, 주름타입이 이미 설정되어 있다면 바로 계산
     if (rowData.productType === '커튼' && rowData.curtainType && rowData.pleatType && rowData.widthMM) {
@@ -2293,8 +2315,8 @@ const OrderManagement: React.FC = () => {
         const userInputWidthCount = Number(rowData.widthCount) || 0;
         let finalWidthCount = userInputWidthCount;
 
-        // 사용자가 폭수를 입력하지 않았거나 사용자가 수정하지 않은 상태에서 추천 폭수 계산
-        if (userInputWidthCount === 0 || !userModifiedWidthCount) {
+        // 사용자가 폭수를 입력하지 않았거나 사용자가 수정하지 않은 상태에서만 추천 폭수 계산
+        if (userInputWidthCount === 0 || !isUserModified) {
           let pleatCount: number | string = 0;
           
           if (pleatTypeVal === '민자' || pleatTypeVal === '나비') {
@@ -2307,8 +2329,12 @@ const OrderManagement: React.FC = () => {
           }
           
           finalWidthCount = Number(pleatCount) || 0;
-          rowData.widthCount = finalWidthCount;
-          rowData.pleatCount = finalWidthCount;
+          
+          // 사용자가 수정하지 않은 경우에만 rowData를 업데이트
+          if (!isUserModified) {
+            rowData.widthCount = finalWidthCount;
+            rowData.pleatCount = finalWidthCount;
+          }
           
           // 추천폭수 상태 업데이트
           setRecommendedPleatCount(finalWidthCount);
@@ -2321,13 +2347,18 @@ const OrderManagement: React.FC = () => {
             }
             setRecommendedPleatAmount(calculatedPleatAmount);
           }
+        } else {
+          // 사용자가 수정한 경우 추천폭수는 현재 값으로 설정
+          setRecommendedPleatCount(userInputWidthCount);
+          setRecommendedPleatAmount('');
         }
 
-        // 주름양 계산
-        if (finalWidthCount > 0) {
+        // 주름양 계산 (사용자 입력값 기준)
+        const currentWidthCount = Number(rowData.widthCount) || 0;
+        if (currentWidthCount > 0) {
           let calculatedPleatAmount = '';
           if (pleatTypeVal === '민자' || pleatTypeVal === '나비') {
-            calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, finalWidthCount, productWidth);
+            calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, currentWidthCount, productWidth);
           }
           rowData.pleatAmount = calculatedPleatAmount;
         }
@@ -3004,6 +3035,7 @@ const OrderManagement: React.FC = () => {
       brand: option.brand || '',
       space: '',
       productType: option.optionType || '',
+      optionType: option.optionType || '', // optionType 필드 추가
       curtainType: '',
       pleatType: '',
       productName: option.optionName,
@@ -3022,7 +3054,7 @@ const OrderManagement: React.FC = () => {
       cost: calculatedCost, // 새로운 계산 함수 사용
       purchaseCost: option.purchaseCost || 0, // 원가단가
       margin: calculatedTotalPrice - calculatedCost, // 새로운 계산 함수 사용
-      note: option.note || '',
+      note: option.note || '추가', // 기본값을 '추가'로 설정하여 금액 계산이 되도록 함
       productCode: '',
       largePlainPrice: 0,
       largePlainCost: 0,
@@ -3204,6 +3236,40 @@ const OrderManagement: React.FC = () => {
       return 1; // 전동 관련 옵션은 기본값 1
     }
     return optionQuantity;
+  };
+
+  // 특정 제품에 대한 옵션 자동 수량 계산 함수
+  const calculateOptionQuantityForProduct = (option: any, targetProduct: any) => {
+    const optionName = option.productName || option.optionName || '';
+    
+    if (optionName?.includes('커튼시공') || optionName?.includes('커튼 시공')) {
+      // 커튼 제품인 경우 해당 제품의 수량 반환
+      if (targetProduct.productType?.includes('커튼') || 
+          targetProduct.productName?.includes('커튼') ||
+          targetProduct.curtainType?.includes('커튼')) {
+        return targetProduct.quantity || 1;
+      }
+    }
+    if (optionName?.includes('블라인드시공') || optionName?.includes('블라인드 시공')) {
+      // 블라인드 제품인 경우 해당 제품의 수량 반환
+      if (targetProduct.productType?.includes('블라인드') || 
+          targetProduct.productName?.includes('블라인드')) {
+        return targetProduct.quantity || 1;
+      }
+    }
+    if (optionName?.includes('레일')) {
+      // 레일 옵션은 해당 제품의 수량 반환
+      return targetProduct.quantity || 1;
+    }
+    if (optionName?.includes('전동커튼시공') || optionName?.includes('전동커튼 시공')) {
+      return 1; // 전동커튼시공은 기본값 1
+    }
+    if (optionName?.includes('전동') || optionName?.includes('모터')) {
+      return 1; // 전동 관련 옵션은 기본값 1
+    }
+    
+    // 기본값
+    return option.quantity || 1;
   };
 
   // 기타 옵션 추가 핸들러
@@ -3511,39 +3577,136 @@ const OrderManagement: React.FC = () => {
       return;
     }
 
-    // 거래처별로 제품 분류
+
+
+    // 옵션 분류 함수
+    const classifyOptionsByPurchasePath = (productRow: any, allRows: any[]) => {
+      const productOptions = allRows.filter(row => 
+        row.type === 'option' && row.productId === productRow.id
+      );
+      
+
+      
+      const productVendorOptions: any[] = [];
+      const optionVendorOptions: any[] = [];
+      
+      productOptions.forEach(option => {
+        // optionType이 없는 경우 productType에서 추출하거나 기본값 사용
+        let optionType = option.optionType;
+        if (!optionType) {
+          // 기존 옵션들은 productType에 optionType 정보가 있을 수 있음
+          optionType = option.productType || '기타옵션';
+        }
+        
+        const settings = purchasePathSettings[optionType];
+        
+        // 발주예외가 체크된 옵션은 제외
+        if (settings?.excludeFromPurchase) {
+          return;
+        }
+        
+        const purchasePath = settings?.purchasePath || 'product'; // 기본값: 제품거래처
+        
+        if (purchasePath === 'product') {
+          productVendorOptions.push(option);
+        } else {
+          optionVendorOptions.push(option);
+        }
+      });
+      
+
+      
+      return { productVendorOptions, optionVendorOptions };
+    };
+
+    // 거래처별로 제품 분류 (발주예외 옵션 제외)
     const vendorGroups: { [key: string]: any[] } = {};
+    const optionVendorGroups: { [key: string]: any[] } = {};
     
     currentOrder.rows.forEach((row: any) => {
       if (row.type === 'product' && row.vendor) {
+        const { productVendorOptions, optionVendorOptions } = classifyOptionsByPurchasePath(row, currentOrder.rows);
+        
+        // 제품거래처 옵션들을 제품과 함께 그룹화
         if (!vendorGroups[row.vendor]) {
           vendorGroups[row.vendor] = [];
         }
-        vendorGroups[row.vendor].push(row);
+        vendorGroups[row.vendor].push({
+          ...row,
+          options: productVendorOptions
+        });
+        
+        // 옵션거래처 옵션들을 처리
+        optionVendorOptions.forEach(option => {
+          const optionVendor = option.vendor || '미지정';
+          
+          // 옵션거래처가 제품거래처와 같은 경우, 제품과 함께 그룹화
+          if (optionVendor === row.vendor) {
+            // 제품거래처 그룹에 옵션 추가
+            const existingProductIndex = vendorGroups[row.vendor].findIndex(item => 
+              item.id === row.id
+            );
+            if (existingProductIndex !== -1) {
+              vendorGroups[row.vendor][existingProductIndex].options.push(option);
+            }
+          } else {
+            // 다른 거래처인 경우 별도 그룹화
+            if (!optionVendorGroups[optionVendor]) {
+              optionVendorGroups[optionVendor] = [];
+            }
+            optionVendorGroups[optionVendor].push(option);
+          }
+        });
       }
     });
 
-    // 거래처별 발주서 생성
-    const purchaseOrders = Object.keys(vendorGroups).map(vendor => ({
-      vendor,
-      items: vendorGroups[vendor],
-      memo: '',
-      createdAt: new Date().toISOString(),
-      orderInfo: {
-        customerName: currentOrder.customerName,
-        address: currentOrder.address,
-        projectName: currentOrder.projectName,
-        estimateNo: currentOrder.estimateNo,
-        estimateDate: currentOrder.estimateDate,
-      }
-    }));
+    // 모든 발주서 생성 (제품거래처 + 옵션거래처)
+    const allPurchaseOrders: any[] = [];
+    
+
+    
+    // 제품거래처 발주서
+    Object.keys(vendorGroups).forEach(vendor => {
+
+      allPurchaseOrders.push({
+        vendor,
+        items: vendorGroups[vendor],
+        memo: '',
+        createdAt: new Date().toISOString(),
+        orderInfo: {
+          customerName: currentOrder.customerName,
+          address: currentOrder.address,
+          projectName: currentOrder.projectName,
+          estimateNo: currentOrder.estimateNo,
+          estimateDate: currentOrder.estimateDate,
+        }
+      });
+    });
+    
+    // 옵션거래처 발주서
+    Object.keys(optionVendorGroups).forEach(vendor => {
+
+      allPurchaseOrders.push({
+        vendor,
+        items: optionVendorGroups[vendor],
+        memo: '',
+        createdAt: new Date().toISOString(),
+        orderInfo: {
+          customerName: currentOrder.customerName,
+          address: currentOrder.address,
+          projectName: currentOrder.projectName,
+          estimateNo: currentOrder.estimateNo,
+          estimateDate: currentOrder.estimateDate,
+        }
+      });
+    });
 
     // 현재 주문서의 발주서를 저장
     setVendorPurchaseOrders(prev => ({
       ...prev,
-      [currentOrder.id]: purchaseOrders
+      [currentOrder.id]: allPurchaseOrders
     }));
-    setSnackbarMessage(`${Object.keys(vendorGroups).length}개 거래처의 발주서가 생성되었습니다.`);
+    setSnackbarMessage(`${allPurchaseOrders.length}개 거래처의 발주서가 생성되었습니다.`);
     setSnackbarOpen(true);
   };
 
@@ -5549,8 +5712,10 @@ const OrderManagement: React.FC = () => {
 
     // 폭수 변경 시 주름양 재계산
     if (field === 'widthCount' && newEditRow.productType === '커튼' && newEditRow.curtainType === '겉커튼') {
-      // 사용자가 폭수를 직접 수정했음을 표시
-      setUserModifiedWidthCount(true);
+      // 사용자가 폭수를 직접 수정했음을 표시 (값이 0이 아닌 경우에만)
+      if (Number(value) > 0) {
+        setUserModifiedWidthCount(true);
+      }
       
       const product = productOptions.find(
         p => p.productCode === newEditRow.productCode
@@ -6031,10 +6196,61 @@ const OrderManagement: React.FC = () => {
     // 6. 최종적으로 업데이트된 행을 주문서에 반영
     newRows[editRowIdx] = updatedRow;
     
+    // 7. 제품 수정 후 연결된 옵션들의 정보 업데이트
+    const updatedRowsWithOptions = newRows.map((row, index) => {
+      if (row.type === 'option') {
+        // 해당 옵션의 이전 제품 찾기
+        let targetProduct = null;
+        for (let i = index - 1; i >= 0; i--) {
+          if (newRows[i].type === 'product') {
+            targetProduct = newRows[i];
+            break;
+          }
+        }
+        
+                 // 제품이 있고 자동 수량 계산이 활성화된 경우에만 업데이트
+         if (targetProduct && !row.isManualQuantity) {
+           // 옵션 수량 자동 재계산
+           const autoQuantity = calculateOptionQuantityForProduct(row, targetProduct);
+          
+          // 옵션 금액 재계산
+          const calculatedTotalPrice = getOptionAmount({
+            ...row,
+            quantity: autoQuantity
+          }, targetProduct);
+          
+          const calculatedCost = getOptionPurchaseAmount({
+            ...row,
+            quantity: autoQuantity
+          }, targetProduct);
+          
+          return {
+            ...row,
+            quantity: autoQuantity,
+            totalPrice: calculatedTotalPrice,
+            cost: calculatedCost,
+            margin: calculatedTotalPrice - calculatedCost
+          };
+        }
+      }
+      return row;
+    });
+    
+    // 8. 제품들의 세부내용 업데이트
+    const finalRows = updatedRowsWithOptions.map((row) => {
+      if (row.type === 'product') {
+        return {
+          ...row,
+          details: updateDetailsInRealTime(row)
+        };
+      }
+      return row;
+    });
+    
     const updatedOrders = [...orders];
     updatedOrders[activeTab] = {
       ...updatedOrders[activeTab],
-      rows: newRows
+      rows: finalRows
     };
     setOrders(updatedOrders);
 
@@ -6073,7 +6289,7 @@ const OrderManagement: React.FC = () => {
         const userInputWidthCount = Number(editRow.widthCount) || 0;
         let finalWidthCount = userInputWidthCount;
 
-        // 사용자가 폭수를 입력하지 않았거나 사용자가 수정하지 않은 상태에서 추천 폭수 계산
+        // 사용자가 폭수를 입력하지 않았거나 사용자가 수정하지 않은 상태에서만 추천 폭수 계산
         if (userInputWidthCount === 0 || !userModifiedWidthCount) {
           let pleatCount: number | string = 0;
           
@@ -6088,7 +6304,7 @@ const OrderManagement: React.FC = () => {
           
           finalWidthCount = Number(pleatCount) || 0;
           
-          // 추천폭수 상태 업데이트
+          // 추천폭수 상태 업데이트 (실제 editRow는 수정하지 않음)
           setRecommendedPleatCount(finalWidthCount);
           
           // 추천 주름양 계산
@@ -6101,6 +6317,10 @@ const OrderManagement: React.FC = () => {
           } else {
             setRecommendedPleatAmount('');
           }
+        } else {
+          // 사용자가 수정한 경우 추천폭수는 현재 값으로 설정
+          setRecommendedPleatCount(userInputWidthCount);
+          setRecommendedPleatAmount('');
         }
       }
     }

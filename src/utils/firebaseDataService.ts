@@ -834,7 +834,43 @@ export const optionService = {
         return {};
       }
       const doc = snapshot.docs[0]; // 첫 번째 문서 사용
-      return doc.data().settings || {};
+      const data = doc.data().settings || {};
+      
+      // 기존 데이터 구조를 새로운 구조로 마이그레이션
+      const migratedData: {[key: string]: {purchasePath: 'product' | 'option', excludeFromPurchase: boolean}} = {};
+      
+      Object.keys(data).forEach(key => {
+        if (typeof data[key] === 'string') {
+          // 기존 구조: {tabName: 'product' | 'option'}
+          migratedData[key] = {
+            purchasePath: data[key] as 'product' | 'option',
+            excludeFromPurchase: false
+          };
+        } else {
+          // 새로운 구조: {tabName: {purchasePath: 'product' | 'option', excludeFromPurchase: boolean}}
+          migratedData[key] = data[key];
+        }
+      });
+      
+      // 기존 "전동", "설치" 등의 키를 새로운 탭 이름으로 마이그레이션
+      const newMigratedData: {[key: string]: {purchasePath: 'product' | 'option', excludeFromPurchase: boolean}} = {};
+      
+      Object.keys(migratedData).forEach(key => {
+        if (key === '전동') {
+          // "전동" 설정을 "커튼전동", "블라인드전동"으로 복사
+          newMigratedData['커튼전동'] = migratedData[key];
+          newMigratedData['블라인드전동'] = migratedData[key];
+        } else if (key === '설치') {
+          // "설치" 설정을 "커튼옵션", "블라인드옵션"으로 복사
+          newMigratedData['커튼옵션'] = migratedData[key];
+          newMigratedData['블라인드옵션'] = migratedData[key];
+        } else {
+          // 기존 키 그대로 사용
+          newMigratedData[key] = migratedData[key];
+        }
+      });
+      
+      return newMigratedData;
     } catch (error) {
       console.error('발주경로 설정 가져오기 실패:', error);
       return {};

@@ -26,6 +26,7 @@ import {
   DialogContent,
   DialogActions,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Select,
   MenuItem,
@@ -35,6 +36,7 @@ import {
   useMediaQuery,
   useTheme,
   CircularProgress,
+  Checkbox,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -89,7 +91,10 @@ interface ColumnHeader {
 
 // 발주경로 설정 인터페이스
 interface PurchasePathSettings {
-  [tabName: string]: 'product' | 'option'; // 'product': 제품거래처, 'option': 옵션거래처
+  [tabName: string]: {
+    purchasePath: 'product' | 'option'; // 'product': 제품거래처, 'option': 옵션거래처
+    excludeFromPurchase: boolean; // 발주예외 여부
+  };
 }
 
 const optionHeaders: ColumnHeader[] = [
@@ -114,7 +119,7 @@ const sortKeys: (keyof OptionItem)[] = [
   'note',
 ];
 
-// 옵션 타입 기본값
+// 옵션 타입 기본값 (옵션관리 탭과 동일)
 const defaultTabLabels = [
   '커튼옵션',
   '블라인드옵션',
@@ -173,13 +178,29 @@ const OptionManagement: React.FC = () => {
     try {
       setPurchasePathLoading(true);
       const settings = await optionService.getPurchasePathSettings();
-      setPurchasePathSettings(settings || {});
+      
+      // 기본값 설정 함수
+      const getDefaultSettings = (): PurchasePathSettings => {
+        const defaultSettings: PurchasePathSettings = {};
+        optionTypes.forEach(type => {
+          defaultSettings[type] = {
+            purchasePath: 'product',
+            excludeFromPurchase: false
+          };
+        });
+        return defaultSettings;
+      };
+      
+      setPurchasePathSettings(settings || getDefaultSettings());
     } catch (error) {
       console.error('발주경로 설정 로드 실패:', error);
       // 기본값 설정
       const defaultSettings: PurchasePathSettings = {};
       optionTypes.forEach(type => {
-        defaultSettings[type] = 'product'; // 기본값: 제품거래처
+        defaultSettings[type] = {
+          purchasePath: 'product',
+          excludeFromPurchase: false
+        };
       });
       setPurchasePathSettings(defaultSettings);
     } finally {
@@ -1352,8 +1373,8 @@ const OptionManagement: React.FC = () => {
             </Grid>
           </Grid>
         </DialogContent>
-        <DialogActions sx={{ color: 'var(--text-color)' }}>
-          <Button onClick={handleCloseModal} sx={{ color: 'var(--text-color)' }}>취소</Button>
+        <DialogActions>
+          <Button onClick={handleCloseModal}>취소</Button>
           <Button onClick={handleAddOption} variant="contained">
             {editMode ? '수정' : '등록'}
           </Button>
@@ -1366,74 +1387,94 @@ const OptionManagement: React.FC = () => {
         onClose={() => setPurchasePathModalOpen(false)}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            backgroundColor: '#ffffff',
+            color: '#000000'
+          }
+        }}
       >
-        <DialogTitle sx={{ 
-          color: 'var(--text-color)', 
-          backgroundColor: 'var(--surface-color)',
-          borderBottom: '1px solid var(--border-color)'
-        }}>
+        <DialogTitle sx={{ color: '#000000' }}>
           발주경로 설정
         </DialogTitle>
-        <DialogContent sx={{ 
-          backgroundColor: 'var(--surface-color)', 
-          color: 'var(--text-color)',
-          pt: 3
-        }}>
-          <Typography variant="body1" sx={{ mb: 3 }}>
+        <DialogContent sx={{ pt: 3, color: '#000000' }}>
+          <Typography variant="body1" sx={{ mb: 3, color: '#000000' }}>
             각 탭별로 발주 시 사용할 거래처를 설정할 수 있습니다.
           </Typography>
           
           <Grid container spacing={2}>
             {optionTypes.map((tabName) => (
               <Grid item xs={12} key={tabName}>
-                <Paper sx={{ 
-                  p: 2, 
-                  backgroundColor: 'var(--background-color)',
-                  border: '1px solid var(--border-color)'
-                }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                      {tabName}
-                    </Typography>
-                    <FormControl sx={{ minWidth: 200 }}>
-                      <InputLabel>발주경로</InputLabel>
-                      <Select
-                        value={purchasePathSettings[tabName] || 'product'}
-                        onChange={(e) => {
+                <Paper sx={{ p: 2, backgroundColor: '#f5f5f5' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#000000', mb: 2 }}>
+                    {tabName}
+                  </Typography>
+                  
+                  {/* 발주경로 선택 */}
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel sx={{ color: '#000000' }}>발주경로</InputLabel>
+                    <Select
+                      value={purchasePathSettings[tabName]?.purchasePath || 'product'}
+                      onChange={(e) => {
+                        const newSettings = { ...purchasePathSettings };
+                        if (!newSettings[tabName]) {
+                          newSettings[tabName] = {
+                            purchasePath: 'product',
+                            excludeFromPurchase: false
+                          };
+                        }
+                        newSettings[tabName].purchasePath = e.target.value as 'product' | 'option';
+                        setPurchasePathSettings(newSettings);
+                      }}
+                      label="발주경로"
+                      disabled={purchasePathSettings[tabName]?.excludeFromPurchase || false}
+                      sx={{
+                        color: '#000000',
+                        '& .MuiSelect-icon': {
+                          color: '#000000'
+                        }
+                      }}
+                    >
+                      <MenuItem value="product" sx={{ color: '#000000' }}>제품거래처</MenuItem>
+                      <MenuItem value="option" sx={{ color: '#000000' }}>옵션거래처</MenuItem>
+                    </Select>
+                  </FormControl>
+                  
+                  {/* 발주예외 체크박스 */}
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={purchasePathSettings[tabName]?.excludeFromPurchase || false}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                           const newSettings = { ...purchasePathSettings };
-                          newSettings[tabName] = e.target.value as 'product' | 'option';
+                          if (!newSettings[tabName]) {
+                            newSettings[tabName] = {
+                              purchasePath: 'product',
+                              excludeFromPurchase: false
+                            };
+                          }
+                          newSettings[tabName].excludeFromPurchase = e.target.checked;
                           setPurchasePathSettings(newSettings);
                         }}
-                        label="발주경로"
-                      >
-                        <MenuItem value="product">제품거래처</MenuItem>
-                        <MenuItem value="option">옵션거래처</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Box>
+                        sx={{ color: '#000000' }}
+                      />
+                    }
+                    label={
+                      <Typography sx={{ color: '#000000' }}>
+                        발주예외 (발주서에서 제외)
+                      </Typography>
+                    }
+                  />
                 </Paper>
               </Grid>
             ))}
           </Grid>
         </DialogContent>
-        <DialogActions sx={{ 
-          backgroundColor: 'var(--surface-color)', 
-          color: 'var(--text-color)',
-          borderTop: '1px solid var(--border-color)',
-          p: 2,
-          gap: 1
-        }}>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
           <Button 
             onClick={() => setPurchasePathModalOpen(false)}
             variant="outlined"
-            sx={{
-              borderColor: 'var(--primary-color)',
-              color: 'var(--primary-color)',
-              '&:hover': {
-                borderColor: 'var(--primary-color)',
-                backgroundColor: 'rgba(25, 118, 210, 0.04)',
-              },
-            }}
+            sx={{ color: '#000000', borderColor: '#000000' }}
           >
             취소
           </Button>
@@ -1441,12 +1482,6 @@ const OptionManagement: React.FC = () => {
             onClick={() => savePurchasePathSettings(purchasePathSettings)}
             variant="contained"
             disabled={purchasePathLoading}
-            sx={{
-              backgroundColor: 'var(--primary-color)',
-              '&:hover': {
-                backgroundColor: 'var(--primary-color-dark)',
-              },
-            }}
           >
             {purchasePathLoading ? '저장 중...' : '저장'}
           </Button>
