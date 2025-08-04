@@ -50,6 +50,7 @@ import * as XLSX from 'xlsx';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { optionService } from '../../utils/firebaseDataService';
 
 interface OptionItem {
@@ -84,6 +85,11 @@ const defaultValidation: OptionValidation = {
 interface ColumnHeader {
   field: keyof OptionItem;
   label: string;
+}
+
+// 발주경로 설정 인터페이스
+interface PurchasePathSettings {
+  [tabName: string]: 'product' | 'option'; // 'product': 제품거래처, 'option': 옵션거래처
 }
 
 const optionHeaders: ColumnHeader[] = [
@@ -156,6 +162,45 @@ const OptionManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // 발주경로 설정 관련 상태
+  const [purchasePathSettings, setPurchasePathSettings] = useState<PurchasePathSettings>({});
+  const [purchasePathModalOpen, setPurchasePathModalOpen] = useState(false);
+  const [purchasePathLoading, setPurchasePathLoading] = useState(false);
+
+  // 발주경로 설정 로드
+  const loadPurchasePathSettings = async () => {
+    try {
+      setPurchasePathLoading(true);
+      const settings = await optionService.getPurchasePathSettings();
+      setPurchasePathSettings(settings || {});
+    } catch (error) {
+      console.error('발주경로 설정 로드 실패:', error);
+      // 기본값 설정
+      const defaultSettings: PurchasePathSettings = {};
+      optionTypes.forEach(type => {
+        defaultSettings[type] = 'product'; // 기본값: 제품거래처
+      });
+      setPurchasePathSettings(defaultSettings);
+    } finally {
+      setPurchasePathLoading(false);
+    }
+  };
+
+  // 발주경로 설정 저장
+  const savePurchasePathSettings = async (settings: PurchasePathSettings) => {
+    try {
+      setPurchasePathLoading(true);
+      await optionService.savePurchasePathSettings(settings);
+      setPurchasePathSettings(settings);
+      setPurchasePathModalOpen(false);
+    } catch (error) {
+      console.error('발주경로 설정 저장 실패:', error);
+      alert('설정 저장에 실패했습니다.');
+    } finally {
+      setPurchasePathLoading(false);
+    }
+  };
 
   // Firebase에서 데이터 로드
   useEffect(() => {
@@ -204,6 +249,7 @@ const OptionManagement: React.FC = () => {
     };
 
     loadData();
+    loadPurchasePathSettings(); // 발주경로 설정도 함께 로드
   }, []);
 
   // 현재 탭의 옵션 타입
@@ -932,6 +978,14 @@ const OptionManagement: React.FC = () => {
           <IconButton onClick={handleAddOptionType} color="primary" sx={{ ml: 1 }}>
             <AddIcon />
           </IconButton>
+          <IconButton 
+            onClick={() => setPurchasePathModalOpen(true)} 
+            color="primary" 
+            sx={{ ml: 1 }}
+            title="발주경로 설정"
+          >
+            <SettingsIcon />
+          </IconButton>
         </Paper>
       </Grid>
 
@@ -1302,6 +1356,99 @@ const OptionManagement: React.FC = () => {
           <Button onClick={handleCloseModal} sx={{ color: 'var(--text-color)' }}>취소</Button>
           <Button onClick={handleAddOption} variant="contained">
             {editMode ? '수정' : '등록'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 발주경로 설정 모달 */}
+      <Dialog
+        open={purchasePathModalOpen}
+        onClose={() => setPurchasePathModalOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ 
+          color: 'var(--text-color)', 
+          backgroundColor: 'var(--surface-color)',
+          borderBottom: '1px solid var(--border-color)'
+        }}>
+          발주경로 설정
+        </DialogTitle>
+        <DialogContent sx={{ 
+          backgroundColor: 'var(--surface-color)', 
+          color: 'var(--text-color)',
+          pt: 3
+        }}>
+          <Typography variant="body1" sx={{ mb: 3 }}>
+            각 탭별로 발주 시 사용할 거래처를 설정할 수 있습니다.
+          </Typography>
+          
+          <Grid container spacing={2}>
+            {optionTypes.map((tabName) => (
+              <Grid item xs={12} key={tabName}>
+                <Paper sx={{ 
+                  p: 2, 
+                  backgroundColor: 'var(--background-color)',
+                  border: '1px solid var(--border-color)'
+                }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                      {tabName}
+                    </Typography>
+                    <FormControl sx={{ minWidth: 200 }}>
+                      <InputLabel>발주경로</InputLabel>
+                      <Select
+                        value={purchasePathSettings[tabName] || 'product'}
+                        onChange={(e) => {
+                          const newSettings = { ...purchasePathSettings };
+                          newSettings[tabName] = e.target.value as 'product' | 'option';
+                          setPurchasePathSettings(newSettings);
+                        }}
+                        label="발주경로"
+                      >
+                        <MenuItem value="product">제품거래처</MenuItem>
+                        <MenuItem value="option">옵션거래처</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Box>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ 
+          backgroundColor: 'var(--surface-color)', 
+          color: 'var(--text-color)',
+          borderTop: '1px solid var(--border-color)',
+          p: 2,
+          gap: 1
+        }}>
+          <Button 
+            onClick={() => setPurchasePathModalOpen(false)}
+            variant="outlined"
+            sx={{
+              borderColor: 'var(--primary-color)',
+              color: 'var(--primary-color)',
+              '&:hover': {
+                borderColor: 'var(--primary-color)',
+                backgroundColor: 'rgba(25, 118, 210, 0.04)',
+              },
+            }}
+          >
+            취소
+          </Button>
+          <Button 
+            onClick={() => savePurchasePathSettings(purchasePathSettings)}
+            variant="contained"
+            disabled={purchasePathLoading}
+            sx={{
+              backgroundColor: 'var(--primary-color)',
+              '&:hover': {
+                backgroundColor: 'var(--primary-color-dark)',
+              },
+            }}
+          >
+            {purchasePathLoading ? '저장 중...' : '저장'}
           </Button>
         </DialogActions>
       </Dialog>

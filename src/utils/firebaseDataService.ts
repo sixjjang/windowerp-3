@@ -823,6 +823,49 @@ export const optionService = {
       console.error('Firebase Functions 모든 옵션 삭제 실패:', error);
       throw error;
     }
+  },
+
+  // 발주경로 설정 가져오기
+  async getPurchasePathSettings() {
+    try {
+      const settingsRef = collection(db, 'purchasePathSettings');
+      const snapshot = await getDocs(settingsRef);
+      if (snapshot.empty) {
+        return {};
+      }
+      const doc = snapshot.docs[0]; // 첫 번째 문서 사용
+      return doc.data().settings || {};
+    } catch (error) {
+      console.error('발주경로 설정 가져오기 실패:', error);
+      return {};
+    }
+  },
+
+  // 발주경로 설정 저장
+  async savePurchasePathSettings(settings: any) {
+    try {
+      const settingsRef = collection(db, 'purchasePathSettings');
+      const snapshot = await getDocs(settingsRef);
+      
+      if (snapshot.empty) {
+        // 새 문서 생성
+        await addDoc(settingsRef, {
+          settings,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        // 기존 문서 업데이트
+        const doc = snapshot.docs[0];
+        await updateDoc(doc.ref, {
+          settings,
+          updatedAt: serverTimestamp()
+        });
+      }
+    } catch (error) {
+      console.error('발주경로 설정 저장 실패:', error);
+      throw error;
+    }
   }
 };
 

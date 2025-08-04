@@ -6916,7 +6916,8 @@ const OrderManagement: React.FC = () => {
                       )}
                       <TableCell sx={{ 
                         fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                        color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        color: row.type === 'option' ? '#4caf50' : 'inherit',
+                        textAlign: 'center'
                       }}>
                         {row.type === 'option' ? (
                           // 옵션 행은 순번 표시하지 않음
