@@ -1692,6 +1692,86 @@ const OrderManagement: React.FC = () => {
     return calculatedPleatAmount.toFixed(2);
   };
 
+  // 옵션 금액 계산 함수 (견적관리와 동일한 로직)
+  const getOptionAmount = (option: any, row: any) => {
+    const optionType = option.note;
+    const salePrice = Number(option.salePrice) || 0;
+    const quantity = Number(option.quantity) || 1;
+
+    // % 적용타입 처리
+    if (optionType && optionType.includes('%')) {
+      const percent = parseFloat(optionType.replace('%', ''));
+      if (!isNaN(percent)) {
+        // 제품의 판매금액에 퍼센트 적용
+        const productTotalPrice = Number(row.totalPrice) || 0;
+        return Math.round(productTotalPrice * (percent / 100));
+      }
+    }
+
+    switch (optionType) {
+      case '폭당':
+        // 폭당: 단가 × 폭수
+        const widthCount = Number(row.widthCount) || 0;
+        return salePrice * widthCount * quantity;
+
+      case 'm당':
+        // m당: 단가 × 가로(mm) / 1000
+        const widthMM = Number(row.widthMM) || 0;
+        return salePrice * (widthMM / 1000) * quantity;
+
+      case '추가':
+        // 추가: 단가
+        return salePrice * quantity;
+
+      case '포함':
+        // 포함: 0원
+        return 0;
+
+      case 'm2당':
+        // m2당: 단가 × 면적(m²)
+        const area = Number(row.area) || 0;
+        return salePrice * area * quantity;
+
+      default:
+        return salePrice * quantity;
+    }
+  };
+
+  // 옵션 입고금액 계산 함수 (견적관리와 동일한 로직)
+  const getOptionPurchaseAmount = (option: any, row: any) => {
+    const optionType = option.note;
+    const purchaseCost = Number(option.purchaseCost) || 0;
+    const quantity = Number(option.quantity) || 1;
+
+    // % 적용타입 처리
+    if (optionType && optionType.includes('%')) {
+      const percent = parseFloat(optionType.replace('%', ''));
+      if (!isNaN(percent)) {
+        // 제품의 입고금액에 퍼센트 적용
+        const productCost = Number(row.cost) || 0;
+        return Math.round(productCost * (percent / 100));
+      }
+    }
+
+    switch (optionType) {
+      case '폭당':
+        const widthCount = Number(row.widthCount) || 0;
+        return purchaseCost * widthCount * quantity;
+      case 'm당':
+        const widthMM = Number(row.widthMM) || 0;
+        return purchaseCost * (widthMM / 1000) * quantity;
+      case '추가':
+        return purchaseCost * quantity;
+      case '포함':
+        return 0;
+      case 'm2당':
+        const area = Number(row.area) || 0;
+        return purchaseCost * area * quantity;
+      default:
+        return purchaseCost * quantity;
+    }
+  };
+
 
 
 
@@ -2831,6 +2911,20 @@ const OrderManagement: React.FC = () => {
       console.log('전동커튼시공 옵션 - 자동 계산 정보 추가하지 않음');
     }
 
+    // 해당 제품 정보 찾기 (옵션 계산을 위해)
+    const targetProduct = selectedRowIndex !== null ? currentRows[selectedRowIndex] : null;
+    
+    // 옵션 금액 계산 (견적관리와 동일한 로직)
+    const calculatedTotalPrice = getOptionAmount({
+      ...option,
+      quantity: finalQuantity
+    }, targetProduct || {});
+    
+    const calculatedCost = getOptionPurchaseAmount({
+      ...option,
+      quantity: finalQuantity
+    }, targetProduct || {});
+
     const newOptionRow = {
       id: Date.now() + Math.random(),
       type: 'option' as const,
@@ -2851,11 +2945,11 @@ const OrderManagement: React.FC = () => {
       pleatAmount: 0,
       widthCount: 0,
       quantity: finalQuantity, // 자동 계산된 수량
-      totalPrice: (option.salePrice || 0) * finalQuantity, // 수량을 곱한 총 판매가
+      totalPrice: calculatedTotalPrice, // 새로운 계산 함수 사용
       salePrice: option.salePrice || 0, // 판매단가
-      cost: (option.purchaseCost || 0) * finalQuantity, // 수량을 곱한 총 원가
+      cost: calculatedCost, // 새로운 계산 함수 사용
       purchaseCost: option.purchaseCost || 0, // 원가단가
-      margin: ((option.salePrice || 0) - (option.purchaseCost || 0)) * finalQuantity, // 수량을 곱한 마진
+      margin: calculatedTotalPrice - calculatedCost, // 새로운 계산 함수 사용
       note: option.note || '',
       productCode: '',
       largePlainPrice: 0,
@@ -2944,12 +3038,33 @@ const OrderManagement: React.FC = () => {
             }
           }
           
+          // 해당 제품 정보 찾기 (옵션 계산을 위해)
+          // 옵션 행의 위치를 기준으로 이전 제품을 찾음
+          let targetProduct = null;
+          for (let i = currentRows.indexOf(row) - 1; i >= 0; i--) {
+            if (currentRows[i].type === 'product') {
+              targetProduct = currentRows[i];
+              break;
+            }
+          }
+          
+          // 옵션 금액 계산 (견적관리와 동일한 로직)
+          const calculatedTotalPrice = getOptionAmount({
+            ...editingOption,
+            quantity: editOptionQuantity
+          }, targetProduct || {});
+          
+          const calculatedCost = getOptionPurchaseAmount({
+            ...editingOption,
+            quantity: editOptionQuantity
+          }, targetProduct || {});
+          
           return {
             ...row,
             quantity: editOptionQuantity,
-            totalPrice: (editingOption.salePrice || 0) * editOptionQuantity,
-            cost: (editingOption.purchaseCost || 0) * editOptionQuantity,
-            margin: ((editingOption.salePrice || 0) - (editingOption.purchaseCost || 0)) * editOptionQuantity,
+            totalPrice: calculatedTotalPrice, // 새로운 계산 함수 사용
+            cost: calculatedCost, // 새로운 계산 함수 사용
+            margin: calculatedTotalPrice - calculatedCost, // 새로운 계산 함수 사용
             details: updatedDetails,
             isManualQuantity: true // 수동으로 수정됨을 표시
           };
