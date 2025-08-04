@@ -213,4 +213,14 @@ export interface Estimate {
   installerName?: string; // 시공기사명
   // 제품준비 상태 추가
   productStatus?: '제품준비' | '납품완료';
+  // 납품정보 추가
+  deliveryInfo?: {
+    [vendor: string]: {
+      method?: string;
+      date?: string;
+      company?: string;
+      contact?: string;
+      address?: string;
+    };
+  };
 }

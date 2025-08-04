@@ -23,6 +23,7 @@ import {
   Card,
   CardContent,
   CardActions,
+  CircularProgress,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -43,8 +44,14 @@ interface CompanyInfo {
   businessItem: string;
   address: string;
   contact: string;
+  phone?: string; // 핸드폰 필드 추가
   fax?: string;
   email?: string;
+  // 납품지정보 필드들
+  deliveryCompanyName?: string;
+  deliveryContact?: string;
+  deliveryAddress?: string;
+  deliveryNote?: string;
 }
 
 const defaultCompanyInfo: CompanyInfo = {
@@ -57,8 +64,14 @@ const defaultCompanyInfo: CompanyInfo = {
   businessItem: '',
   address: '',
   contact: '',
+  phone: '', // 핸드폰 기본값 추가
   fax: '',
   email: '',
+  // 납품지정보 기본값
+  deliveryCompanyName: '',
+  deliveryContact: '',
+  deliveryAddress: '',
+  deliveryNote: '',
 };
 
 const CompanyInfoManagement = () => {
@@ -75,6 +88,7 @@ const CompanyInfoManagement = () => {
   const [selectedCompany, setSelectedCompany] = useState<CompanyInfo | null>(
     null
   );
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     console.log('CompanyInfoManagement 컴포넌트 마운트 - Firebase에서 회사 정보 로드');
@@ -138,8 +152,14 @@ const CompanyInfoManagement = () => {
             businessItem: item.businessItem || '',
             address: item.address || '',
             contact: item.contact || '',
+            phone: item.phone || '',
             fax: item.fax || '',
             email: item.email || '',
+            // 납품지정보 필드들
+            deliveryCompanyName: item.deliveryCompanyName || '',
+            deliveryContact: item.deliveryContact || '',
+            deliveryAddress: item.deliveryAddress || '',
+            deliveryNote: item.deliveryNote || '',
           }));
           console.log('변환된 데이터:', formattedData);
           setInfos(formattedData);
@@ -183,8 +203,26 @@ const CompanyInfoManagement = () => {
   };
 
   const handleSave = async () => {
+    setIsSaving(true);
     try {
-      console.log('저장 시작 - 현재 데이터:', infos);
+      console.log('=== Firebase 저장 시작 ===');
+      console.log('저장할 데이터:', infos);
+
+      // 필수 필드 검증
+      const requiredFields = ['name', 'businessNumber', 'ceo'];
+      const missingFields = infos.flatMap((info, idx) => {
+        const missing = requiredFields.filter(field => !info[field as keyof CompanyInfo] || info[field as keyof CompanyInfo] === '');
+        return missing.map(field => `회사 ${idx + 1}의 ${field}`);
+      });
+
+      if (missingFields.length > 0) {
+        setSnackbar({
+          open: true,
+          message: `필수 필드가 누락되었습니다: ${missingFields.join(', ')}`,
+          severity: 'error',
+        });
+        return;
+      }
 
       // 저장 전 중복 체크
       const duplicates = infos.filter((info, idx) =>
@@ -210,8 +248,14 @@ const CompanyInfoManagement = () => {
           businessItem: info.businessItem || '',
           address: info.address || '',
           contact: info.contact || '',
+          phone: info.phone || '',
           fax: info.fax || '',
-          email: info.email || ''
+          email: info.email || '',
+          // 납품지정보 필드들
+          deliveryCompanyName: info.deliveryCompanyName || '',
+          deliveryContact: info.deliveryContact || '',
+          deliveryAddress: info.deliveryAddress || '',
+          deliveryNote: info.deliveryNote || ''
         };
         
         // 빈 문자열이 아닌 필드만 포함
@@ -222,21 +266,25 @@ const CompanyInfoManagement = () => {
         );
       });
 
+      console.log('Firebase API 호출 시작:', `${API_BASE}/saveCompanyInfo`);
+      console.log('전송할 데이터:', formattedInfos);
+      
       const response = await fetch(`${API_BASE}/saveCompanyInfo`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(formattedInfos),
       });
 
-      console.log('저장 응답 상태:', response.status);
+      console.log('Firebase 저장 응답 상태:', response.status);
+      console.log('Firebase 저장 응답 헤더:', Object.fromEntries(response.headers.entries()));
 
       if (response.ok) {
         const responseData = await response.json();
-        console.log('저장 응답 데이터:', responseData);
+        console.log('Firebase 저장 성공 - 응답 데이터:', responseData);
 
         setSnackbar({
           open: true,
-          message: '회사 정보가 성공적으로 저장되었습니다.',
+          message: '회사 정보가 Firebase에 성공적으로 저장되었습니다!',
           severity: 'success',
         });
 
@@ -244,24 +292,31 @@ const CompanyInfoManagement = () => {
         setSavedCompanies(infos);
         console.log('저장된 목록 상태 업데이트 완료:', infos.length, '개');
 
+        // Firebase에서 최신 데이터 다시 로드하여 확인
+        console.log('Firebase에서 최신 데이터 다시 로드 중...');
+        await fetchCompanyInfo();
+
         // 저장된 목록 탭으로 자동 이동
         setTabValue(1);
       } else {
         const errorData = await response.text();
-        console.error('저장 실패:', errorData);
+        console.error('Firebase 저장 실패:', errorData);
+        console.error('응답 상태:', response.status);
         setSnackbar({
           open: true,
-          message: `저장 실패: ${errorData}`,
+          message: `Firebase 저장 실패 (${response.status}): ${errorData}`,
           severity: 'error',
         });
       }
     } catch (error) {
-      console.error('저장 중 오류:', error);
+      console.error('Firebase 저장 중 오류:', error);
       setSnackbar({
         open: true,
-        message: '네트워크 오류가 발생했습니다.',
+        message: 'Firebase 저장 중 네트워크 오류가 발생했습니다.',
         severity: 'error',
       });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -321,22 +376,23 @@ const CompanyInfoManagement = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
+      <Typography variant="h4" gutterBottom sx={{ color: '#333', fontWeight: 'bold' }}>
         우리 회사/타회사 정보 관리
       </Typography>
 
       {/* 탭 네비게이션 */}
-      <Box
-        sx={{
-          borderBottom: 1,
-          borderColor: 'rgba(255, 107, 157, 0.2)',
-          mb: 3,
-          background: 'rgba(45, 45, 45, 0.8)',
-          borderRadius: '16px',
-          padding: '8px',
-          backdropFilter: 'blur(10px)',
-        }}
-      >
+              <Box
+          sx={{
+            borderBottom: 1,
+            borderColor: 'rgba(255, 107, 157, 0.2)',
+            mb: 3,
+            background: 'rgba(255, 255, 255, 0.9)',
+            borderRadius: '16px',
+            padding: '8px',
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+          }}
+        >
         <Tabs
           value={tabValue}
           onChange={handleTabChange}
@@ -351,7 +407,7 @@ const CompanyInfoManagement = () => {
           <Tab
             label="입력/수정"
             sx={{
-              color: 'rgba(255, 255, 255, 0.7)',
+              color: '#333',
               fontWeight: 600,
               '&.Mui-selected': {
                 color: '#FF6B9D',
@@ -361,7 +417,7 @@ const CompanyInfoManagement = () => {
           <Tab
             label="저장된 목록"
             sx={{
-              color: 'rgba(255, 255, 255, 0.7)',
+              color: '#333',
               fontWeight: 600,
               '&.Mui-selected': {
                 color: '#FF6B9D',
@@ -490,6 +546,17 @@ const CompanyInfoManagement = () => {
                 </Grid>
                 <Grid item xs={12} md={2}>
                   <TextField
+                    label="핸드폰"
+                    name="phone"
+                    value={info.phone || ''}
+                    onChange={e => handleChange(idx, e)}
+                    fullWidth
+                    size="small"
+                    placeholder="010-0000-0000"
+                  />
+                </Grid>
+                <Grid item xs={12} md={2}>
+                  <TextField
                     label="팩스"
                     name="fax"
                     value={info.fax}
@@ -509,10 +576,71 @@ const CompanyInfoManagement = () => {
                   />
                 </Grid>
               </Grid>
+
+              {/* 납품지정보 섹션 */}
+              <Box sx={{ mt: 3, mb: 2 }}>
+                <Typography variant="h6" sx={{ mb: 2, color: '#FF6B9D', fontWeight: 'bold' }}>
+                  납품지정보
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={3}>
+                    <TextField
+                      label="상호"
+                      name="deliveryCompanyName"
+                      value={info.deliveryCompanyName || ''}
+                      onChange={e => handleChange(idx, e)}
+                      fullWidth
+                      size="small"
+                      placeholder="납품받을 상호명"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={3}>
+                    <TextField
+                      label="연락처"
+                      name="deliveryContact"
+                      value={info.deliveryContact || ''}
+                      onChange={e => handleChange(idx, e)}
+                      fullWidth
+                      size="small"
+                      placeholder="납품지 연락처"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label="납품받을 주소"
+                      name="deliveryAddress"
+                      value={info.deliveryAddress || ''}
+                      onChange={e => handleChange(idx, e)}
+                      fullWidth
+                      size="small"
+                      placeholder="납품받을 주소를 입력하세요"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="비고"
+                      name="deliveryNote"
+                      value={info.deliveryNote || ''}
+                      onChange={e => handleChange(idx, e)}
+                      fullWidth
+                      size="small"
+                      multiline
+                      rows={2}
+                      placeholder="납품지 관련 비고사항을 입력하세요"
+                    />
+                  </Grid>
+                </Grid>
+              </Box>
             </Paper>
           ))}
-          <Button variant="contained" color="primary" onClick={handleSave}>
-            저장
+          <Button 
+            variant="contained" 
+            color="primary" 
+            onClick={handleSave}
+            disabled={isSaving}
+            startIcon={isSaving ? <CircularProgress size={20} color="inherit" /> : null}
+          >
+            {isSaving ? 'Firebase에 저장 중...' : '저장'}
           </Button>
         </Box>
       )}
@@ -521,7 +649,7 @@ const CompanyInfoManagement = () => {
       {tabValue === 1 && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6">
+            <Typography variant="h6" sx={{ color: '#333', fontWeight: 'bold' }}>
               저장된 회사 정보 목록 ({savedCompanies.length}개)
             </Typography>
             <Button
@@ -633,6 +761,12 @@ const CompanyInfoManagement = () => {
                       </Typography>
                       <Typography
                         color="rgba(255, 255, 255, 0.7)"
+                        sx={{ fontSize: '0.875rem', mb: 1 }}
+                      >
+                        핸드폰: {company.phone || '미입력'}
+                      </Typography>
+                      <Typography
+                        color="rgba(255, 255, 255, 0.7)"
                         sx={{
                           fontSize: '0.875rem',
                           overflow: 'hidden',
@@ -642,6 +776,34 @@ const CompanyInfoManagement = () => {
                       >
                         주소: {company.address || '미입력'}
                       </Typography>
+                      <Typography
+                        color="rgba(255, 255, 255, 0.7)"
+                        sx={{
+                          fontSize: '0.875rem',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        이메일: {company.email || '미입력'}
+                      </Typography>
+                      {/* 납품지정보 표시 */}
+                      {company.deliveryCompanyName && (
+                        <Typography
+                          color="rgba(255, 255, 255, 0.7)"
+                          sx={{
+                            fontSize: '0.875rem',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            mt: 1,
+                            pt: 1,
+                            borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                          }}
+                        >
+                          납품지: {company.deliveryCompanyName}
+                        </Typography>
+                      )}
                     </CardContent>
                     <CardActions sx={{ p: 2, pt: 0 }}>
                       <Button
@@ -702,6 +864,9 @@ const CompanyInfoManagement = () => {
             width: '90%',
             maxHeight: '80vh',
             overflow: 'auto',
+            background: 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
           }}
         >
           <Box
@@ -712,61 +877,94 @@ const CompanyInfoManagement = () => {
               mb: 2,
             }}
           >
-            <Typography variant="h6">회사 정보 상세보기</Typography>
-            <IconButton onClick={() => setSelectedCompany(null)}>×</IconButton>
+            <Typography variant="h6" sx={{ color: '#333', fontWeight: 'bold' }}>회사 정보 상세보기</Typography>
+            <IconButton onClick={() => setSelectedCompany(null)} sx={{ color: '#333' }}>×</IconButton>
           </Box>
           <Grid container spacing={2}>
             <Grid item xs={12}>
-              <Typography variant="subtitle1" gutterBottom>
+              <Typography variant="subtitle1" gutterBottom sx={{ color: '#333' }}>
                 <strong>구분:</strong> {selectedCompany.type}
               </Typography>
             </Grid>
             <Grid item xs={12}>
-              <Typography variant="subtitle1" gutterBottom>
+              <Typography variant="subtitle1" gutterBottom sx={{ color: '#333' }}>
                 <strong>회사명:</strong> {selectedCompany.name}
               </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
-              <Typography variant="body2" gutterBottom>
+              <Typography variant="body2" gutterBottom sx={{ color: '#333' }}>
                 <strong>사업자등록번호:</strong>{' '}
                 {selectedCompany.businessNumber || '미입력'}
               </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
-              <Typography variant="body2" gutterBottom>
+              <Typography variant="body2" gutterBottom sx={{ color: '#333' }}>
                 <strong>대표자:</strong> {selectedCompany.ceo || '미입력'}
               </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
-              <Typography variant="body2" gutterBottom>
+              <Typography variant="body2" gutterBottom sx={{ color: '#333' }}>
                 <strong>업태:</strong>{' '}
                 {selectedCompany.businessType || '미입력'}
               </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
-              <Typography variant="body2" gutterBottom>
+              <Typography variant="body2" gutterBottom sx={{ color: '#333' }}>
                 <strong>업종:</strong>{' '}
                 {selectedCompany.businessItem || '미입력'}
               </Typography>
             </Grid>
             <Grid item xs={12}>
-              <Typography variant="body2" gutterBottom>
+              <Typography variant="body2" gutterBottom sx={{ color: '#333' }}>
                 <strong>주소:</strong> {selectedCompany.address || '미입력'}
               </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
-              <Typography variant="body2" gutterBottom>
+              <Typography variant="body2" gutterBottom sx={{ color: '#333' }}>
                 <strong>연락처:</strong> {selectedCompany.contact || '미입력'}
               </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
-              <Typography variant="body2" gutterBottom>
+              <Typography variant="body2" gutterBottom sx={{ color: '#333' }}>
+                <strong>핸드폰:</strong> {selectedCompany.phone || '미입력'}
+              </Typography>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Typography variant="body2" gutterBottom sx={{ color: '#333' }}>
                 <strong>팩스:</strong> {selectedCompany.fax || '미입력'}
               </Typography>
             </Grid>
             <Grid item xs={12}>
-              <Typography variant="body2" gutterBottom>
+              <Typography variant="body2" gutterBottom sx={{ color: '#333' }}>
                 <strong>이메일:</strong> {selectedCompany.email || '미입력'}
+              </Typography>
+            </Grid>
+          </Grid>
+
+          {/* 납품지정보 섹션 */}
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="h6" sx={{ mb: 2, color: '#FF6B9D', fontWeight: 'bold' }}>
+            납품지정보
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <Typography variant="body2" gutterBottom sx={{ color: '#333' }}>
+                <strong>상호:</strong> {selectedCompany.deliveryCompanyName || '미입력'}
+              </Typography>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Typography variant="body2" gutterBottom sx={{ color: '#333' }}>
+                <strong>연락처:</strong> {selectedCompany.deliveryContact || '미입력'}
+              </Typography>
+            </Grid>
+            <Grid item xs={12}>
+              <Typography variant="body2" gutterBottom sx={{ color: '#333' }}>
+                <strong>납품받을 주소:</strong> {selectedCompany.deliveryAddress || '미입력'}
+              </Typography>
+            </Grid>
+            <Grid item xs={12}>
+              <Typography variant="body2" gutterBottom sx={{ color: '#333' }}>
+                <strong>비고:</strong> {selectedCompany.deliveryNote || '미입력'}
               </Typography>
             </Grid>
           </Grid>

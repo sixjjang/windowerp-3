@@ -39,6 +39,7 @@ import {
   StepLabel,
   FormGroup,
   Card,
+  CardContent,
   Divider,
 } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material/Select';
@@ -88,6 +89,8 @@ import { useNotificationStore } from '../../utils/notificationStore';
 import { UserContext } from '../../components/Layout';
 import { estimateService, customerService } from '../../utils/firebaseDataService';
 import { ensureFirebaseAuth, API_BASE } from '../../utils/auth';
+
+
 
 // Order 타입 정의
 export interface Order {
@@ -175,6 +178,187 @@ const printStyles = `
     .no-print {
       display: none !important;
     }
+    
+                    /* 발주서 프린트 스타일 */
+                .purchase-order-a4-container {
+                  visibility: visible !important;
+                  position: relative !important;
+                  left: auto !important;
+                  top: auto !important;
+                  width: 100% !important;
+                  height: auto !important;
+                  margin: 0 !important;
+                  padding: 3mm !important;
+                  box-shadow: none !important;
+                  border-radius: 0 !important;
+                  page-break-after: always;
+                }
+
+                /* 모든 버튼과 UI 요소 완전 숨기기 */
+                .MuiDialogActions-root,
+                .MuiDialogTitle-root .MuiBox-root,
+                .MuiDialogTitle-root button,
+                .no-print,
+                .MuiDialogTitle-root,
+                .MuiDialogActions-root *,
+                .MuiDialogTitle-root *,
+                .MuiDialogTitle-root .MuiTypography-root,
+                .MuiDialogTitle-root .MuiBox-root *,
+                .MuiDialogActions-root .MuiButton-root,
+                .MuiDialogActions-root .MuiIconButton-root,
+                /* 추가 강화 규칙 */
+                .MuiDialogTitle-root,
+                .MuiDialogActions-root,
+                .MuiDialogTitle-root > *,
+                .MuiDialogActions-root > *,
+                .MuiDialogTitle-root .MuiBox-root,
+                .MuiDialogTitle-root .MuiBox-root > *,
+                .MuiDialogActions-root .MuiBox-root,
+                .MuiDialogActions-root .MuiBox-root > *,
+                /* 모든 버튼 요소 */
+                button,
+                .MuiButton-root,
+                .MuiIconButton-root,
+                /* 모든 아이콘 */
+                .MuiSvgIcon-root,
+                /* 모든 툴팁 */
+                .MuiTooltip-root,
+                /* 모든 메뉴 */
+                .MuiMenu-root {
+                  display: none !important;
+                  visibility: hidden !important;
+                  opacity: 0 !important;
+                  position: absolute !important;
+                  left: -9999px !important;
+                  top: -9999px !important;
+                  width: 0 !important;
+                  height: 0 !important;
+                  overflow: hidden !important;
+                  clip: rect(0, 0, 0, 0) !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  border: 0 !important;
+                }
+
+                /* 모달 배경 완전 제거 */
+                .MuiDialog-root .MuiBackdrop-root {
+                  display: none !important;
+                  visibility: hidden !important;
+                }
+
+                /* 모달 컨테이너 스타일 */
+                .MuiDialog-root .MuiDialog-container {
+                  background: white !important;
+                  box-shadow: none !important;
+                  padding: 0 !important;
+                  margin: 0 !important;
+                }
+
+                /* 모달 콘텐츠 영역 */
+                .MuiDialog-root .MuiDialogContent-root {
+                  padding: 0 !important;
+                  margin: 0 !important;
+                  overflow: visible !important;
+                }
+
+                /* A4 페이지 설정 - 여백 최소화 */
+                @page {
+                  size: A4;
+                  margin: 2mm;
+                }
+
+                /* 폰트 최적화 */
+                * {
+                  -webkit-print-color-adjust: exact !important;
+                  color-adjust: exact !important;
+                }
+
+                /* 페이지 나누기 최적화 */
+                .purchase-order-a4-container > * {
+                  page-break-inside: avoid;
+                }
+
+                /* 테이블 페이지 나누기 */
+                .MuiTableContainer-root {
+                  page-break-inside: auto;
+                }
+
+                .MuiTableRow-root {
+                  page-break-inside: avoid;
+                  page-break-after: auto;
+                }
+
+                /* 헤더 영역 최적화 */
+                .purchase-order-a4-container > div:first-child {
+                  margin-bottom: 2mm !important;
+                  padding-bottom: 1mm !important;
+                }
+
+                /* 발주서 컨테이너 내부의 버튼들만 제외하고 모든 UI 요소 숨기기 */
+                .purchase-order-a4-container button,
+                .purchase-order-a4-container .MuiButton-root,
+                .purchase-order-a4-container .MuiIconButton-root,
+                .purchase-order-a4-container .MuiSvgIcon-root {
+                  display: none !important;
+                  visibility: hidden !important;
+                  opacity: 0 !important;
+                }
+
+                /* 모달 전체에서 발주서 컨테이너만 보이도록 */
+                .MuiDialog-root .MuiDialogContent-root > *:not(.purchase-order-a4-container) {
+                  display: none !important;
+                  visibility: hidden !important;
+                }
+
+                /* 모달 외부 요소들 완전 숨기기 */
+                .MuiDialog-root .MuiDialogTitle-root,
+                .MuiDialog-root .MuiDialogActions-root,
+                .MuiDialog-root .MuiBackdrop-root {
+                  display: none !important;
+                  visibility: hidden !important;
+                  opacity: 0 !important;
+                }
+
+                /* no-print 클래스 강화 */
+                .no-print,
+                .no-print *,
+                .no-print > * {
+                  display: none !important;
+                  visibility: hidden !important;
+                  opacity: 0 !important;
+                  position: absolute !important;
+                  left: -9999px !important;
+                  top: -9999px !important;
+                  width: 0 !important;
+                  height: 0 !important;
+                  overflow: hidden !important;
+                  clip: rect(0, 0, 0, 0) !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  border: 0 !important;
+                  pointer-events: none !important;
+                }
+
+                /* 모든 버튼과 인터랙티브 요소 완전 제거 */
+                button:not(.purchase-order-a4-container button),
+                .MuiButton-root:not(.purchase-order-a4-container .MuiButton-root),
+                .MuiIconButton-root:not(.purchase-order-a4-container .MuiIconButton-root),
+                .MuiSvgIcon-root:not(.purchase-order-a4-container .MuiSvgIcon-root) {
+                  display: none !important;
+                  visibility: hidden !important;
+                  opacity: 0 !important;
+                  position: absolute !important;
+                  left: -9999px !important;
+                  top: -9999px !important;
+                  width: 0 !important;
+                  height: 0 !important;
+                  overflow: hidden !important;
+                  clip: rect(0, 0, 0, 0) !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  border: 0 !important;
+                  pointer-events: none !important;
+                }
   }
 `;
 
@@ -315,6 +499,60 @@ function removeDuplicateOrders(orders: any[]): any[] {
   return cleanedOrders;
 }
 
+// 주소를 발주명 형식으로 변환하는 함수
+function convertAddressToPurchaseOrderName(address: string): string {
+  if (!address || address.trim() === '') {
+    return '';
+  }
+
+  const cleanAddress = address.trim();
+  
+  // 아파트 패턴: "아파트명-동호수" 또는 "아파트명 동호수"
+  const apartmentPattern = /([가-힣a-zA-Z0-9\s]+아파트)\s*[-]?\s*(\d+동\s*\d+호)/;
+  const apartmentMatch = cleanAddress.match(apartmentPattern);
+  if (apartmentMatch) {
+    return `${apartmentMatch[1].trim()}-${apartmentMatch[2].trim()}`;
+  }
+
+  // 오피스텔 패턴: "오피스텔명-호수" 또는 "오피스텔명 호수"
+  const officetelPattern = /([가-힣a-zA-Z0-9\s]+오피스텔)\s*[-]?\s*(\d+호)/;
+  const officetelMatch = cleanAddress.match(officetelPattern);
+  if (officetelMatch) {
+    return `${officetelMatch[1].trim()}-${officetelMatch[2].trim()}`;
+  }
+
+  // 빌라 패턴: "빌라명-호수" 또는 "빌라명 호수"
+  const villaPattern = /([가-힣a-zA-Z0-9\s]+빌라)\s*[-]?\s*(\d+호)/;
+  const villaMatch = cleanAddress.match(villaPattern);
+  if (villaMatch) {
+    return `${villaMatch[1].trim()}-${villaMatch[2].trim()}`;
+  }
+
+  // 빌딩 패턴: "빌딩명-호수" 또는 "빌딩명 호수"
+  const buildingPattern = /([가-힣a-zA-Z0-9\s]+빌딩)\s*[-]?\s*(\d+호)/;
+  const buildingMatch = cleanAddress.match(buildingPattern);
+  if (buildingMatch) {
+    return `${buildingMatch[1].trim()}-${buildingMatch[2].trim()}`;
+  }
+
+  // 동-번지 패턴: "동명-번지수"
+  const dongPattern = /(\d+동)\s*[-]?\s*(\d+번지)/;
+  const dongMatch = cleanAddress.match(dongPattern);
+  if (dongMatch) {
+    return `${dongMatch[1].trim()}-${dongMatch[2].trim()}`;
+  }
+
+  // 일반적인 주소에서 건물명과 호수 추출
+  const generalPattern = /([가-힣a-zA-Z0-9\s]+)\s*[-]?\s*(\d+호)/;
+  const generalMatch = cleanAddress.match(generalPattern);
+  if (generalMatch) {
+    return `${generalMatch[1].trim()}-${generalMatch[2].trim()}`;
+  }
+
+  // 패턴에 맞지 않는 경우 원본 주소 반환 (최대 20자로 제한)
+  return cleanAddress.length > 20 ? cleanAddress.substring(0, 20) + '...' : cleanAddress;
+}
+
 const useOrderStore = create<OrderStore>(set => ({
   orders: [
     {
@@ -448,7 +686,6 @@ const SPACE_COLORS: { [space: string]: string } = {
   '': '#1a1a2a', // 기본 어두운 라벤더색
 };
 const SPACE_COLOR_LIST = Object.values(SPACE_COLORS);
-
 // 계약목록 모달 컴포넌트
 const ContractListModal: React.FC<{
   open: boolean;
@@ -687,6 +924,19 @@ const OrderManagement: React.FC = () => {
     discountedAmount: true,
     actions: true
   });
+
+  // 모바일용 저장된 주문서 목록 표시항목 (주소, 연락처, 시공일자, 할인후금액, 액션만)
+  const mobileSavedOrderColumnVisibility = {
+    address: true,
+    customerName: false,
+    contact: true,
+    estimateNo: false,
+    estimateDate: false,
+    installationDate: true,
+    totalAmount: false,
+    discountedAmount: true,
+    actions: true
+  };
   const [savedOrderColumnSettingsOpen, setSavedOrderColumnSettingsOpen] = useState(false);
 
   // 시공기사 관련 상태
@@ -725,6 +975,23 @@ const OrderManagement: React.FC = () => {
   const [asPrintMenuAnchorEl, setAsPrintMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [asPrintMenuOpen, setAsPrintMenuOpen] = useState(false);
   const [selectedASRequestForPrint, setSelectedASRequestForPrint] = useState<ASRequest | null>(null);
+
+  // 발주서 출력 메뉴 관련 상태
+  const [printMenuAnchorEl, setPrintMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [printMenuOpen, setPrintMenuOpen] = useState(false);
+  const [selectedVendorForPrint, setSelectedVendorForPrint] = useState<string>('');
+  const [purchaseOrderPrintModalOpen, setPurchaseOrderPrintModalOpen] = useState(false);
+  const [editablePurchaseOrderModalOpen, setEditablePurchaseOrderModalOpen] = useState(false);
+  const [editablePurchaseOrderData, setEditablePurchaseOrderData] = useState<any[]>([]);
+  const [editablePurchaseOrderVendor, setEditablePurchaseOrderVendor] = useState<string>('');
+  
+  // 발주서 납품 관련 상태
+  const [deliveryMethod, setDeliveryMethod] = useState<string>('직접배송');
+  const [deliveryDate, setDeliveryDate] = useState<string>(getLocalDate());
+  const [additionalNotes, setAdditionalNotes] = useState<string>('');
+  
+  // 발주서 기본 정보 상태
+  const [purchaseOrderName, setPurchaseOrderName] = useState<string>('');
 
   // 수금내역 관련 상태
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -907,6 +1174,25 @@ const OrderManagement: React.FC = () => {
     }
   };
 
+  // 우리회사정보 데이터 로드
+  const loadCompanyInfo = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/companyInfo`);
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setCompanyInfoList(data);
+          // 첫 번째 회사정보를 기본값으로 설정
+          if (!selectedCompanyInfo) {
+            setSelectedCompanyInfo(data[0]);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('우리회사정보 로드 실패:', error);
+    }
+  };
+
   // 저장된 주문서 불러오기
   useEffect(() => {
     const loadSavedOrders = () => {
@@ -923,6 +1209,7 @@ const OrderManagement: React.FC = () => {
     };
 
     loadSavedOrders();
+    loadCompanyInfo(); // 우리회사정보 로드
   }, []);
 
   // 주문서 검색 필터링
@@ -1096,7 +1383,6 @@ const OrderManagement: React.FC = () => {
       setDiscountAmount('');
       setDiscountRate('');
       setDiscountedTotalInput('');
-      setShowDiscount(false);
       
       // 발주서 초기화 (계약서 불러오기 시)
       setVendorPurchaseOrders(prev => ({
@@ -1130,7 +1416,6 @@ const OrderManagement: React.FC = () => {
         setDiscountAmount('');
         setDiscountRate('');
         setDiscountedTotalInput('');
-        setShowDiscount(false);
       }
     }
   };
@@ -1168,28 +1453,33 @@ const OrderManagement: React.FC = () => {
   const [modalDeliveryCompany, setModalDeliveryCompany] = useState<string>('');
   const [modalDeliveryContact, setModalDeliveryContact] = useState<string>('');
   const [modalDeliveryAddress, setModalDeliveryAddress] = useState<string>('');
-  const [showDiscount, setShowDiscount] = useState(false);
+  
+  // 우리회사정보 관련 상태
+  const [companyInfoList, setCompanyInfoList] = useState<any[]>([]);
+  const [selectedCompanyInfo, setSelectedCompanyInfo] = useState<any>(null);
+  const [companyInfoModalOpen, setCompanyInfoModalOpen] = useState(false);
+  
+
   const [showMarginSum, setShowMarginSum] = useState(false);
   const [discountAmount, setDiscountAmount] = useState('');
   const [discountRate, setDiscountRate] = useState('');
   const [discountedTotalInput, setDiscountedTotalInput] = useState('');
   const [columnVisibility, setColumnVisibility] = useState({
     vendor: true,
-    brand: true,
+    brand: false,
     space: true,
     productCode: true,
-    productType: true,
+    productType: false,
     productName: true,
-    width: true,
+    width: false,
     details: true,
-    productionContent: false, // 제작내용 컬럼 (기본값: 숨김)
     widthMM: true,
     heightMM: true,
     area: true,
-    lineDir: true,
-    lineLen: true,
-    pleatAmount: true,
-    widthCount: true,
+    lineDir: false,
+    lineLen: false,
+    pleatAmount: false,
+    widthCount: false,
     quantity: true,
     totalPrice: true,
     salePrice: true,
@@ -1222,7 +1512,6 @@ const OrderManagement: React.FC = () => {
     rowIndex: number;
     row: any;
   } | null>(null);
-
   // 제품 정보 수정 모달 상태
   const [editOpen, setEditOpen] = useState(false);
   const [editRowIdx, setEditRowIdx] = useState<number | null>(null);
@@ -1235,6 +1524,90 @@ const OrderManagement: React.FC = () => {
   const spaceOptions = [
     '거실', '안방', '중간방', '중간방2', '끝방', '주방', '드레스룸', '직접입력'
   ];
+
+  // 제품 이동 함수들
+  const moveProductUp = (productIndex: number) => {
+    const currentRows = orders[activeTab]?.rows || [];
+    const productRows = currentRows.filter(row => row.type === 'product');
+    
+    if (productIndex <= 0 || productIndex >= productRows.length) return;
+    
+    // 제품 행들의 인덱스를 찾기
+    const productIndices = currentRows
+      .map((row, index) => row.type === 'product' ? index : -1)
+      .filter(index => index !== -1);
+    
+    const currentProductIndex = productIndices[productIndex];
+    const previousProductIndex = productIndices[productIndex - 1];
+    
+    if (currentProductIndex === undefined || previousProductIndex === undefined) return;
+    
+    // 현재 제품과 이전 제품 사이의 모든 행(옵션 포함)을 함께 이동
+    const nextProductIndex = productIndices[productIndex + 1] || currentRows.length;
+    const previousProductStartIndex = productIndices[productIndex - 2] !== undefined ? productIndices[productIndex - 2] + 1 : 0;
+    
+    const rowsToMove = currentRows.slice(currentProductIndex, nextProductIndex);
+    const remainingRows = [
+      ...currentRows.slice(0, currentProductIndex),
+      ...currentRows.slice(nextProductIndex)
+    ];
+    
+    const newRows = [
+      ...remainingRows.slice(0, previousProductStartIndex),
+      ...rowsToMove,
+      ...remainingRows.slice(previousProductStartIndex)
+    ];
+    
+    const updatedOrders = [...orders];
+    updatedOrders[activeTab].rows = newRows;
+    setOrders(updatedOrders);
+  };
+
+  const moveProductDown = (productIndex: number) => {
+    const currentRows = orders[activeTab]?.rows || [];
+    const productRows = currentRows.filter(row => row.type === 'product');
+    
+    if (productIndex < 0 || productIndex >= productRows.length - 1) return;
+    
+    // 제품 행들의 인덱스를 찾기
+    const productIndices = currentRows
+      .map((row, index) => row.type === 'product' ? index : -1)
+      .filter(index => index !== -1);
+    
+    const currentProductIndex = productIndices[productIndex];
+    const nextProductIndex = productIndices[productIndex + 1];
+    
+    if (currentProductIndex === undefined || nextProductIndex === undefined) return;
+    
+    // 다음 제품과 그 옵션들의 끝 인덱스 찾기
+    const nextNextProductIndex = productIndices[productIndex + 2] || currentRows.length;
+    
+    // 현재 제품과 그 옵션들을 추출
+    const currentProductWithOptions = currentRows.slice(currentProductIndex, nextProductIndex);
+    
+    // 다음 제품과 그 옵션들을 추출
+    const nextProductWithOptions = currentRows.slice(nextProductIndex, nextNextProductIndex);
+    
+    // 새로운 배열 구성
+    const newRows = [
+      ...currentRows.slice(0, currentProductIndex),
+      ...nextProductWithOptions,
+      ...currentProductWithOptions,
+      ...currentRows.slice(nextNextProductIndex)
+    ];
+    
+    const updatedOrders = [...orders];
+    updatedOrders[activeTab].rows = newRows;
+    setOrders(updatedOrders);
+  };
+
+  // 제품 번호 가져오기 함수
+  const getProductNumber = (row: any) => {
+    const currentRows = orders[activeTab]?.rows || [];
+    const productRows = currentRows.filter(r => r.type === 'product');
+    const productIndex = productRows.findIndex(r => r.id === row.id);
+    return productIndex >= 0 ? productIndex + 1 : null;
+  };
 
   // 폭수 계산 함수
   const getPleatCount = (
@@ -1319,86 +1692,37 @@ const OrderManagement: React.FC = () => {
     return calculatedPleatAmount.toFixed(2);
   };
 
-  // 제작내용 계산 함수
-  const calculateProductionContent = (row: any): string => {
-    if (!row) return '';
 
-    // 블라인드 제품인 경우: 연결된 옵션들의 세부내용을 연결
-    if (row.productType === '블라인드') {
-      const currentOrder = orders[activeTab];
-      if (!currentOrder?.rows) return '';
 
-      // 현재 제품 다음부터 다음 제품 전까지의 옵션들을 찾기
-      const currentIndex = currentOrder.rows.findIndex(r => r.id === row.id);
-      if (currentIndex === -1) return '';
 
-      const optionDetails: string[] = [];
-      let i = currentIndex + 1;
-      
-      // 다음 제품을 만날 때까지 옵션들의 세부내용 수집
-      while (i < currentOrder.rows.length && currentOrder.rows[i].type === 'option') {
-        if (currentOrder.rows[i].details) {
-          optionDetails.push(currentOrder.rows[i].details);
-        }
-        i++;
-      }
 
-      return optionDetails.join(' + ');
-    }
+  // 발주서용 세부내용 정리 함수
+  const cleanDetailsForPurchaseOrder = (details: string, item: any): string => {
+    if (!details) return '';
 
-    // 커튼 제품인 경우
-    if (row.curtainType === '속커튼' || row.curtainType === '겉커튼') {
-      const widthMM = row.widthMM || 0;
-      const heightMM = row.heightMM || 0;
-      const pleatType = row.pleatType || '';
-      
-      if (widthMM <= 0 || heightMM <= 0) return '';
+    let cleanedDetails = details;
 
-      // 커튼전동 옵션 확인
-      const hasCurtainMotor = checkCurtainMotorOption(row);
-      const heightAdjustment = hasCurtainMotor ? 45 : 30;
-      const adjustedHeight = heightMM - heightAdjustment;
+    // 면적 정보 제거 (예: "면적: 12.34㎡")
+    cleanedDetails = cleanedDetails.replace(/면적:\s*\d+\.?\d*\s*㎡\s*,?\s*/g, '');
 
-      if (row.curtainType === '속커튼') {
-        if (pleatType === '민자') {
-          const areaMM = (widthMM * heightMM) / 1000000; // m² 단위
-          return `${areaMM.toFixed(2)}㎡ * ${adjustedHeight}mm`;
-        } else if (pleatType === '나비') {
-          return `${widthMM}mm * ${adjustedHeight}mm`;
-        }
-      } else if (row.curtainType === '겉커튼') {
-        if (pleatType === '민자') {
-          return `제작높이 : ${adjustedHeight}mm`;
-        } else if (pleatType === '나비') {
-          return `${widthMM}mm * ${adjustedHeight}mm`;
-        }
-      }
-    }
+    // 커튼종류 정보 제거 (예: "커튼종류: 속커튼", "커튼종류: 겉커튼")
+    cleanedDetails = cleanedDetails.replace(/커튼종류:\s*[^,]+/g, '');
 
-    return '';
-  };
+    // 주름배수 정보 제거 (예: "주름배수: 2배", "주름배수: 1.5배")
+    cleanedDetails = cleanedDetails.replace(/주름배수:\s*[^,]+/g, '');
 
-  // 커튼전동 옵션 확인 함수
-  const checkCurtainMotorOption = (row: any): boolean => {
-    if (!row || row.productType === '블라인드') return false;
+    // 제품등록시점의 세부내용 관련 정보 제거
+    // 브랜드, 제품코드 등 제품 기본 정보 제거
+    cleanedDetails = cleanedDetails.replace(/브랜드:\s*[^,]+/g, '');
+    cleanedDetails = cleanedDetails.replace(/제품코드:\s*[^,]+/g, '');
 
-    const currentOrder = orders[activeTab];
-    if (!currentOrder?.rows) return false;
+    // 쉼표와 공백 정리
+    cleanedDetails = cleanedDetails.replace(/,\s*,/g, ','); // 연속된 쉼표 제거
+    cleanedDetails = cleanedDetails.replace(/^\s*,\s*/, ''); // 시작 부분 쉼표 제거
+    cleanedDetails = cleanedDetails.replace(/\s*,\s*$/, ''); // 끝 부분 쉼표 제거
+    cleanedDetails = cleanedDetails.trim();
 
-    const currentIndex = currentOrder.rows.findIndex(r => r.id === row.id);
-    if (currentIndex === -1) return false;
-
-    // 현재 제품 다음부터 다음 제품 전까지의 옵션들을 확인
-    let i = currentIndex + 1;
-    while (i < currentOrder.rows.length && currentOrder.rows[i].type === 'option') {
-      const optionName = currentOrder.rows[i].productName || '';
-      if (optionName.includes('전동') || optionName.includes('모터') || optionName.includes('커튼전동')) {
-        return true;
-      }
-      i++;
-    }
-
-    return false;
+    return cleanedDetails;
   };
 
   // 할인 관련 계산
@@ -1412,10 +1736,7 @@ const OrderManagement: React.FC = () => {
     ? Math.round((originalSumMargin * discountedTotal) / sumTotalPrice)
     : originalSumMargin;
 
-  // 할인 토글 핸들러
-  const handleToggleDiscount = () => {
-    setShowDiscount(!showDiscount);
-  };
+
 
   // 마진 합계 토글 핸들러
   const handleToggleMarginSum = () => {
@@ -1472,10 +1793,10 @@ const OrderManagement: React.FC = () => {
 
   // 소비자금액이 변경될 때 할인율 기준으로 자동 계산
   useEffect(() => {
-    if (showDiscount && discountRate) {
+    if (discountRate) {
       calculateDiscountFromRate();
     }
-  }, [sumTotalPrice, discountRate, showDiscount]);
+  }, [sumTotalPrice, discountRate]);
 
   // 저장된 주문서 목록 표시항목 토글 핸들러
   const handleSavedOrderColumnToggle = (field: string) => {
@@ -1512,21 +1833,20 @@ const OrderManagement: React.FC = () => {
   const handleFilterReset = () => {
     setColumnVisibility({
       vendor: true,
-      brand: true,
+      brand: false,
       space: true,
       productCode: true,
-      productType: true,
+      productType: false,
       productName: true,
-      width: true,
+      width: false,
       details: true,
-      productionContent: false, // 제작내용 컬럼 (기본값: 숨김)
       widthMM: true,
       heightMM: true,
       area: true,
-      lineDir: true,
-      lineLen: true,
-      pleatAmount: true,
-      widthCount: true,
+      lineDir: false,
+      lineLen: false,
+      pleatAmount: false,
+      widthCount: false,
       quantity: true,
       totalPrice: true,
       salePrice: true,
@@ -1718,7 +2038,6 @@ const OrderManagement: React.FC = () => {
       setDiscountAmount('');
       setDiscountRate('');
       setDiscountedTotalInput('');
-      setShowDiscount(false);
     }
     
     setSnackbarMessage(`${selectedOrderRows.size}개의 제품행이 삭제되었습니다.`);
@@ -1985,12 +2304,11 @@ const OrderManagement: React.FC = () => {
     };
     setOrders(updatedOrders);
     
-    // 행 삭제 후 모든 제품의 제작내용과 세부내용 자동 업데이트
+    // 행 삭제 후 모든 제품의 세부내용 자동 업데이트
     const updatedRowsWithContent = updatedRows.map((row) => {
       if (row.type === 'product') {
         return {
           ...row,
-          productionContent: calculateProductionContent(row),
           details: updateDetailsInRealTime(row)
         };
       }
@@ -2009,13 +2327,11 @@ const OrderManagement: React.FC = () => {
       setDiscountAmount('');
       setDiscountRate('');
       setDiscountedTotalInput('');
-      setShowDiscount(false);
     }
     
     setSnackbarMessage(`${rowIndex + 1}번 행이 삭제되었습니다.`);
     setSnackbarOpen(true);
   };
-
   // 제품검색 모달이 열릴 때 초기 검색 실행
   useEffect(() => {
     if (productDialogOpen) {
@@ -2555,22 +2871,19 @@ const OrderManagement: React.FC = () => {
     updatedOrders[activeTab].rows = updatedRows;
     setOrders(updatedOrders);
     
-    // 옵션 추가 후 관련 제품들의 제작내용과 세부내용 자동 업데이트
-    if (selectedRowIndex !== null) {
-      const updatedRowsWithContent = updatedRows.map((row, index) => {
-        if (row.type === 'product') {
-          return {
-            ...row,
-            productionContent: calculateProductionContent(row),
-            details: updateDetailsInRealTime(row)
-          };
-        }
-        return row;
-      });
-      
-      updatedOrders[activeTab].rows = updatedRowsWithContent;
-      setOrders(updatedOrders);
-    }
+    // 옵션 추가 후 관련 제품들의 세부내용 자동 업데이트
+    const updatedRowsWithContent = updatedRows.map((row, index) => {
+      if (row.type === 'product') {
+        return {
+          ...row,
+          details: updateDetailsInRealTime(row)
+        };
+      }
+      return row;
+    });
+    
+    updatedOrders[activeTab].rows = updatedRowsWithContent;
+    setOrders(updatedOrders);
     
     setSnackbarMessage(`${option.optionName} 옵션이 추가되었습니다.`);
     setSnackbarOpen(true);
@@ -2760,7 +3073,6 @@ const OrderManagement: React.FC = () => {
   const handleOutputClose = () => {
     setOutputAnchorEl(null);
   };
-
   // 출력 옵션 처리
   const handleOutputOption = async (option: string) => {
     handleOutputClose();
@@ -2888,7 +3200,6 @@ const OrderManagement: React.FC = () => {
         setDiscountAmount('');
         setDiscountRate('');
         setDiscountedTotalInput('');
-        setShowDiscount(false);
       }
 
       // 저장할 주문서 데이터 준비
@@ -2901,7 +3212,6 @@ const OrderManagement: React.FC = () => {
         discountAmount: discountAmount,
         discountRate: discountRate,
         discountedTotalInput: discountedTotalInput,
-        showDiscount: showDiscount,
         // 할인후금액 계산하여 저장
         discountedAmount: discountAmountNumber > 0 ? discountedTotal : sumTotalPrice,
                 // 발주서 저장
@@ -2954,7 +3264,6 @@ const OrderManagement: React.FC = () => {
         setDiscountAmount('');
         setDiscountRate('');
         setDiscountedTotalInput('');
-        setShowDiscount(false);
       }
 
       // 새 주문서 번호 생성
@@ -2972,7 +3281,6 @@ const OrderManagement: React.FC = () => {
         discountAmount: discountAmount,
         discountRate: discountRate,
         discountedTotalInput: discountedTotalInput,
-        showDiscount: showDiscount,
         // 할인후금액 계산하여 저장
         discountedAmount: discountAmountNumber > 0 ? discountedTotal : sumTotalPrice,
         // 발주서 저장
@@ -3068,25 +3376,171 @@ const OrderManagement: React.FC = () => {
   };
 
   // 발주서 출력
-  const handlePrintPurchaseOrder = (type: 'print' | 'jpg' | 'pdf' | 'kakao') => {
-    // 발주서 출력 로직 구현
-    console.log('발주서 출력:', { 
-      type, 
-      vendor: selectedVendor, 
-      items: purchaseOrderItems,
-      purchaseOrderDate: purchaseOrderDate,
-      purchaseOrderMemo: purchaseOrderMemo
-    });
-    
+  const handlePrintPurchaseOrder = (type: 'print' | 'jpg' | 'pdf' | 'kakao', vendor?: string) => {
+    const selectedVendor = vendor || selectedVendorForPrint;
+    if (!selectedVendor) {
+      setSnackbarMessage('출력할 거래처가 선택되지 않았습니다.');
+      setSnackbarOpen(true);
+      return;
+    }
     if (type === 'print') {
-      window.print();
+      // 모바일과 데스크톱 모두에서 동일한 프린트 동작
+      if (navigator.userAgent.match(/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i)) {
+        // 모바일에서 프린트
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+          const element = document.querySelector('.purchase-order-a4-container');
+          if (element) {
+            printWindow.document.write(`
+              <!DOCTYPE html>
+              <html>
+                <head>
+                  <title>발주서</title>
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <style>
+                    @media print {
+                      @page {
+                        size: A4;
+                        margin: 2mm;
+                      }
+                      body {
+                        margin: 0;
+                        padding: 0;
+                      }
+                    }
+                    .print-content {
+                      width: 100%;
+                      max-width: 210mm;
+                      margin: 0 auto;
+                      padding: 2mm;
+                      background: white;
+                    }
+                  </style>
+                </head>
+                <body>
+                  <div class="print-content">
+                    ${element.outerHTML}
+                  </div>
+                </body>
+              </html>
+            `);
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => {
+              printWindow.print();
+              printWindow.close();
+            }, 500);
+          }
+        }
+      } else {
+        // 데스크톱에서 프린트
+        window.print();
+      }
     } else if (type === 'jpg' || type === 'pdf') {
-      // JPG/PDF 생성 로직
-      const fileName = `${selectedVendor}_${purchaseOrderDate}_${orders[activeTab]?.address || '주소'}.${type}`;
-      console.log('파일명:', fileName);
+      const element = document.querySelector('.purchase-order-a4-container');
+      if (element) {
+        // 모바일과 데스크톱 모두에서 동일한 캔버스 생성
+        const options = {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          width: 794, // A4 width in pixels at 96 DPI
+          height: 1123, // A4 height in pixels at 96 DPI
+          scrollX: 0,
+          scrollY: 0,
+          logging: false,
+          removeContainer: true
+        };
+
+        // html2canvas 라이브러리 사용
+        if (typeof html2canvas !== 'undefined') {
+          html2canvas(element as HTMLElement, options).then((canvas) => {
+            if (type === 'jpg') {
+              // JPG 다운로드
+              canvas.toBlob((blob) => {
+                if (blob) {
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.download = `발주서_${selectedVendor}_${getLocalDate()}.jpg`;
+                  link.href = url;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  URL.revokeObjectURL(url);
+                }
+              }, 'image/jpeg', 0.9);
+            } else if (type === 'pdf') {
+              // PDF 생성
+              if (typeof jsPDF !== 'undefined') {
+                const imgData = canvas.toDataURL('image/jpeg', 0.9);
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const imgWidth = 210;
+                const pageHeight = 295;
+                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                let heightLeft = imgHeight;
+                let position = 0;
+
+                pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+
+                while (heightLeft >= 0) {
+                  position = heightLeft - imgHeight;
+                  pdf.addPage();
+                  pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+                  heightLeft -= pageHeight;
+                }
+
+                pdf.save(`발주서_${selectedVendor}_${getLocalDate()}.pdf`);
+              } else {
+                alert('PDF 생성 라이브러리가 로드되지 않았습니다.');
+              }
+            }
+          }).catch((error) => {
+            console.error('Canvas generation error:', error);
+            alert('이미지 생성 중 오류가 발생했습니다. 다시 시도해주세요.');
+          });
+        } else {
+          alert('이미지 생성 라이브러리가 로드되지 않았습니다.');
+        }
+      }
     } else if (type === 'kakao') {
       // 카카오톡 공유 로직
-      console.log('카카오톡 공유');
+      const element = document.querySelector('.purchase-order-a4-container');
+      if (element && typeof html2canvas !== 'undefined') {
+        html2canvas(element as HTMLElement, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff'
+        }).then((canvas) => {
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const url = URL.createObjectURL(blob);
+              // 카카오톡 공유 API 호출
+              if ((window as any).Kakao && (window as any).Kakao.isInitialized()) {
+                (window as any).Kakao.Link.sendDefault({
+                  objectType: 'feed',
+                  content: {
+                    title: `${selectedVendor} 발주서`,
+                    description: `발주일: ${purchaseOrderDate}`,
+                    imageUrl: url,
+                  },
+                  buttons: [
+                    {
+                      title: '자세히 보기',
+                      link: {
+                        mobileWebUrl: window.location.href,
+                        webUrl: window.location.href,
+                      },
+                    },
+                  ],
+                });
+              }
+            }
+          }, 'image/jpeg', 0.9);
+        });
+      }
     }
   };
 
@@ -3099,6 +3553,29 @@ const OrderManagement: React.FC = () => {
         [field]: value
       }
     }));
+    
+    // 납품정보 변경 시 자동 저장
+    const currentOrder = orders[activeTab];
+    if (currentOrder) {
+      const updatedOrder = {
+        ...currentOrder,
+        deliveryInfo: {
+          ...currentOrder.deliveryInfo,
+          [vendor]: {
+            ...(currentOrder.deliveryInfo?.[vendor] || {}),
+            [field]: value
+          }
+        }
+      };
+      
+      const updatedOrders = [...orders];
+      updatedOrders[activeTab] = updatedOrder;
+      setOrders(updatedOrders);
+      
+      // 성공 메시지 표시
+      setSnackbarMessage(`${vendor} 거래처의 납품정보가 업데이트되었습니다.`);
+      setSnackbarOpen(true);
+    }
   };
 
   // 거래처별 납품 정보 가져오기
@@ -3177,7 +3654,6 @@ const OrderManagement: React.FC = () => {
       setDiscountAmount('');
       setDiscountRate('');
       setDiscountedTotalInput('');
-      setShowDiscount(false);
       
       // 저장된 주문서의 할인 설정 불러오기
       if (savedOrder.discountAmount !== undefined) {
@@ -3189,9 +3665,7 @@ const OrderManagement: React.FC = () => {
       if (savedOrder.discountedTotalInput !== undefined) {
         setDiscountedTotalInput(savedOrder.discountedTotalInput || '');
       }
-      if (savedOrder.showDiscount !== undefined) {
-        setShowDiscount(savedOrder.showDiscount || false);
-      }
+
       
       // 저장된 주문서의 발주서 불러오기 (발주서가 없으면 빈 배열로 설정)
       setVendorPurchaseOrders(prev => ({
@@ -3362,6 +3836,104 @@ const OrderManagement: React.FC = () => {
     setSelectedASRequestForPrint(null);
   };
 
+  // 발주서 출력 메뉴 관련 함수들
+  const handlePrintMenuClose = () => {
+    setPrintMenuAnchorEl(null);
+    setPrintMenuOpen(false);
+    setSelectedVendorForPrint('');
+  };
+
+  // 거래처명 변경 감지
+  useEffect(() => {
+    console.log('선택된 거래처명이 변경됨:', selectedVendorForPrint);
+    if (selectedVendorForPrint) {
+      console.log('거래처명이 설정됨:', selectedVendorForPrint);
+    } else {
+      console.log('거래처명이 비어있음');
+    }
+  }, [selectedVendorForPrint]);
+
+  const handlePrintMenuOption = (type: 'print' | 'jpg' | 'pdf' | 'kakao') => {
+    console.log('프린트 메뉴 옵션 선택:', type, '거래처:', selectedVendorForPrint);
+    if (selectedVendorForPrint) {
+      if (type === 'print') {
+        console.log('발주서 미리보기 모달을 열기 전 거래처명:', selectedVendorForPrint);
+        setPurchaseOrderPrintModalOpen(true);
+      } else {
+        handlePrintPurchaseOrder(type);
+      }
+    } else {
+      console.error('선택된 거래처가 없습니다.');
+    }
+    handlePrintMenuClose();
+  };
+
+  // 수정 가능한 발주서 테이블 관련 함수들
+  const handleEditablePurchaseOrderClose = () => {
+    setEditablePurchaseOrderModalOpen(false);
+    setEditablePurchaseOrderData([]);
+    setEditablePurchaseOrderVendor('');
+  };
+
+  const handleEditablePurchaseOrderSave = () => {
+    // 수정된 데이터를 원본 발주서에 반영
+    const currentOrderId = orders[activeTab]?.id;
+    if (currentOrderId && editablePurchaseOrderVendor) {
+      setVendorPurchaseOrders(prev => ({
+        ...prev,
+        [currentOrderId]: prev[currentOrderId].map(order => 
+          order.vendor === editablePurchaseOrderVendor 
+            ? { ...order, items: editablePurchaseOrderData }
+            : order
+        )
+      }));
+      
+      setSnackbarMessage(`${editablePurchaseOrderVendor} 거래처의 발주서가 수정되었습니다.`);
+      setSnackbarOpen(true);
+      handleEditablePurchaseOrderClose();
+    }
+  };
+
+  const handleEditablePurchaseOrderRowChange = (rowIndex: number, field: string, value: any) => {
+    setEditablePurchaseOrderData(prev => 
+      prev.map((row, index) => 
+        index === rowIndex 
+          ? { ...row, [field]: value }
+          : row
+      )
+    );
+  };
+
+  const handleEditablePurchaseOrderAddRow = () => {
+    const newRow = {
+      id: `new-${Date.now()}`,
+      productName: '',
+      productType: '',
+      vendor: editablePurchaseOrderVendor,
+      brand: '',
+      space: '',
+      widthMM: 0,
+      heightMM: 0,
+      area: 0,
+      quantity: 1,
+      unitPrice: 0,
+      totalPrice: 0,
+      details: '',
+      productionDetails: '',
+      notes: '',
+      productCode: '',
+      spaceCustom: '',
+      productionWidth: 0,
+      productionHeight: 0,
+      widthCount: 0,
+      note: ''
+    };
+    setEditablePurchaseOrderData(prev => [...prev, newRow]);
+  };
+
+  const handleEditablePurchaseOrderDeleteRow = (rowIndex: number) => {
+    setEditablePurchaseOrderData(prev => prev.filter((_, index) => index !== rowIndex));
+  };
   // AS접수 출력 실행
   const handleASPrint = async (type: 'print' | 'jpg' | 'pdf' | 'kakao', specificRequest?: ASRequest) => {
     try {
@@ -3440,10 +4012,10 @@ const OrderManagement: React.FC = () => {
                     .header {
                       background: #2c3e50;
                       color: white;
-                      padding: 8mm 5mm;
+                      padding: 4mm 3mm;
                       text-align: center;
                       border-bottom: 1mm solid #34495e;
-                      margin-bottom: 5mm;
+                      margin-bottom: 2mm;
                     }
                     
                     .header h1 {
@@ -3463,7 +4035,7 @@ const OrderManagement: React.FC = () => {
                     }
                     
                     .section {
-                      margin-bottom: 4mm;
+                      margin-bottom: 2mm;
                       page-break-inside: avoid;
                     }
                     
@@ -3471,7 +4043,7 @@ const OrderManagement: React.FC = () => {
                       font-size: 12pt;
                       font-weight: 500;
                       color: #2c3e50;
-                      margin-bottom: 3mm;
+                      margin-bottom: 2mm;
                       padding-bottom: 2mm;
                       border-bottom: 0.5mm solid #ecf0f1;
                     }
@@ -3479,14 +4051,14 @@ const OrderManagement: React.FC = () => {
                     .info-grid {
                       display: grid;
                       grid-template-columns: 1fr 1fr;
-                      gap: 4mm;
-                      margin-bottom: 4mm;
+                      gap: 2mm;
+                      margin-bottom: 2mm;
                     }
                     
                     .info-box {
                       background: #f8f9fa;
                       border: 0.5mm solid #e9ecef;
-                      padding: 4mm;
+                      padding: 3mm;
                     }
                     
                     .info-item {
@@ -3505,8 +4077,8 @@ const OrderManagement: React.FC = () => {
                     .product-info {
                       background: white;
                       border: 0.5mm solid #e9ecef;
-                      padding: 4mm;
-                      margin-bottom: 3mm;
+                      padding: 3mm;
+                      margin-bottom: 2mm;
                       page-break-inside: avoid;
                     }
                     
@@ -3514,16 +4086,16 @@ const OrderManagement: React.FC = () => {
                       font-size: 10pt;
                       font-weight: 500;
                       color: #2c3e50;
-                      margin-bottom: 3mm;
+                      margin-bottom: 2mm;
                       padding-bottom: 2mm;
                       border-bottom: 0.5mm solid #ecf0f1;
                     }
                     
                     .date-info {
                       background: #ecf0f1;
-                      padding: 3mm 4mm;
+                      padding: 2mm 3mm;
                       border-left: 2mm solid #2c3e50;
-                      margin-bottom: 4mm;
+                      margin-bottom: 2mm;
                       font-size: 9pt;
                     }
                     
@@ -3535,8 +4107,8 @@ const OrderManagement: React.FC = () => {
                     .customer-info {
                       background: #f8f9fa;
                       border: 0.5mm solid #e9ecef;
-                      padding: 4mm;
-                      margin-top: 4mm;
+                      padding: 3mm;
+                      margin-top: 2mm;
                       page-break-inside: avoid;
                     }
                     
@@ -4157,7 +4729,6 @@ const OrderManagement: React.FC = () => {
       setSnackbarOpen(true);
     }
   };
-
   // AS상태 편집 저장
   const handleSaveASEdit = () => {
     if (!selectedASRequest) return;
@@ -4385,7 +4956,6 @@ const OrderManagement: React.FC = () => {
           discountAmount: order.discountAmount || '',
           discountRate: order.discountRate || '',
           discountedTotalInput: order.discountedTotalInput || '',
-          showDiscount: order.showDiscount || false,
           // 할인후금액도 복사
           discountedAmount: order.discountedAmount,
           // 발주서도 복사
@@ -4547,56 +5117,27 @@ const OrderManagement: React.FC = () => {
   const updateDetailsInRealTime = (rowData: any) => {
     let baseDetails = '';
     
-    // 커튼 제품의 기본 정보 처리
-    if (rowData.productType === '커튼' && rowData.curtainType && rowData.pleatType) {
-      const curtainType = rowData.curtainType;
-      const pleatType = rowData.pleatType;
-      
-      // 기존 세부내용에서 커튼종류/주름방식 정보 제거
-      let currentDetails = rowData.details || '';
-      currentDetails = currentDetails.replace(/커튼종류:\s*[^,]+/, '').replace(/주름방식:\s*[^,]+/, '');
-      currentDetails = currentDetails.replace(/[^,]*주름/, ''); // 주름 관련 정보 제거
-      currentDetails = currentDetails.replace(/겉커튼|속커튼/g, ''); // 커튼종류 정보 제거
-      // 기존 폭수와 주름양 정보도 제거 (중복 방지)
-      currentDetails = currentDetails.replace(/[0-9]+폭/g, ''); // 숫자+폭 패턴 제거
-      currentDetails = currentDetails.replace(/[0-9.~]+배/g, ''); // 숫자+배 패턴 제거 (1.8~2배 같은 형태 포함)
-      currentDetails = currentDetails.replace(/배/g, ''); // 단독 "배" 제거
-      currentDetails = currentDetails.replace(/[0-9]+\.[0-9]+/g, ''); // 숫자.숫자 형태 제거 (1.3, 1.6 등)
-      // 연달아 있는 콤마 정리
-      currentDetails = currentDetails.replace(/,\s*,/g, ','); // 연달아 있는 콤마를 하나로
-      currentDetails = currentDetails.replace(/,\s*,/g, ','); // 한 번 더 실행하여 3개 이상의 콤마도 처리
-      currentDetails = currentDetails.replace(/^,\s*/, ''); // 앞쪽 콤마 제거
-      currentDetails = currentDetails.replace(/,\s*$/, ''); // 뒤쪽 콤마 제거
-      
-      // 새로운 커튼종류/주름방식 정보 추가
-      let curtainInfo = `${curtainType}, ${pleatType}주름`;
-      
-      // 주름양과 폭수가 유효한 값이면 세부내용에 추가
+    // 커튼 제품의 경우 주름방식과 폭수만 포함
+    if (rowData.productType === '커튼') {
+      const pleatType = rowData.pleatType || '';
       const widthCount = rowData.widthCount;
-      const pleatAmount = rowData.pleatAmount;
+      
+      if (pleatType) {
+        baseDetails = pleatType;
+      }
       
       if (widthCount && widthCount !== 0 && widthCount !== '0' && widthCount !== '') {
-        curtainInfo += `, ${widthCount}폭`;
-      }
-      
-      if (pleatAmount && pleatAmount !== 0 && pleatAmount !== '0' && pleatAmount !== '') {
-        // 속커튼 민자는 pleatMultiplier 값을 사용
-        if (curtainType === '속커튼' && pleatType === '민자') {
-          const pleatMultiplier = rowData.pleatMultiplier;
-          if (pleatMultiplier && pleatMultiplier !== '') {
-            curtainInfo += `, ${pleatMultiplier}`;
-          }
+        if (baseDetails) {
+          baseDetails += `, ${widthCount}폭`;
         } else {
-          curtainInfo += `, ${pleatAmount}배`;
+          baseDetails = `${widthCount}폭`;
         }
       }
-      
-      baseDetails = curtainInfo;
-      if (currentDetails) {
-        baseDetails += `, ${currentDetails}`;
-      }
+    } else if (rowData.productType === '블라인드') {
+      // 블라인드 제품의 경우 기존 세부내용을 사용하지 않음
+      baseDetails = '';
     } else {
-      // 블라인드 제품의 경우 기존 세부내용 사용
+      // 기타 제품의 경우 기존 세부내용 사용
       baseDetails = rowData.details || '';
     }
     
@@ -4633,28 +5174,26 @@ const OrderManagement: React.FC = () => {
       const optionDetailsText = option.details || '';
       
              // 커튼 제품인 경우 커튼옵션만 필터링
-       if (rowData.productType === '커튼' || rowData.curtainType) {
-         if (optionName.includes('커튼옵션')) {
-           if (optionDetailsText) {
-             optionDetails.push(optionDetailsText);
-           }
-         }
-       }
-       // 블라인드 제품인 경우 블라인드옵션만 필터링
-       else if (rowData.productType === '블라인드') {
-         if (optionName.includes('블라인드옵션')) {
-           if (optionDetailsText) {
-             optionDetails.push(optionDetailsText);
-           }
-         }
-       }
-      
+      if (rowData.productType === '커튼' || rowData.curtainType) {
+        if (option.productType === '커튼옵션') {
+          if (optionDetailsText) {
+            optionDetails.push(optionDetailsText);
+          }
+        }
+      }
+      // 블라인드 제품인 경우 블라인드옵션만 필터링
+      else if (rowData.productType === '블라인드') {
+        if (option.productType === '블라인드옵션') {
+          if (optionDetailsText) {
+            optionDetails.push(optionDetailsText);
+          }
+        }
+      }
       i++;
     }
 
     return optionDetails.join(', ');
   };
-
   const handleEditChange = (field: string, value: any) => {
     const newEditRow = { ...editRow, [field]: value };
     let productDataChanged = false;
@@ -4771,6 +5310,13 @@ const OrderManagement: React.FC = () => {
           }
           newEditRow.area = calculatedArea;
         }
+      }
+    }
+
+    // 줄방향과 줄길이 처리 (블라인드 제품)
+    if (field === 'lineDirection' || field === 'lineLength') {
+      if (value === '없음' || value === '') {
+        newEditRow[field] = '';
       }
     }
 
@@ -5114,11 +5660,7 @@ const OrderManagement: React.FC = () => {
       }
     }
 
-    // 제작내용과 세부내용 자동 업데이트 (제품 정보 변경 시)
-    if (['productType', 'curtainType', 'pleatType', 'widthMM', 'heightMM', 'productName', 'productCode'].includes(field)) {
-      newEditRow.productionContent = calculateProductionContent(newEditRow);
-      newEditRow.details = updateDetailsInRealTime(newEditRow);
-    }
+
 
     // 상태 업데이트 (무한 루프 방지)
     setEditRow(newEditRow);
@@ -5132,56 +5674,7 @@ const OrderManagement: React.FC = () => {
     // 1. 다이얼로그의 수정된 정보로 시작
     const updatedRow = { ...editRow };
 
-    // 커튼 제품인 경우 커튼종류와 주름방식 정보를 세부내용에 자동 반영
-    if (updatedRow.productType === '커튼' && updatedRow.curtainType && updatedRow.pleatType) {
-      const curtainType = updatedRow.curtainType;
-      const pleatType = updatedRow.pleatType;
-      
-      // 기존 세부내용에서 커튼종류/주름방식 정보 제거
-      let currentDetails = updatedRow.details || '';
-      currentDetails = currentDetails.replace(/커튼종류:\s*[^,]+/, '').replace(/주름방식:\s*[^,]+/, '');
-      currentDetails = currentDetails.replace(/[^,]*주름/, ''); // 주름 관련 정보 제거
-      currentDetails = currentDetails.replace(/겉커튼|속커튼/g, ''); // 커튼종류 정보 제거
-      // 기존 폭수와 주름양 정보도 제거 (중복 방지)
-      currentDetails = currentDetails.replace(/[0-9]+폭/g, ''); // 숫자+폭 패턴 제거
-      currentDetails = currentDetails.replace(/[0-9.~]+배/g, ''); // 숫자+배 패턴 제거 (1.8~2배 같은 형태 포함)
-      currentDetails = currentDetails.replace(/배/g, ''); // 단독 "배" 제거
-      currentDetails = currentDetails.replace(/[0-9]+\.[0-9]+/g, ''); // 숫자.숫자 형태 제거 (1.3, 1.6 등)
-      // 연달아 있는 콤마 정리
-      currentDetails = currentDetails.replace(/,\s*,/g, ','); // 연달아 있는 콤마를 하나로
-      currentDetails = currentDetails.replace(/,\s*,/g, ','); // 한 번 더 실행하여 3개 이상의 콤마도 처리
-      currentDetails = currentDetails.replace(/^,\s*/, ''); // 앞쪽 콤마 제거
-      currentDetails = currentDetails.replace(/,\s*$/, ''); // 뒤쪽 콤마 제거
-      
-      // 새로운 커튼종류/주름방식 정보 추가 (기존 세부내용 앞에 추가)
-      let curtainInfo = `${curtainType}, ${pleatType}주름`;
-      
-      // 주름양과 폭수가 유효한 값이면 세부내용에 추가
-      const widthCount = updatedRow.widthCount;
-      const pleatAmount = updatedRow.pleatAmount;
-      
-      if (widthCount && widthCount !== 0 && widthCount !== '0' && widthCount !== '') {
-        curtainInfo += `, ${widthCount}폭`;
-      }
-      
-      if (pleatAmount && pleatAmount !== 0 && pleatAmount !== '0' && pleatAmount !== '') {
-        // 속커튼 민자는 pleatMultiplier 값을 사용
-        if (curtainType === '속커튼' && pleatType === '민자') {
-          const pleatMultiplier = updatedRow.pleatMultiplier;
-          if (pleatMultiplier && pleatMultiplier !== '') {
-            curtainInfo += `, ${pleatMultiplier}`;
-          }
-        } else {
-          curtainInfo += `, ${pleatAmount}배`;
-        }
-      }
-      
-      if (currentDetails) {
-        updatedRow.details = `${curtainInfo}, ${currentDetails}`;
-      } else {
-        updatedRow.details = curtainInfo;
-      }
-    }
+
 
     // 2. 핵심 값들이 유효한 숫자인지 확인
     updatedRow.widthMM = Number(updatedRow.widthMM) || 0;
@@ -5425,7 +5918,6 @@ const OrderManagement: React.FC = () => {
       }
     }
   }, [editRow, editOpen, productOptions, userModifiedWidthCount]);
-
   return (
     <>
       <Box sx={{ p: isMobile ? 1 : 3 }}>
@@ -5442,7 +5934,6 @@ const OrderManagement: React.FC = () => {
                 setDiscountAmount('');
                 setDiscountRate('');
                 setDiscountedTotalInput('');
-                setShowDiscount(false);
                 // 새 주문서의 발주서 초기화
                 const newOrderId = orders[orders.length - 1]?.id;
                 if (newOrderId) {
@@ -5959,7 +6450,6 @@ const OrderManagement: React.FC = () => {
             </Box>
           </Paper>
         )}
-
         {/* 주문서 작성 도구 모음 */}
         {orders[activeTab] && (
           <Paper sx={{ p: isMobile ? 1 : 2, mb: 2 }}>
@@ -6183,7 +6673,7 @@ const OrderManagement: React.FC = () => {
                     {columnVisibility.productName && <TableCell>제품명</TableCell>}
                     {columnVisibility.width && <TableCell>폭</TableCell>}
                     {columnVisibility.details && <TableCell>세부내용</TableCell>}
-                    {columnVisibility.productionContent && <TableCell>제작내용</TableCell>}
+                    
                     {columnVisibility.widthMM && <TableCell>가로(mm)</TableCell>}
                     {columnVisibility.heightMM && <TableCell>세로(mm)</TableCell>}
                     {columnVisibility.area && <TableCell>면적(㎡)</TableCell>}
@@ -6209,6 +6699,7 @@ const OrderManagement: React.FC = () => {
                           ? (selectedOrderRows.has(index) ? 'rgba(255, 193, 7, 0.3)' : 'inherit')
                           : (selectedRowIndex === index ? 'rgba(25, 118, 210, 0.1)' : 'inherit'),
                         cursor: 'pointer',
+                        fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)', // 제품행만 0.3px 작게
                         '&:hover': {
                           backgroundColor: isBulkEditMode 
                             ? 'rgba(255, 193, 7, 0.1)' 
@@ -6236,36 +6727,162 @@ const OrderManagement: React.FC = () => {
                           />
                         </TableCell>
                       )}
-                      <TableCell>
+                      <TableCell sx={{ 
+                        fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                        color: row.type === 'option' ? '#4caf50' : 'inherit'
+                      }}>
                         {row.type === 'option' ? (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography variant="caption" sx={{ color: '#4caf50', fontWeight: 'bold' }}>
-                              └
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: '#4caf50', fontWeight: 'bold' }}>
-                              옵션
-                            </Typography>
-                          </Box>
+                          // 옵션 행은 순번 표시하지 않음
+                          ''
                         ) : (
                           // 제품만 순번 표시 (옵션 제외)
                           (() => {
-                            let productCount = 0;
-                            for (let i = 0; i <= index; i++) {
-                              if (orders[activeTab]?.rows[i]?.type === 'product') {
-                                productCount++;
-                              }
-                            }
-                            return productCount;
+                            const productNumber = getProductNumber(row);
+                            if (productNumber === null) return '';
+                            
+                            const productRows = orders[activeTab]?.rows?.filter(r => r.type === 'product') || [];
+                            const canMoveUp = productNumber > 1;
+                            const canMoveDown = productNumber < productRows.length;
+                            
+                            return (
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                                <IconButton
+                                  size="small"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                    if (canMoveUp) {
+                                      moveProductUp(productNumber - 1);
+                                    }
+                                  }}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                    if (canMoveUp) {
+                                      moveProductUp(productNumber - 1);
+                                    }
+                                  }}
+                                  disabled={!canMoveUp}
+                                  sx={{ 
+                                    padding: '2px',
+                                    color: canMoveUp ? 'var(--primary-color)' : 'var(--text-color)',
+                                    opacity: canMoveUp ? 1 : 0.3,
+                                    '&:active': {
+                                      transform: 'scale(0.95)',
+                                      transition: 'transform 0.1s'
+                                    }
+                                  }}
+                                  title="위로 이동"
+                                >
+                                  <ArrowUpIcon fontSize="small" />
+                                </IconButton>
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    fontWeight: 'bold',
+                                    minWidth: '20px',
+                                    textAlign: 'center',
+                                    color: 'var(--text-color)',
+                                    textShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                                  }}
+                                >
+                                  {productNumber}
+                                </Typography>
+                                <IconButton
+                                  size="small"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                    if (canMoveDown) {
+                                      moveProductDown(productNumber - 1);
+                                    }
+                                  }}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                    if (canMoveDown) {
+                                      moveProductDown(productNumber - 1);
+                                    }
+                                  }}
+                                  disabled={!canMoveDown}
+                                  sx={{ 
+                                    padding: '2px',
+                                    color: canMoveDown ? 'var(--primary-color)' : 'var(--text-color)',
+                                    opacity: canMoveDown ? 1 : 0.3,
+                                    '&:active': {
+                                      transform: 'scale(0.95)',
+                                      transition: 'transform 0.1s'
+                                    }
+                                  }}
+                                  title="아래로 이동"
+                                >
+                                  <ArrowDownIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            );
                           })()
                         )}
                       </TableCell>
-                      {columnVisibility.vendor && <TableCell>{row.vendor}</TableCell>}
-                      {columnVisibility.brand && <TableCell>{row.brand}</TableCell>}
-                      {columnVisibility.space && <TableCell>{row.space}</TableCell>}
-                      {columnVisibility.productCode && <TableCell>{row.productCode}</TableCell>}
-                      {columnVisibility.productType && <TableCell>{row.productType}</TableCell>}
+                      {columnVisibility.vendor && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.vendor}
+                        </TableCell>
+                      )}
+                      {columnVisibility.brand && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.brand}
+                        </TableCell>
+                      )}
+                      {columnVisibility.space && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.type === 'option' ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="caption" sx={{ color: '#4caf50', fontWeight: 'bold' }}>
+                                └
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: '#4caf50', fontWeight: 'bold' }}>
+                                옵션
+                              </Typography>
+                            </Box>
+                          ) : (
+                            row.space
+                          )}
+                        </TableCell>
+                      )}
+                      {columnVisibility.productCode && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.productCode}
+                        </TableCell>
+                      )}
+                      {columnVisibility.productType && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.productType}
+                        </TableCell>
+                      )}
                       {columnVisibility.productName && (
-                        <TableCell>
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
                           {row.type === 'option' ? (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <Typography variant="body2" sx={{ color: '#4caf50', fontWeight: 'bold' }}>
@@ -6277,9 +6894,19 @@ const OrderManagement: React.FC = () => {
                           )}
                         </TableCell>
                       )}
-                      {columnVisibility.width && <TableCell>{row.width}</TableCell>}
+                      {columnVisibility.width && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.width}
+                        </TableCell>
+                      )}
                       {columnVisibility.details && (
-                        <TableCell>
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
                           {row.productType === '블라인드' ? (
                             <>
                               {row.details.replace(/면적:\s*\d+\.?\d*\s*㎡\s*,?\s*/, '').trim()}
@@ -6291,24 +6918,111 @@ const OrderManagement: React.FC = () => {
                           )}
                         </TableCell>
                       )}
-                      {columnVisibility.productionContent && <TableCell>{calculateProductionContent(row)}</TableCell>}
-                      {columnVisibility.widthMM && <TableCell>{row.widthMM}</TableCell>}
-                      {columnVisibility.heightMM && <TableCell>{row.heightMM}</TableCell>}
-                      {columnVisibility.area && (
-                        <TableCell>
-                          {row.area}
+                      
+                      {columnVisibility.widthMM && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.widthMM}
                         </TableCell>
                       )}
-                      {columnVisibility.lineDir && <TableCell>{row.lineDirection}</TableCell>}
-                      {columnVisibility.lineLen && <TableCell>{row.lineLength === '직접입력' ? row.customLineLength : row.lineLength}</TableCell>}
-                      {columnVisibility.pleatAmount && <TableCell>{row.pleatAmount}</TableCell>}
-                      {columnVisibility.widthCount && <TableCell>{row.widthCount}</TableCell>}
-                      {columnVisibility.quantity && <TableCell>{row.quantity}</TableCell>}
-                      {columnVisibility.totalPrice && <TableCell>{row.totalPrice?.toLocaleString()}</TableCell>}
-                      {columnVisibility.salePrice && <TableCell>{row.salePrice?.toLocaleString()}</TableCell>}
-                      {columnVisibility.cost && <TableCell>{row.cost?.toLocaleString()}</TableCell>}
-                      {columnVisibility.purchaseCost && <TableCell>{row.purchaseCost?.toLocaleString()}</TableCell>}
-                      {columnVisibility.margin && <TableCell>{row.margin?.toLocaleString()}</TableCell>}
+                      {columnVisibility.heightMM && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.heightMM}
+                        </TableCell>
+                      )}
+                      {columnVisibility.area && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.curtainType === '겉커튼' ? '' : row.area}
+                        </TableCell>
+                      )}
+                      {columnVisibility.lineDir && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.lineDirection}
+                        </TableCell>
+                      )}
+                      {columnVisibility.lineLen && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.lineLength === '직접입력' ? row.customLineLength : row.lineLength}
+                        </TableCell>
+                      )}
+                      {columnVisibility.pleatAmount && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.pleatAmount}
+                        </TableCell>
+                      )}
+                      {columnVisibility.widthCount && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.widthCount}
+                        </TableCell>
+                      )}
+                      {columnVisibility.quantity && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.quantity}
+                        </TableCell>
+                      )}
+                      {columnVisibility.totalPrice && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.totalPrice?.toLocaleString()}
+                        </TableCell>
+                      )}
+                      {columnVisibility.salePrice && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.salePrice?.toLocaleString()}
+                        </TableCell>
+                      )}
+                      {columnVisibility.cost && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.cost?.toLocaleString()}
+                        </TableCell>
+                      )}
+                      {columnVisibility.purchaseCost && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.purchaseCost?.toLocaleString()}
+                        </TableCell>
+                      )}
+                      {columnVisibility.margin && (
+                        <TableCell sx={{ 
+                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row.margin?.toLocaleString()}
+                        </TableCell>
+                      )}
                       <TableCell>
                         <IconButton 
                           size="small"
@@ -6364,13 +7078,19 @@ const OrderManagement: React.FC = () => {
                     {columnVisibility.productName && <TableCell></TableCell>}
                     {columnVisibility.width && <TableCell></TableCell>}
                     {columnVisibility.details && <TableCell></TableCell>}
-                    {columnVisibility.productionContent && <TableCell></TableCell>}
+                    
                     {columnVisibility.widthMM && <TableCell></TableCell>}
                     {columnVisibility.heightMM && <TableCell></TableCell>}
                                           {columnVisibility.area && (
                                             <TableCell>
                                               {orders[activeTab]?.rows
-                                                ?.reduce((sum, row) => sum + (Number(row?.area) || 0), 0)
+                                                ?.reduce((sum, row) => {
+                                                  // 겉커튼은 면적 계산에서 제외
+                                                  if (row?.curtainType === '겉커튼') {
+                                                    return sum;
+                                                  }
+                                                  return sum + (Number(row?.area) || 0);
+                                                }, 0)
                                                 .toFixed(1)}
                                             </TableCell>
                                           )}
@@ -6396,24 +7116,6 @@ const OrderManagement: React.FC = () => {
               <span style={{ color: '#000000', marginRight: 32 }}>
                 소비자금액(VAT포함): {sumTotalPrice.toLocaleString()} 원
               </span>
-              <Button
-                variant="contained"
-                size="small"
-                sx={{
-                  mx: 2,
-                  backgroundColor: '#222',
-                  color: '#ff9800',
-                  '&:hover': { backgroundColor: '#333' },
-                  fontWeight: 'bold',
-                  boxShadow: 'none',
-                  borderRadius: 1,
-                  minWidth: 100,
-                  paddingX: 2,
-                }}
-                onClick={handleToggleDiscount}
-              >
-                HunterDouglas
-              </Button>
               {discountAmountNumber > 0 && (
                 <span style={{ color: 'var(--primary-color, #6a1b9a)', marginRight: 32 }}>
                   할인후금액(VAT포함): {discountedTotal.toLocaleString()} 원
@@ -6437,24 +7139,7 @@ const OrderManagement: React.FC = () => {
               >
                 WINDOWSTORY
               </Button>
-              <Button
-                variant="contained"
-                size="small"
-                sx={{
-                  mx: 2,
-                  backgroundColor: '#ff9800',
-                  color: '#fff',
-                  '&:hover': { backgroundColor: '#f57c00' },
-                  fontWeight: 'bold',
-                  boxShadow: 'none',
-                  borderRadius: 1,
-                  minWidth: 100,
-                  paddingX: 2,
-                }}
-                onClick={() => setColumnVisibility(prev => ({ ...prev, productionContent: !prev.productionContent }))}
-              >
-                제작입력
-              </Button>
+
               <Button
                 variant="contained"
                 size="small"
@@ -6477,7 +7162,7 @@ const OrderManagement: React.FC = () => {
             </Box>
 
             {/* 할인 설정 - 소비자금액 바로 아래 */}
-            {showDiscount && orders[activeTab]?.rows && orders[activeTab].rows.length > 0 && (
+            {orders[activeTab]?.rows && orders[activeTab].rows.length > 0 && (
               <Box sx={{ 
                 display: 'flex', 
                 alignItems: 'center', 
@@ -6539,7 +7224,6 @@ const OrderManagement: React.FC = () => {
                 </Box>
               </Box>
             )}
-
             {/* 수금내역 및 AS접수내역 - 서술형으로 표시 */}
             {orders[activeTab] && orders[activeTab].estimateNo && (
               <Box sx={{ mt: 2, mb: 2, p: 2, backgroundColor: '#f8f9fa', borderRadius: 1, border: '1px solid #e9ecef' }}>
@@ -6737,7 +7421,7 @@ const OrderManagement: React.FC = () => {
                           )}
                           {request.asProcessDate && (
                             <Typography variant="body2" sx={{ color: '#666', pl: 2, fontSize: '0.9rem' }}>
-                              AS처리일자: {new Date(request.asProcessDate).toLocaleString('ko-KR', {
+                              AS처리일자: {new Date(request.asProcessDate).toLocaleDateString('ko-KR', {
                                 year: 'numeric',
                                 month: '2-digit',
                                 day: '2-digit',
@@ -6818,8 +7502,74 @@ const OrderManagement: React.FC = () => {
                       boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
                     }
                   }}
-                  onClick={() => handleOpenPurchaseOrderModal(order.vendor, order.items)}
+                  onClick={() => {
+                    setEditablePurchaseOrderVendor(order.vendor);
+                    // 세부내용을 정리해서 포함한 데이터 설정
+                    const itemsWithProductionDetails = order.items.map((item: any) => ({
+                      ...item,
+                      productionDetails: item.productionDetails || '',
+                      details: cleanDetailsForPurchaseOrder(item.details, item)
+                    }));
+                    setEditablePurchaseOrderData(itemsWithProductionDetails);
+                    // 납품 정보 초기화
+                    setDeliveryMethod('직접배송');
+                    setDeliveryDate(getLocalDate());
+                    setAdditionalNotes('');
+                    // 발주서 기본 정보 초기화 - 주문서 고객주소를 발주명으로 변환
+                    setPurchaseOrderDate(getLocalDate());
+                    const currentOrder = orders[activeTab];
+                    const convertedPurchaseOrderName = convertAddressToPurchaseOrderName(currentOrder?.address || '');
+                    setPurchaseOrderName(convertedPurchaseOrderName);
+                    setEditablePurchaseOrderModalOpen(true);
+                  }}
                   >
+                    {/* 출력 버튼 */}
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        console.log('선택된 거래처:', order.vendor);
+                        console.log('발주서 카드 전체 정보:', order);
+                        // 오늘 만든 발주서 수정 모달 열기
+                        setEditablePurchaseOrderVendor(order.vendor);
+                        // 세부내용을 정리해서 포함한 데이터 설정
+                        const itemsWithProductionDetails = order.items.map((item: any) => ({
+                          ...item,
+                          productionDetails: item.productionDetails || '',
+                          details: cleanDetailsForPurchaseOrder(item.details, item)
+                        }));
+                        setEditablePurchaseOrderData(itemsWithProductionDetails);
+                        // 납품 정보 초기화
+                        setDeliveryMethod('직접배송');
+                        setDeliveryDate(getLocalDate());
+                        setAdditionalNotes('');
+                        // 발주서 기본 정보 초기화 - 주문서 고객주소를 발주명으로 변환
+                        setPurchaseOrderDate(getLocalDate());
+                        const currentOrder = orders[activeTab];
+                        const convertedPurchaseOrderName = convertAddressToPurchaseOrderName(currentOrder?.address || '');
+                        setPurchaseOrderName(convertedPurchaseOrderName);
+                        setEditablePurchaseOrderModalOpen(true);
+                      }}
+                      sx={{
+                        position: 'absolute',
+                        top: 8,
+                        right: 36,
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        color: '#1976d2',
+                        width: 28,
+                        height: 28,
+                        '&:hover': {
+                          backgroundColor: 'rgba(255, 255, 255, 1)',
+                          color: '#1565c0',
+                          transform: 'scale(1.1)'
+                        },
+                        zIndex: 1,
+                        transition: 'all 0.2s ease-in-out'
+                      }}
+                    >
+                      <PrintIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+
                     {/* 삭제 버튼 */}
                     <IconButton
                       size="small"
@@ -6889,126 +7639,7 @@ const OrderManagement: React.FC = () => {
                       </Box>
                     </Box>
 
-                    {/* 납품 정보 섹션 */}
-                    <Box sx={{ 
-                      backgroundColor: 'rgba(76, 175, 80, 0.05)', 
-                      p: 1.5, 
-                      borderRadius: 1,
-                      border: '1px solid rgba(76, 175, 80, 0.1)'
-                    }}>
-                      <Typography variant="body2" sx={{ 
-                        fontWeight: 'bold', 
-                        mb: 1, 
-                        color: 'var(--text-color)',
-                        fontSize: '0.875rem'
-                      }}>
-                        납품 정보
-                      </Typography>
-                      
-                      {/* 납품방법 */}
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                        <Typography variant="body2" sx={{ 
-                          color: 'var(--text-secondary-color)', 
-                          fontSize: '0.8rem',
-                          minWidth: 60
-                        }}>
-                          방법:
-                        </Typography>
-                        <Chip
-                          label={getDeliveryInfo(order.vendor).method || '미설정'}
-                          size="small"
-                          sx={{
-                            height: 20,
-                            fontSize: '0.75rem',
-                            backgroundColor: getDeliveryInfo(order.vendor).method ? '#e8f5e8' : '#f5f5f5',
-                            color: getDeliveryInfo(order.vendor).method ? '#2e7d32' : '#666'
-                          }}
-                        />
-                      </Box>
 
-                      {/* 납품일자 */}
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                        <Typography variant="body2" sx={{ 
-                          color: 'var(--text-secondary-color)', 
-                          fontSize: '0.8rem',
-                          minWidth: 60
-                        }}>
-                          일자:
-                        </Typography>
-                        <Chip
-                          label={getDeliveryInfo(order.vendor).date || '미설정'}
-                          size="small"
-                          sx={{
-                            height: 20,
-                            fontSize: '0.75rem',
-                            backgroundColor: getDeliveryInfo(order.vendor).date ? '#e3f2fd' : '#f5f5f5',
-                            color: getDeliveryInfo(order.vendor).date ? '#1565c0' : '#666'
-                          }}
-                        />
-                      </Box>
-
-                      {/* 상호 */}
-                      {getDeliveryInfo(order.vendor).company && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                          <Typography variant="body2" sx={{ 
-                            color: 'var(--text-secondary-color)', 
-                            fontSize: '0.8rem',
-                            minWidth: 60
-                          }}>
-                            상호:
-                          </Typography>
-                          <Typography variant="body2" sx={{ 
-                            color: 'var(--text-color)', 
-                            fontSize: '0.75rem',
-                            fontWeight: 'bold'
-                          }}>
-                            {getDeliveryInfo(order.vendor).company}
-                          </Typography>
-                        </Box>
-                      )}
-
-                      {/* 연락처 */}
-                      {getDeliveryInfo(order.vendor).contact && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                          <Typography variant="body2" sx={{ 
-                            color: 'var(--text-secondary-color)', 
-                            fontSize: '0.8rem',
-                            minWidth: 60
-                          }}>
-                            연락처:
-                          </Typography>
-                          <Typography variant="body2" sx={{ 
-                            color: 'var(--text-color)', 
-                            fontSize: '0.75rem',
-                            fontWeight: 'bold'
-                          }}>
-                            {getDeliveryInfo(order.vendor).contact}
-                          </Typography>
-                        </Box>
-                      )}
-
-                      {/* 주소 */}
-                      {getDeliveryInfo(order.vendor).address && (
-                        <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
-                          <Typography variant="body2" sx={{ 
-                            color: 'var(--text-secondary-color)', 
-                            fontSize: '0.8rem',
-                            minWidth: 60,
-                            mt: 0.5
-                          }}>
-                            주소:
-                          </Typography>
-                          <Typography variant="body2" sx={{ 
-                            color: 'var(--text-color)', 
-                            fontSize: '0.75rem',
-                            fontWeight: 'bold',
-                            flex: 1
-                          }}>
-                            {getDeliveryInfo(order.vendor).address}
-                          </Typography>
-                        </Box>
-                      )}
-                    </Box>
                   </Card>
                 </Grid>
               ))}
@@ -7044,31 +7675,31 @@ const OrderManagement: React.FC = () => {
               <Table size={isMobile ? "small" : "medium"}>
                 <TableHead>
                   <TableRow>
-                    {savedOrderColumnVisibility.address && (
+                    {(isMobile ? mobileSavedOrderColumnVisibility.address : savedOrderColumnVisibility.address) && (
                       <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>주소</TableCell>
                     )}
-                    {savedOrderColumnVisibility.customerName && (
+                    {(isMobile ? mobileSavedOrderColumnVisibility.customerName : savedOrderColumnVisibility.customerName) && (
                       <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>고객명</TableCell>
                     )}
-                    {savedOrderColumnVisibility.contact && (
+                    {(isMobile ? mobileSavedOrderColumnVisibility.contact : savedOrderColumnVisibility.contact) && (
                       <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>연락처</TableCell>
                     )}
-                    {savedOrderColumnVisibility.estimateNo && (
+                    {(isMobile ? mobileSavedOrderColumnVisibility.estimateNo : savedOrderColumnVisibility.estimateNo) && (
                       <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>주문번호</TableCell>
                     )}
-                    {savedOrderColumnVisibility.estimateDate && (
+                    {(isMobile ? mobileSavedOrderColumnVisibility.estimateDate : savedOrderColumnVisibility.estimateDate) && (
                       <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>주문일자</TableCell>
                     )}
-                    {savedOrderColumnVisibility.installationDate && (
+                    {(isMobile ? mobileSavedOrderColumnVisibility.installationDate : savedOrderColumnVisibility.installationDate) && (
                       <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>시공일자</TableCell>
                     )}
-                    {savedOrderColumnVisibility.totalAmount && (
+                    {(isMobile ? mobileSavedOrderColumnVisibility.totalAmount : savedOrderColumnVisibility.totalAmount) && (
                       <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>소비자금액</TableCell>
                     )}
-                    {savedOrderColumnVisibility.discountedAmount && (
+                    {(isMobile ? mobileSavedOrderColumnVisibility.discountedAmount : savedOrderColumnVisibility.discountedAmount) && (
                       <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>할인후금액</TableCell>
                     )}
-                    {savedOrderColumnVisibility.actions && (
+                    {(isMobile ? mobileSavedOrderColumnVisibility.actions : savedOrderColumnVisibility.actions) && (
                       <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>액션</TableCell>
                     )}
                   </TableRow>
@@ -7126,78 +7757,80 @@ const OrderManagement: React.FC = () => {
                           }
                         }}
                       >
-                        <TableCell sx={{ color: '#000' }}>
-                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                            <span>{order.address}</span>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                              {/* 제품준비/납품완료 뱃지 */}
-                              <Chip
-                                label={order.productStatus || '제품준비'}
-                                color={order.productStatus === '납품완료' ? 'success' : 'error'}
-                                size="small"
-                                sx={{ 
-                                  height: 20, 
-                                  fontSize: '0.75rem',
-                                  fontWeight: 'bold',
-                                  cursor: 'pointer',
-                                  '&:hover': {
-                                    opacity: 0.8
-                                  }
-                                }}
-                                onClick={() => handleToggleProductStatus(order)}
-                              />
-                              {/* 수금 상태 뱃지 */}
-                              {remainingAmount === 0 ? (
+                        {(isMobile ? mobileSavedOrderColumnVisibility.address : savedOrderColumnVisibility.address) && (
+                          <TableCell sx={{ color: '#000' }}>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                              <span>{order.address}</span>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                                {/* 제품준비/납품완료 뱃지 */}
                                 <Chip
-                                  label="수금완료"
-                                  color="success"
+                                  label={order.productStatus || '제품준비'}
+                                  color={order.productStatus === '납품완료' ? 'success' : 'error'}
                                   size="small"
                                   sx={{ 
                                     height: 20, 
                                     fontSize: '0.75rem',
-                                    fontWeight: 'bold'
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer',
+                                    '&:hover': {
+                                      opacity: 0.8
+                                    }
                                   }}
+                                  onClick={() => handleToggleProductStatus(order)}
                                 />
-                              ) : (
-                                <Chip
-                                  label="미수금"
-                                  color="error"
-                                  size="small"
-                                  sx={{ 
-                                    height: 20, 
-                                    fontSize: '0.75rem',
-                                    fontWeight: 'bold'
-                                  }}
-                                />
-                              )}
-                              {asStatus && (
-                                <Chip
-                                  label={asStatus}
-                                  color={asStatus === 'AS완료' ? 'success' : 'warning'}
-                                  size="small"
-                                  sx={{ 
-                                    height: 20, 
-                                    fontSize: '0.75rem',
-                                    fontWeight: 'bold'
-                                  }}
-                                />
-                              )}
+                                {/* 수금 상태 뱃지 */}
+                                {remainingAmount === 0 ? (
+                                  <Chip
+                                    label="수금완료"
+                                    color="success"
+                                    size="small"
+                                    sx={{ 
+                                      height: 20, 
+                                      fontSize: '0.75rem',
+                                      fontWeight: 'bold'
+                                    }}
+                                  />
+                                ) : (
+                                  <Chip
+                                    label="미수금"
+                                    color="error"
+                                    size="small"
+                                    sx={{ 
+                                      height: 20, 
+                                      fontSize: '0.75rem',
+                                      fontWeight: 'bold'
+                                    }}
+                                  />
+                                )}
+                                {asStatus && (
+                                  <Chip
+                                    label={asStatus}
+                                    color={asStatus === 'AS완료' ? 'success' : 'warning'}
+                                    size="small"
+                                    sx={{ 
+                                      height: 20, 
+                                      fontSize: '0.75rem',
+                                      fontWeight: 'bold'
+                                    }}
+                                  />
+                                )}
+                              </Box>
                             </Box>
-                          </Box>
-                        </TableCell>
-                        {savedOrderColumnVisibility.customerName && (
+                          </TableCell>
+                        )}
+                        {(isMobile ? mobileSavedOrderColumnVisibility.customerName : savedOrderColumnVisibility.customerName) && (
                           <TableCell sx={{ color: '#000' }}>{order.customerName}</TableCell>
                         )}
-                        {savedOrderColumnVisibility.contact && (
+                        {(isMobile ? mobileSavedOrderColumnVisibility.contact : savedOrderColumnVisibility.contact) && (
                           <TableCell sx={{ color: '#000' }}>{order.contact}</TableCell>
                         )}
-                        {savedOrderColumnVisibility.estimateNo && (
+                        {(isMobile ? mobileSavedOrderColumnVisibility.estimateNo : savedOrderColumnVisibility.estimateNo) && (
                           <TableCell sx={{ color: '#000' }}>{order.estimateNo}</TableCell>
                         )}
-                        {savedOrderColumnVisibility.estimateDate && (
+                        {(isMobile ? mobileSavedOrderColumnVisibility.estimateDate : savedOrderColumnVisibility.estimateDate) && (
                           <TableCell sx={{ color: '#000' }}>{order.estimateDate}</TableCell>
                         )}
-                        {savedOrderColumnVisibility.installationDate && (
+                        {(isMobile ? mobileSavedOrderColumnVisibility.installationDate : savedOrderColumnVisibility.installationDate) && (
                           <TableCell sx={{ color: '#000' }}>{order.installationDate ? new Date(order.installationDate).toLocaleString('ko-KR', {
                             year: 'numeric',
                             month: '2-digit',
@@ -7206,13 +7839,13 @@ const OrderManagement: React.FC = () => {
                             minute: '2-digit'
                           }) : '-'}</TableCell>
                         )}
-                        {savedOrderColumnVisibility.totalAmount && (
+                        {(isMobile ? mobileSavedOrderColumnVisibility.totalAmount : savedOrderColumnVisibility.totalAmount) && (
                           <TableCell sx={{ color: '#000' }}>{totalAmount.toLocaleString()}원</TableCell>
                         )}
-                        {savedOrderColumnVisibility.discountedAmount && (
+                        {(isMobile ? mobileSavedOrderColumnVisibility.discountedAmount : savedOrderColumnVisibility.discountedAmount) && (
                           <TableCell sx={{ color: '#000' }}>{discountedAmount.toLocaleString()}원</TableCell>
                         )}
-                                                {savedOrderColumnVisibility.actions && (
+                        {(isMobile ? mobileSavedOrderColumnVisibility.actions : savedOrderColumnVisibility.actions) && (
                           <TableCell>
                             <Box sx={{ display: 'flex', gap: 0.5, flexDirection: isMobile ? 'column' : 'row' }}>
                               <Tooltip title="로드">
@@ -7287,8 +7920,49 @@ const OrderManagement: React.FC = () => {
         onClose={() => setPurchaseOrderModalOpen(false)}
         maxWidth="lg"
         fullWidth
+        sx={{
+          '& .MuiDialog-paper': {
+            '@media (max-width: 768px)': {
+              margin: '10px',
+              maxWidth: 'calc(100% - 20px)',
+              maxHeight: 'calc(100% - 20px)'
+            },
+            '@media (max-width: 480px)': {
+              margin: '5px',
+              maxWidth: 'calc(100% - 10px)',
+              maxHeight: 'calc(100% - 10px)'
+            }
+          }
+        }}
       >
-        <DialogTitle sx={{ color: '#000' }}>
+        <DialogTitle 
+          sx={{ 
+            color: '#000',
+            '@media print': {
+              display: 'none !important',
+              visibility: 'hidden !important',
+              opacity: 0,
+              position: 'absolute',
+              left: '-9999px',
+              top: '-9999px',
+              width: 0,
+              height: 0,
+              overflow: 'hidden',
+              clip: 'rect(0, 0, 0, 0)',
+              margin: 0,
+              padding: 0,
+              border: 0,
+              pointerEvents: 'none'
+            },
+            '@media (max-width: 768px)': {
+              padding: '12px 16px'
+            },
+            '@media (max-width: 480px)': {
+              padding: '8px 12px'
+            }
+          }} 
+          className="no-print"
+        >
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#000' }}>
               {selectedVendor} 발주서
@@ -7310,218 +7984,951 @@ const OrderManagement: React.FC = () => {
               >
                 간단양식
               </Button>
+              <IconButton
+                size="small"
+                onClick={() => setCompanyInfoModalOpen(true)}
+                sx={{
+                  border: '1px solid #ddd',
+                  color: '#666',
+                  '&:hover': {
+                    borderColor: '#FF6B9D',
+                    color: '#FF6B9D',
+                  },
+                }}
+              >
+                <SettingsIcon />
+              </IconButton>
             </Box>
           </Box>
         </DialogTitle>
-        <DialogContent>
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
-              발주 제품 목록
-            </Typography>
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>공간</TableCell>
-                    <TableCell>제품코드</TableCell>
-                    <TableCell>세부내용</TableCell>
-                    <TableCell>제작내용</TableCell>
-                    <TableCell>가로</TableCell>
-                    <TableCell>세로</TableCell>
-                    <TableCell>줄방향</TableCell>
-                    <TableCell>줄길이</TableCell>
-                    <TableCell>수량</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {purchaseOrderItems.map((item, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{item.space}</TableCell>
-                      <TableCell>{item.productCode}</TableCell>
-                      <TableCell>
-                        {item.productType === '블라인드' ? (
-                          <>
-                            {item.details.replace(/면적:\s*\d+\.?\d*\s*㎡\s*,?\s*/, '').trim()}
-                            {item.lineDirection && ` | 줄방향: ${item.lineDirection}`}
-                            {item.lineLength && ` | 줄길이: ${item.lineLength === '직접입력' ? item.customLineLength : item.lineLength}`}
-                          </>
-                        ) : (
-                          item.details
-                        )}
-                      </TableCell>
-                      <TableCell>{calculateProductionContent(item)}</TableCell>
-                      <TableCell>{item.productType === '커튼' ? '' : item.widthMM}</TableCell>
-                      <TableCell>{item.productType === '커튼' ? '' : item.heightMM}</TableCell>
-                      <TableCell>{item.lineDir}</TableCell>
-                      <TableCell>{item.lineLen}</TableCell>
-                      <TableCell>{item.quantity}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Box>
+        <DialogContent sx={{
+          '@media (max-width: 768px)': {
+            padding: '16px'
+          },
+          '@media (max-width: 480px)': {
+            padding: '12px'
+          }
+        }}>
+          {/* 기본양식 - A4 최적화 전문 발주서 양식 */}
+          {purchaseOrderType === 'basic' && (
+            <>
+              {/* A4 최적화 컨테이너 */}
+              <Box 
+                className="purchase-order-a4-container"
+                sx={{ 
+                  width: '100%',
+                  maxWidth: '210mm', // A4 가로
+                  minHeight: '297mm', // A4 세로
+                  margin: '0 auto',
+                  padding: '20mm', // A4 여백
+                  backgroundColor: 'white',
+                  boxShadow: '0 0 20px rgba(0,0,0,0.1)',
+                  borderRadius: '8px',
+                  '@media print': {
+                    boxShadow: 'none',
+                    borderRadius: '0',
+                    padding: '15mm',
+                    maxWidth: 'none',
+                    minHeight: 'auto'
+                  },
+                  '@media (max-width: 768px)': {
+                    maxWidth: '100%',
+                    minHeight: 'auto',
+                    padding: '10mm',
+                    margin: '0',
+                    borderRadius: '0'
+                  },
+                  '@media (max-width: 480px)': {
+                    padding: '5mm',
+                    boxShadow: 'none'
+                  }
+                }}
+              >
+                {/* 차분하고 신뢰감 있는 헤더 */}
+                <div style={{ textAlign: 'center', marginBottom: '3mm', position: 'relative' }}>
+                  <Typography variant="h2" sx={{
+                    fontWeight: 600,
+                    color: '#2c3e50',
+                    letterSpacing: '1mm',
+                    fontSize: '5mm',
+                    mb: '1.5mm',
+                    '@media print': { fontSize: '4.5mm' },
+                    '@media (max-width: 768px)': { fontSize: '4mm', mb: '1mm' },
+                    '@media (max-width: 480px)': { fontSize: '3.5mm', mb: '0.8mm' }
+                  }}>
+                    발주서
+                  </Typography>
+                  <Typography variant="h4" sx={{
+                    color: '#34495e',
+                    fontWeight: 400,
+                    fontSize: '3.5mm',
+                    mb: '1mm',
+                    '@media print': { fontSize: '3mm' },
+                    '@media (max-width: 768px)': { fontSize: '2.8mm', mb: '0.8mm' },
+                    '@media (max-width: 480px)': { fontSize: '2.5mm', mb: '0.6mm' }
+                  }}>
+                    PURCHASE ORDER
+                  </Typography>
+                  {/* 우측 상단 회사 정보 */}
+                  <Box sx={{ 
+                    position: 'absolute', 
+                    top: '3mm', 
+                    right: '3mm', 
+                    textAlign: 'right',
+                    '@media (max-width: 768px)': { top: '2mm', right: '2mm' },
+                    '@media (max-width: 480px)': { top: '1mm', right: '1mm' }
+                  }}>
+                    <Typography variant="h6" sx={{ 
+                      color: '#2c3e50', 
+                      fontWeight: 500, 
+                      fontSize: '2.8mm', 
+                      mb: '0.3mm', 
+                      '@media print': { fontSize: '2.4mm', color: '#2c3e50' },
+                      '@media (max-width: 768px)': { fontSize: '2.4mm', mb: '0.2mm' },
+                      '@media (max-width: 480px)': { fontSize: '2.2mm', mb: '0.1mm' }
+                    }}>
+                      {selectedCompanyInfo?.companyName || ''}
+                    </Typography>
+                    <Typography variant="body2" sx={{ 
+                      color: '#34495e', 
+                      fontSize: '2.2mm', 
+                      '@media print': { fontSize: '2mm', color: '#34495e' },
+                      '@media (max-width: 768px)': { fontSize: '2mm' },
+                      '@media (max-width: 480px)': { fontSize: '1.8mm' }
+                    }}>
+                      {getLocalDate()}
+                    </Typography>
+                  </Box>
+                </div>
+
+                {/* 기본정보 섹션 */}
+                                  <Box sx={{ 
+                    mb: '3mm',
+                    '@media (max-width: 768px)': { mb: '2mm' },
+                    '@media (max-width: 480px)': { mb: '1.5mm' }
+                  }}>
+                    <Typography variant="h4" sx={{
+                      fontWeight: 600,
+                      mb: '0.8mm',
+                      color: '#2c3e50',
+                      borderBottom: '0.3mm solid #2c3e50',
+                      pb: '0.3mm',
+                      display: 'inline-block',
+                      fontSize: '2.8mm',
+                      '@media print': { fontSize: '2.5mm', mb: '0.6mm' },
+                      '@media (max-width: 768px)': { fontSize: '2.5mm', mb: '0.6mm' },
+                      '@media (max-width: 480px)': { fontSize: '2.3mm', mb: '0.5mm' }
+                    }}>
+                      기본정보
+                    </Typography>
+                    <Box sx={{
+                      p: '1mm',
+                      border: '0.2mm solid #ecf0f1',
+                      borderRadius: '0.5mm',
+                      backgroundColor: '#f8f9fa',
+                      boxShadow: 'none',
+                      mb: '1mm',
+                      '@media print': { p: '0.8mm', border: '0.15mm solid #ecf0f1' },
+                      '@media (max-width: 768px)': { p: '0.8mm', mb: '0.8mm' },
+                      '@media (max-width: 480px)': { p: '0.6mm', mb: '0.6mm' }
+                    }}>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Box sx={{ 
+                        p: '4mm', 
+                        backgroundColor: 'white', 
+                        borderRadius: '3mm',
+                        border: '0.5mm solid #e0e0e0',
+                        boxShadow: '0 1mm 4mm rgba(0,0,0,0.05)',
+                        height: '100%',
+                        '@media print': {
+                          boxShadow: 'none',
+                          border: '0.3mm solid #e0e0e0'
+                        }
+                      }}>
+                        <Typography variant="body2" sx={{ 
+                          color: '#666', 
+                          mb: '2mm', 
+                          fontSize: '3mm',
+                          fontWeight: 500,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5mm',
+                          '@media print': {
+                            fontSize: '2.5mm'
+                          }
+                        }}>
+                          거래처명
+                        </Typography>
+                        <Typography variant="h6" sx={{ 
+                          fontWeight: 700, 
+                          color: '#2c3e50', 
+                          fontSize: '4mm',
+                          '@media print': {
+                            fontSize: '3.5mm'
+                          }
+                        }}>
+                          {selectedVendor}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Box sx={{ 
+                        p: '4mm', 
+                        backgroundColor: 'white', 
+                        borderRadius: '3mm',
+                        border: '0.5mm solid #e0e0e0',
+                        boxShadow: '0 1mm 4mm rgba(0,0,0,0.05)',
+                        height: '100%',
+                        '@media print': {
+                          boxShadow: 'none',
+                          border: '0.3mm solid #e0e0e0'
+                        }
+                      }}>
+                        <Typography variant="body2" sx={{ 
+                          color: '#666', 
+                          mb: '2mm', 
+                          fontSize: '3mm',
+                          fontWeight: 500,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5mm',
+                          '@media print': {
+                            fontSize: '2.5mm'
+                          }
+                        }}>
+                          발주일자
+                        </Typography>
+                        <Typography variant="h6" sx={{ 
+                          fontWeight: 700, 
+                          color: '#2c3e50', 
+                          fontSize: '4mm',
+                          '@media print': {
+                            fontSize: '3.5mm'
+                          }
+                        }}>
+                          {purchaseOrderDate}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Box sx={{ 
+                        p: '4mm', 
+                        backgroundColor: 'white', 
+                        borderRadius: '3mm',
+                        border: '0.5mm solid #e0e0e0',
+                        boxShadow: '0 1mm 4mm rgba(0,0,0,0.05)',
+                        height: '100%',
+                        '@media print': {
+                          boxShadow: 'none',
+                          border: '0.3mm solid #e0e0e0'
+                        }
+                      }}>
+                        <Typography variant="body2" sx={{ 
+                          color: '#666', 
+                          mb: '2mm', 
+                          fontSize: '3mm',
+                          fontWeight: 500,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5mm',
+                          '@media print': {
+                            fontSize: '2.5mm'
+                          }
+                        }}>
+                          납품방법
+                        </Typography>
+                        <Typography variant="h6" sx={{ 
+                          fontWeight: 700, 
+                          color: '#2c3e50', 
+                          fontSize: '4mm',
+                          '@media print': {
+                            fontSize: '3.5mm'
+                          }
+                        }}>
+                          {getDeliveryInfo(selectedVendor).method || '미설정'}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Box sx={{ 
+                        p: '4mm', 
+                        backgroundColor: 'white', 
+                        borderRadius: '3mm',
+                        border: '0.5mm solid #e0e0e0',
+                        boxShadow: '0 1mm 4mm rgba(0,0,0,0.05)',
+                        height: '100%',
+                        '@media print': {
+                          boxShadow: 'none',
+                          border: '0.3mm solid #e0e0e0'
+                        }
+                      }}>
+                        <Typography variant="body2" sx={{ 
+                          color: '#666', 
+                          mb: '2mm', 
+                          fontSize: '3mm',
+                          fontWeight: 500,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5mm',
+                          '@media print': {
+                            fontSize: '2.5mm'
+                          }
+                        }}>
+                          납품일자
+                        </Typography>
+                        <Typography variant="h6" sx={{ 
+                          fontWeight: 700, 
+                          color: '#2c3e50', 
+                          fontSize: '4mm',
+                          '@media print': {
+                            fontSize: '3.5mm'
+                          }
+                        }}>
+                          {getDeliveryInfo(selectedVendor).date || '미설정'}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                  </Box>
+                </Box>
+
+                {/* 발주 제품 목록 */}
+                <Box sx={{ 
+                  mb: '2mm',
+                  '@media (max-width: 768px)': { mb: '1.5mm' },
+                  '@media (max-width: 480px)': { mb: '1mm' }
+                }}>
+                  <Typography variant="h4" sx={{
+                    fontWeight: 600,
+                    mb: '1.2mm',
+                    color: '#2c3e50',
+                    borderBottom: '0.5mm solid #2c3e50',
+                    pb: '0.5mm',
+                    display: 'inline-block',
+                    fontSize: '3.5mm',
+                    '@media print': { fontSize: '3.2mm', mb: '1mm' },
+                    '@media (max-width: 768px)': { fontSize: '3.2mm', mb: '1mm' },
+                    '@media (max-width: 480px)': { fontSize: '3mm', mb: '0.8mm' }
+                  }}>
+                    발주 제품 목록
+                  </Typography>
+                  <TableContainer sx={{
+                    border: '0.3mm solid #ecf0f1',
+                    borderRadius: '1mm',
+                    boxShadow: 'none',
+                    overflow: 'hidden',
+                    mb: '2mm',
+                    '@media print': { border: '0.2mm solid #ecf0f1' },
+                    '@media (max-width: 768px)': { mb: '1.5mm' },
+                    '@media (max-width: 480px)': { mb: '1mm' }
+                  }}>
+                    <Table size="medium">
+                      <TableHead>
+                        <TableRow sx={{ 
+                          background: 'linear-gradient(135deg, #2c3e50 0%, #34495e 100%)',
+                          '& th': {
+                            color: 'white',
+                            fontWeight: 700,
+                            borderRight: '0.3mm solid rgba(255,255,255,0.15)',
+                            fontSize: '2.5mm',
+                            padding: '1.5mm 0.8mm',
+                            textAlign: 'center',
+                            letterSpacing: '0.1mm',
+                            whiteSpace: 'nowrap',
+                            '@media print': {
+                              fontSize: '2.2mm',
+                              padding: '1mm 0.5mm'
+                            },
+                            '@media (max-width: 768px)': {
+                              fontSize: '2.2mm',
+                              padding: '1.2mm 0.6mm'
+                            },
+                            '@media (max-width: 480px)': {
+                              fontSize: '2mm',
+                              padding: '1mm 0.5mm'
+                            }
+                          }
+                        }}>
+                          <TableCell sx={{ width: '8mm' }}>순번</TableCell>
+                          <TableCell sx={{ width: '12mm' }}>공간</TableCell>
+                          <TableCell sx={{ width: '15mm' }}>제품코드</TableCell>
+                          <TableCell sx={{ width: '20mm' }}>제품명</TableCell>
+                          <TableCell sx={{ width: '35mm' }}>세부내용</TableCell>
+      
+                          <TableCell sx={{ width: '12mm' }}>가로</TableCell>
+                          <TableCell sx={{ width: '12mm' }}>세로</TableCell>
+                          <TableCell sx={{ width: '10mm' }}>수량</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {purchaseOrderItems.map((item, index) => (
+                          <TableRow key={index} sx={{ 
+                            '&:nth-of-type(odd)': { backgroundColor: '#f8f9fa' },
+                            '&:hover': { backgroundColor: '#ecf0f1' },
+                            '& td': {
+                              borderRight: '0.3mm solid #e0e0e0',
+                              padding: '1.2mm 0.8mm',
+                              fontSize: '2.2mm',
+                              textAlign: 'center',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              '@media print': {
+                                fontSize: '2mm',
+                                padding: '1mm 0.5mm'
+                              },
+                              '@media (max-width: 768px)': {
+                                fontSize: '2mm',
+                                padding: '1mm 0.6mm'
+                              },
+                              '@media (max-width: 480px)': {
+                                fontSize: '1.8mm',
+                                padding: '0.8mm 0.4mm'
+                              }
+                            }
+                          }}>
+                            <TableCell sx={{ 
+                              fontWeight: 700, 
+                              color: '#2c3e50',
+                              backgroundColor: '#ecf0f1',
+                              fontSize: '2.5mm',
+                              '@media print': {
+                                fontSize: '2.2mm'
+                              }
+                            }}>
+                              {index + 1}
+                            </TableCell>
+                            <TableCell sx={{ 
+                              fontWeight: 600,
+                              color: '#2c3e50'
+                            }}>
+                              {item.space}
+                            </TableCell>
+                            <TableCell sx={{ 
+                              fontFamily: 'monospace',
+                              fontWeight: 500,
+                              color: '#666',
+                              fontSize: '2.6mm'
+                            }}>
+                              {item.productCode}
+                            </TableCell>
+                            <TableCell sx={{ 
+                              fontWeight: 700,
+                              color: '#2c3e50',
+                              textAlign: 'left'
+                            }}>
+                              {item.productName}
+                            </TableCell>
+                            <TableCell sx={{ 
+                              textAlign: 'left',
+                              whiteSpace: 'normal',
+                              wordBreak: 'break-word',
+                              fontSize: '2.6mm',
+                              lineHeight: 1.3
+                            }}>
+                              {item.productType === '블라인드' ? (
+                                <>
+                                  {item.details.replace(/면적:\s*\d+\.?\d*\s*㎡\s*,?\s*/, '').trim()}
+                                  {item.lineDirection && ` | 줄방향: ${item.lineDirection}`}
+                                  {item.lineLength && ` | 줄길이: ${item.lineLength === '직접입력' ? item.customLineLength : item.lineLength}`}
+                                </>
+                              ) : (
+                                item.details
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ 
+                              color: '#666', 
+                              fontSize: '2.4mm',
+                              textAlign: 'left',
+                              whiteSpace: 'normal',
+                              wordBreak: 'break-word',
+                              lineHeight: 1.3,
+                              '@media print': {
+                                fontSize: '2.2mm'
+                              }
+                            }}>
+                              {item.productionDetails || ''}
+                            </TableCell>
+                            <TableCell sx={{ 
+                              fontWeight: 600,
+                              color: '#2c3e50',
+                              fontSize: '2.6mm'
+                            }}>
+                              {item.productType === '커튼' ? '-' : item.widthMM}
+                            </TableCell>
+                            <TableCell sx={{ 
+                              fontWeight: 600,
+                              color: '#2c3e50',
+                              fontSize: '2.6mm'
+                            }}>
+                              {item.productType === '커튼' ? '-' : item.heightMM}
+                            </TableCell>
+                            <TableCell sx={{ 
+                              fontWeight: 700, 
+                              color: '#2c3e50',
+                              backgroundColor: '#ecf0f1',
+                              borderRadius: '1mm',
+                              fontSize: '2.5mm',
+                              '@media print': {
+                                fontSize: '2.2mm'
+                              }
+                            }}>
+                              {item.quantity}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+
+                {/* 납품지정보 */}
+                <Box sx={{ 
+                  mb: '2mm',
+                  '@media (max-width: 768px)': { mb: '1.5mm' },
+                  '@media (max-width: 480px)': { mb: '1mm' }
+                }}>
+                  <Typography variant="h4" sx={{
+                    fontWeight: 600,
+                    mb: '1.2mm',
+                    color: '#2c3e50',
+                    borderBottom: '0.5mm solid #2c3e50',
+                    pb: '0.5mm',
+                    display: 'inline-block',
+                    fontSize: '3.5mm',
+                    '@media print': { fontSize: '3.2mm', mb: '1mm' },
+                    '@media (max-width: 768px)': { fontSize: '3.2mm', mb: '1mm' },
+                    '@media (max-width: 480px)': { fontSize: '3mm', mb: '0.8mm' }
+                  }}>
+                    납품지정보
+                  </Typography>
+                  <Box sx={{
+                    p: '2mm',
+                    border: '0.3mm solid #ecf0f1',
+                    borderRadius: '1mm',
+                    backgroundColor: '#f8f9fa',
+                    boxShadow: 'none',
+                    mb: '2mm',
+                    '@media print': { p: '1.2mm', border: '0.2mm solid #ecf0f1' },
+                    '@media (max-width: 768px)': { p: '1.5mm', mb: '1.5mm' },
+                    '@media (max-width: 480px)': { p: '1mm', mb: '1mm' }
+                  }}>
+                    <Grid container spacing={3}>
+                      <Grid item xs={12} sm={6}>
+                        <Box sx={{ 
+                          p: '2mm', 
+                          backgroundColor: 'white', 
+                          borderRadius: '1.5mm',
+                          border: '0.3mm solid #e0e0e0',
+                          boxShadow: '0 0.5mm 2mm rgba(0,0,0,0.05)',
+                          height: '100%',
+                          '@media print': {
+                            boxShadow: 'none',
+                            border: '0.2mm solid #e0e0e0'
+                          }
+                        }}>
+                          <Typography variant="body2" sx={{ 
+                            color: '#666', 
+                            mb: '1mm', 
+                            fontSize: '2.2mm',
+                            fontWeight: 500,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.3mm',
+                            '@media print': {
+                              fontSize: '2mm'
+                            }
+                          }}>
+                            회사명
+                          </Typography>
+                          <Typography variant="h6" sx={{ 
+                            fontWeight: 700, 
+                            color: '#2c3e50', 
+                            fontSize: '3mm',
+                            '@media print': {
+                              fontSize: '2.8mm'
+                            }
+                          }}>
+                            {selectedCompanyInfo?.companyName || ''}
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <Box sx={{ 
+                          p: '2mm', 
+                          backgroundColor: 'white', 
+                          borderRadius: '1.5mm',
+                          border: '0.3mm solid #e0e0e0',
+                          boxShadow: '0 0.5mm 2mm rgba(0,0,0,0.05)',
+                          height: '100%',
+                          '@media print': {
+                            boxShadow: 'none',
+                            border: '0.2mm solid #e0e0e0'
+                          }
+                        }}>
+                          <Typography variant="body2" sx={{ 
+                            color: '#666', 
+                            mb: '1mm', 
+                            fontSize: '2.2mm',
+                            fontWeight: 500,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.3mm',
+                            '@media print': {
+                              fontSize: '2mm'
+                            }
+                          }}>
+                            연락처
+                          </Typography>
+                          <Typography variant="h6" sx={{ 
+                            fontWeight: 700, 
+                            color: '#2c3e50', 
+                            fontSize: '3mm',
+                            '@media print': {
+                              fontSize: '2.8mm'
+                            }
+                          }}>
+                            {selectedCompanyInfo?.phone || ''}
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Box sx={{ 
+                          p: '2mm', 
+                          backgroundColor: 'white', 
+                          borderRadius: '1.5mm',
+                          border: '0.3mm solid #e0e0e0',
+                          boxShadow: '0 0.5mm 2mm rgba(0,0,0,0.05)',
+                          '@media print': {
+                            boxShadow: 'none',
+                            border: '0.2mm solid #e0e0e0'
+                          }
+                        }}>
+                          <Typography variant="body2" sx={{ 
+                            color: '#666', 
+                            mb: '1mm', 
+                            fontSize: '2.2mm',
+                            fontWeight: 500,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.3mm',
+                            '@media print': {
+                              fontSize: '2mm'
+                            }
+                          }}>
+                            납품받을 주소
+                          </Typography>
+                          <Typography variant="h6" sx={{ 
+                            fontWeight: 700, 
+                            color: '#2c3e50', 
+                            fontSize: '3mm',
+                            lineHeight: 1.4,
+                            '@media print': {
+                              fontSize: '2.8mm'
+                            }
+                          }}>
+                            {selectedCompanyInfo?.address || ''}
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      {selectedCompanyInfo?.memo && (
+                        <Grid item xs={12}>
+                          <Box sx={{ 
+                            p: '4mm', 
+                            backgroundColor: 'white', 
+                            borderRadius: '3mm',
+                            border: '0.5mm solid #e0e0e0',
+                            boxShadow: '0 1mm 4mm rgba(0,0,0,0.05)',
+                            '@media print': {
+                              boxShadow: 'none',
+                              border: '0.3mm solid #e0e0e0'
+                            }
+                          }}>
+                            <Typography variant="body2" sx={{ 
+                              color: '#666', 
+                              mb: '2mm', 
+                              fontSize: '3mm',
+                              fontWeight: 500,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5mm',
+                              '@media print': {
+                                fontSize: '2.5mm'
+                              }
+                            }}>
+                              비고
+                            </Typography>
+                                                    <Typography variant="h6" sx={{ 
+                          fontWeight: 700, 
+                          color: '#2c3e50', 
+                          fontSize: '4mm',
+                          '@media print': {
+                            fontSize: '3.5mm'
+                          }
+                        }}>
+                          {selectedCompanyInfo.memo}
+                        </Typography>
+                          </Box>
+                        </Grid>
+                      )}
+                    </Grid>
+                  </Box>
+                </Box>
+
+                {/* 추가전달사항 */}
+                <Box sx={{ 
+                  mb: '3mm',
+                  '@media (max-width: 768px)': { mb: '2mm' },
+                  '@media (max-width: 480px)': { mb: '1.5mm' }
+                }}>
+                  <Typography variant="h4" sx={{
+                    fontWeight: 600,
+                    mb: '0.8mm',
+                    color: '#2c3e50',
+                    borderBottom: '0.3mm solid #2c3e50',
+                    pb: '0.3mm',
+                    display: 'inline-block',
+                    fontSize: '2.8mm',
+                    '@media print': { fontSize: '2.5mm', mb: '0.6mm' },
+                    '@media (max-width: 768px)': { fontSize: '2.5mm', mb: '0.6mm' },
+                    '@media (max-width: 480px)': { fontSize: '2.3mm', mb: '0.5mm' }
+                  }}>
+                    추가전달사항
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={3}
+                    value={purchaseOrderMemo}
+                    onChange={(e) => setPurchaseOrderMemo(e.target.value)}
+                    variant="outlined"
+                    size="small"
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        borderColor: '#ecf0f1',
+                        borderRadius: '1.5mm',
+                        backgroundColor: '#f8f9fa',
+                        '&:hover fieldset': { borderColor: '#2c3e50' },
+                        '&.Mui-focused fieldset': { borderColor: '#2c3e50' },
+                        '@media print': {
+                          border: '0.2mm solid #ecf0f1',
+                          backgroundColor: 'transparent'
+                        },
+                        '@media (max-width: 768px)': {
+                          borderRadius: '1mm'
+                        },
+                        '@media (max-width: 480px)': {
+                          borderRadius: '0.8mm'
+                        }
+                      },
+                      '& .MuiInputBase-input': {
+                        fontSize: '2.8mm',
+                        padding: '2mm',
+                        fontWeight: 500,
+                        '@media print': {
+                          fontSize: '2.5mm',
+                          padding: '1.5mm'
+                        },
+                        '@media (max-width: 768px)': {
+                          fontSize: '2.5mm',
+                          padding: '1.5mm'
+                        },
+                        '@media (max-width: 480px)': {
+                          fontSize: '2.3mm',
+                          padding: '1mm'
+                        }
+                      }
+                    }}
+                  />
+                </Box>
+              </Box>
+            </>
+          )}
+          {/* 간단양식 - AS신청서 양식과 동일한 스타일 */}
+          {purchaseOrderType === 'simple' && (
+            <>
+              {/* 상단 헤더 */}
+              <Box sx={{ 
+                mb: 3, 
+                textAlign: 'center', 
+                backgroundColor: '#333', 
+                color: 'white', 
+                py: 2, 
+                borderRadius: 1,
+                position: 'relative'
+              }}>
+                <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                  발주서 ({selectedVendor})
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                  Purchase Order Form
+                </Typography>
+                <Typography variant="body2" sx={{ 
+                  position: 'absolute', 
+                  top: '50%', 
+                  right: '20px', 
+                  transform: 'translateY(-50%)',
+                  opacity: 0.9,
+                  fontSize: '0.9rem'
+                }}>
+                  {selectedCompanyInfo?.companyName || ''}
+                </Typography>
+              </Box>
+
+              {/* 발주일 섹션 */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, color: '#333' }}>
+                  기본정보
+                </Typography>
+                <Typography variant="body1" sx={{ color: '#666' }}>
+                  발주일: {purchaseOrderDate}
+                </Typography>
+                <Typography variant="body1" sx={{ color: '#666' }}>
+                  납품일: {getDeliveryInfo(selectedVendor).date || '미설정'}
+                </Typography>
+                <Typography variant="body1" sx={{ color: '#666' }}>
+                  납품방법: {getDeliveryInfo(selectedVendor).method || '미설정'}
+                </Typography>
+              </Box>
+
+
+
+              {/* 발주제품 목록 */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2, color: '#333' }}>
+                  발주제품 목록 (Order Product List)
+                </Typography>
+                <Box sx={{ 
+                  border: '1px solid #ddd', 
+                  borderRadius: 1,
+                  overflow: 'hidden'
+                }}>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                          <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem', borderRight: '1px solid #ddd', width: '50px', whiteSpace: 'nowrap' }}>순번</TableCell>
+                          <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>공간</TableCell>
+                          <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>제품코드</TableCell>
+                          <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>세부내용</TableCell>
+      
+                          <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>가로</TableCell>
+                          <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>세로</TableCell>
+                          <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}>수량</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {purchaseOrderItems.map((item, index) => (
+                          <TableRow key={index} sx={{ '&:nth-of-type(odd)': { backgroundColor: '#fafafa' } }}>
+                            <TableCell sx={{ fontSize: '0.875rem', borderRight: '1px solid #ddd', width: '50px' }}>{index + 1}</TableCell>
+                            <TableCell sx={{ fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>{item.space}</TableCell>
+                            <TableCell sx={{ fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>{item.productCode}</TableCell>
+                            <TableCell sx={{ fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>
+                              {item.productType === '블라인드' ? (
+                                <>
+                                  {item.details.replace(/면적:\s*\d+\.?\d*\s*㎡\s*,?\s*/, '').trim()}
+                                  {item.lineDirection && ` | 줄방향: ${item.lineDirection}`}
+                                  {item.lineLength && ` | 줄길이: ${item.lineLength === '직접입력' ? item.customLineLength : item.lineLength}`}
+                                </>
+                              ) : (
+                                item.details
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>{item.productionDetails || ''}</TableCell>
+                            <TableCell sx={{ fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>{item.productType === '커튼' ? '' : item.widthMM}</TableCell>
+                            <TableCell sx={{ fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>{item.productType === '커튼' ? '' : item.heightMM}</TableCell>
+                            <TableCell sx={{ fontSize: '0.875rem' }}>{item.quantity}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              </Box>
+
+              {/* 납품지정보 섹션 */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2, color: '#333' }}>
+                  납품지정보 (Delivery Information)
+                </Typography>
+                <Box sx={{ 
+                  p: 2, 
+                  border: '1px solid #ddd', 
+                  borderRadius: 1,
+                  backgroundColor: '#f9f9f9'
+                }}>
+                  <Typography variant="body2" sx={{ mb: 1, color: '#666' }}>
+                    회사명: <span style={{ fontWeight: 'bold', color: '#333' }}>{selectedCompanyInfo?.companyName || ''}</span>
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 1, color: '#666' }}>
+                    연락처: <span style={{ fontWeight: 'bold', color: '#333' }}>{selectedCompanyInfo?.phone || '연락처'}</span>
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 1, color: '#666' }}>
+                    납품받을 주소: <span style={{ fontWeight: 'bold', color: '#333' }}>{selectedCompanyInfo?.address || '납품받을 주소'}</span>
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#666' }}>
+                    비고: <span style={{ fontWeight: 'bold', color: '#333' }}>{selectedCompanyInfo?.memo || ''}</span>
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* 추가전달사항 */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2, color: '#333' }}>
+                  추가전달사항 (Additional Notes)
+                </Typography>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  value={purchaseOrderMemo}
+                  onChange={(e) => setPurchaseOrderMemo(e.target.value)}
+                  placeholder="발주서에 추가할 전달사항을 입력하세요..."
+                  variant="outlined"
+                  size="small"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderColor: '#ddd',
+                      '&:hover fieldset': { borderColor: '#333' },
+                      '&.Mui-focused fieldset': { borderColor: '#333' },
+                    },
+                  }}
+                />
+              </Box>
+            </>
+          )}
           
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
-              추가전달사항
-            </Typography>
-            <TextField
-              fullWidth
-              multiline
-              rows={3}
-              value={purchaseOrderMemo}
-              onChange={(e) => setPurchaseOrderMemo(e.target.value)}
-              placeholder="발주서에 추가할 전달사항을 입력하세요..."
-              variant="outlined"
-              size="small"
-            />
-          </Box>
+
           
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
-              발주 정보
-            </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={6}>
-                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                  발주일자
-                </Typography>
-                <TextField
-                  type="date"
-                  value={purchaseOrderDate}
-                  onChange={(e) => setPurchaseOrderDate(e.target.value)}
-                  size="small"
-                  fullWidth
-                  sx={{
-                    '& .MuiInputBase-input': { color: '#000' },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#ccc' }
-                  }}
-                />
-              </Grid>
-            </Grid>
-          </Box>
-          
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
-              납품 정보
-            </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={6}>
-                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                  납품방법
-                </Typography>
-                <Select
-                  value={modalDeliveryMethod}
-                  onChange={(e) => {
-                    setModalDeliveryMethod(e.target.value);
-                    updateDeliveryInfo(selectedVendor, 'method', e.target.value);
-                  }}
-                  size="small"
-                  fullWidth
-                  sx={{
-                    '& .MuiSelect-select': { color: '#000' },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#ccc' }
-                  }}
-                >
-                  <MenuItem value="직접배송" sx={{ color: '#000' }}>직접배송</MenuItem>
-                  <MenuItem value="택배" sx={{ color: '#000' }}>택배</MenuItem>
-                </Select>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                  {modalDeliveryMethod === '택배' ? '발송일자' : '납품일자'}
-                </Typography>
-                <Select
-                  value={modalDeliveryDate}
-                  onChange={(e) => {
-                    setModalDeliveryDate(e.target.value);
-                    updateDeliveryInfo(selectedVendor, 'date', e.target.value);
-                  }}
-                  size="small"
-                  fullWidth
-                  displayEmpty
-                  sx={{
-                    '& .MuiSelect-select': { color: '#000' },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#ccc' }
-                  }}
-                >
-                  <MenuItem value="" disabled sx={{ color: '#666' }}>
-                    {modalDeliveryMethod === '택배' ? '발송일자 선택' : '납품일자 선택'}
-                  </MenuItem>
-                  {generateDeliveryDateOptions().map((option) => (
-                    <MenuItem key={option.value} value={option.value} sx={{ color: '#000' }}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                  상호
-                </Typography>
-                <TextField
-                  value={modalDeliveryCompany}
-                  onChange={(e) => {
-                    setModalDeliveryCompany(e.target.value);
-                    updateDeliveryInfo(selectedVendor, 'company', e.target.value);
-                  }}
-                  size="small"
-                  fullWidth
-                  placeholder="상호명을 입력하세요"
-                  sx={{
-                    '& .MuiInputBase-input': { color: '#000' },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#ccc' }
-                  }}
-                />
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                  연락처
-                </Typography>
-                <TextField
-                  value={modalDeliveryContact}
-                  onChange={(e) => {
-                    setModalDeliveryContact(e.target.value);
-                    updateDeliveryInfo(selectedVendor, 'contact', e.target.value);
-                  }}
-                  size="small"
-                  fullWidth
-                  placeholder="연락처를 입력하세요"
-                  sx={{
-                    '& .MuiInputBase-input': { color: '#000' },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#ccc' }
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                  주소
-                </Typography>
-                <TextField
-                  value={modalDeliveryAddress}
-                  onChange={(e) => {
-                    setModalDeliveryAddress(e.target.value);
-                    updateDeliveryInfo(selectedVendor, 'address', e.target.value);
-                  }}
-                  size="small"
-                  fullWidth
-                  placeholder="주소를 입력하세요"
-                  sx={{
-                    '& .MuiInputBase-input': { color: '#000' },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#ccc' }
-                  }}
-                />
-              </Grid>
-            </Grid>
-          </Box>
+
         </DialogContent>
-        <DialogActions>
+        <DialogActions 
+          sx={{
+            '@media print': {
+              display: 'none !important',
+              visibility: 'hidden !important',
+              opacity: 0,
+              position: 'absolute',
+              left: '-9999px',
+              top: '-9999px',
+              width: 0,
+              height: 0,
+              overflow: 'hidden',
+              clip: 'rect(0, 0, 0, 0)',
+              margin: 0,
+              padding: 0,
+              border: 0,
+              pointerEvents: 'none'
+            }
+          }}
+          className="no-print"
+        >
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button
               variant="outlined"
               startIcon={<PrintIcon />}
               onClick={() => handlePrintPurchaseOrder('print')}
+              sx={{
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-color)',
+                '&:hover': {
+                  borderColor: 'var(--primary-color)',
+                  backgroundColor: 'rgba(76, 175, 80, 0.1)'
+                }
+              }}
             >
               프린트
             </Button>
@@ -7529,6 +8936,14 @@ const OrderManagement: React.FC = () => {
               variant="outlined"
               startIcon={<ImageIcon />}
               onClick={() => handlePrintPurchaseOrder('jpg')}
+              sx={{
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-color)',
+                '&:hover': {
+                  borderColor: 'var(--primary-color)',
+                  backgroundColor: 'rgba(255, 193, 7, 0.1)'
+                }
+              }}
             >
               JPG
             </Button>
@@ -7536,6 +8951,14 @@ const OrderManagement: React.FC = () => {
               variant="outlined"
               startIcon={<PictureAsPdfIcon />}
               onClick={() => handlePrintPurchaseOrder('pdf')}
+              sx={{
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-color)',
+                '&:hover': {
+                  borderColor: 'var(--primary-color)',
+                  backgroundColor: 'rgba(233, 30, 99, 0.1)'
+                }
+              }}
             >
               PDF
             </Button>
@@ -7543,12 +8966,27 @@ const OrderManagement: React.FC = () => {
               variant="outlined"
               startIcon={<ShareIcon />}
               onClick={() => handlePrintPurchaseOrder('kakao')}
+              sx={{
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-color)',
+                '&:hover': {
+                  borderColor: 'var(--primary-color)',
+                  backgroundColor: 'rgba(255, 235, 59, 0.1)'
+                }
+              }}
             >
               카톡공유
             </Button>
             <Button
               variant="contained"
               onClick={() => setPurchaseOrderModalOpen(false)}
+              sx={{
+                backgroundColor: 'var(--primary-color)',
+                color: 'white',
+                '&:hover': {
+                  backgroundColor: 'var(--primary-dark-color)'
+                }
+              }}
             >
               닫기
             </Button>
@@ -8980,7 +10418,6 @@ const OrderManagement: React.FC = () => {
           삭제하기
         </MenuItem>
       </Menu>
-
       {/* 제품 정보 수정 모달 */}
       {editOpen && editRow && (
         <Dialog
@@ -9476,7 +10913,15 @@ const OrderManagement: React.FC = () => {
                             handleEditChange('lineDirection', e.target.value)
                           }
                           label="줄방향"
+                          displayEmpty
                         >
+                          <MenuItem value="" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>선택안함</MenuItem>
                           <MenuItem value="좌" sx={{
                             color: 'var(--text-color)',
                             backgroundColor: 'var(--background-color)',
@@ -9521,7 +10966,15 @@ const OrderManagement: React.FC = () => {
                             handleEditChange('lineLength', e.target.value)
                           }
                           label="줄길이"
+                          displayEmpty
                         >
+                          <MenuItem value="" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>선택안함</MenuItem>
                           <MenuItem value="90cm" sx={{
                             color: 'var(--text-color)',
                             backgroundColor: 'var(--background-color)',
@@ -9564,6 +11017,13 @@ const OrderManagement: React.FC = () => {
                               backgroundColor: 'var(--hover-color)',
                             },
                           }}>직접입력</MenuItem>
+                          <MenuItem value="없음" sx={{
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--background-color)',
+                            '&:hover': {
+                              backgroundColor: 'var(--hover-color)',
+                            },
+                          }}>없음</MenuItem>
                         </Select>
                       </FormControl>
                     </Grid>
@@ -9614,31 +11074,7 @@ const OrderManagement: React.FC = () => {
                     }}
                   />
                 </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    label="제작내용"
-                    value={editRow.productionContent || ''}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      setEditRow((prev: any) => ({ ...prev, productionContent: e.target.value }));
-                    }}
-                    fullWidth
-                    size="small"
-                    multiline
-                    rows={2}
-                    placeholder="제작 시 필요한 세부사항을 입력하세요..."
-                    sx={{
-                      input: { color: 'var(--text-color)' },
-                      label: { color: 'var(--text-secondary-color)' },
-                      '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: 'var(--border-color)' },
-                        '&:hover fieldset': { borderColor: 'var(--primary-color)' },
-                      },
-                      '& .MuiInputBase-input': {
-                        color: 'var(--text-color)',
-                      },
-                    }}
-                  />
-                </Grid>
+
                 {recommendedPleatCount > 0 && 
                   isFinite(recommendedPleatCount) &&
                   editRow.productType !== '블라인드' &&
@@ -10832,6 +12268,1438 @@ const OrderManagement: React.FC = () => {
           삭제
         </MenuItem>
       </Menu>
+
+      {/* 발주서 출력 메뉴 */}
+      <Menu
+        anchorEl={printMenuAnchorEl}
+        open={printMenuOpen}
+        onClose={handlePrintMenuClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            minWidth: 180,
+            '& .MuiMenuItem-root': {
+              py: 1.5,
+              px: 2,
+              fontSize: '0.875rem',
+              fontWeight: 500,
+            },
+          },
+        }}
+      >
+        <MenuItem 
+          onClick={() => handlePrintMenuOption('print')}
+          sx={{
+            color: '#1976d2',
+            '&:hover': {
+              backgroundColor: 'rgba(25, 118, 210, 0.1)',
+            },
+          }}
+        >
+          <PrintIcon sx={{ mr: 1.5, fontSize: '1.2rem', color: '#1976d2' }} />
+          프린트
+        </MenuItem>
+        <MenuItem 
+          onClick={() => handlePrintMenuOption('pdf')}
+          sx={{
+            color: '#e91e63',
+            '&:hover': {
+              backgroundColor: 'rgba(233, 30, 99, 0.1)',
+            },
+          }}
+        >
+          <PictureAsPdfIcon sx={{ mr: 1.5, fontSize: '1.2rem', color: '#e91e63' }} />
+          PDF
+        </MenuItem>
+        <MenuItem 
+          onClick={() => handlePrintMenuOption('jpg')}
+          sx={{
+            color: '#ff9800',
+            '&:hover': {
+              backgroundColor: 'rgba(255, 152, 0, 0.1)',
+            },
+          }}
+        >
+          <ImageIcon sx={{ mr: 1.5, fontSize: '1.2rem', color: '#ff9800' }} />
+          이미지
+        </MenuItem>
+        <MenuItem 
+          onClick={() => handlePrintMenuOption('kakao')}
+          sx={{
+            color: '#4caf50',
+            '&:hover': {
+              backgroundColor: 'rgba(76, 175, 80, 0.1)',
+            },
+          }}
+        >
+          <ShareIcon sx={{ mr: 1.5, fontSize: '1.2rem', color: '#4caf50' }} />
+          공유
+        </MenuItem>
+      </Menu>
+
+      {/* 발주서 출력 미리보기 모달 */}
+      <Dialog
+        open={purchaseOrderPrintModalOpen}
+        onClose={() => setPurchaseOrderPrintModalOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            maxHeight: '95vh',
+            overflow: 'hidden',
+          },
+        }}
+      >
+        <DialogTitle sx={{ 
+          color: '#2c3e50', 
+          fontWeight: 'bold',
+          borderBottom: '2px solid #ecf0f1',
+          pb: 2,
+          backgroundColor: '#f8f9fa',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <PrintIcon sx={{ mr: 1, color: '#3498db' }} />
+            발주서 출력 미리보기
+          </Box>
+          <IconButton
+            onClick={() => setPurchaseOrderPrintModalOpen(false)}
+            sx={{
+              color: '#7f8c8d',
+              '&:hover': {
+                backgroundColor: 'rgba(127, 140, 141, 0.1)',
+              },
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, backgroundColor: '#ecf0f1' }}>
+          <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
+            {/* 발주서 내용 */}
+            <Box 
+              className="purchase-order-a4-container"
+              sx={{
+                width: '210mm',
+                minHeight: '297mm',
+                backgroundColor: 'white',
+                padding: '25mm',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+                borderRadius: 2,
+                fontFamily: 'Noto Sans KR, sans-serif',
+                fontSize: '11pt',
+                lineHeight: 1.5,
+                color: '#2c3e50',
+                position: 'relative',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: '4px',
+                  background: 'linear-gradient(90deg, #3498db, #2980b9)',
+                  borderRadius: '2px 2px 0 0',
+                }
+              }}
+            >
+              {/* 제목 섹션 */}
+              <Box sx={{ 
+                textAlign: 'center', 
+                mb: 5,
+                borderBottom: '3px solid #34495e',
+                pb: 3
+              }}>
+                <Typography sx={{ 
+                  fontWeight: '900', 
+                  fontSize: '28pt',
+                  color: '#2c3e50',
+                  mb: 1,
+                  letterSpacing: '2px'
+                }}>
+                  발주서
+                </Typography>
+                <Typography sx={{ 
+                  fontSize: '16pt',
+                  color: '#2c3e50',
+                  fontWeight: '700',
+                  backgroundColor: '#ecf0f1',
+                  px: 2,
+                  py: 1,
+                  borderRadius: 1,
+                  display: 'inline-block'
+                }}>
+                  {selectedVendorForPrint ? selectedVendorForPrint : '거래처명을 선택해주세요'}
+                </Typography>
+              </Box>
+
+              {/* 발주일자 및 발주명 */}
+              <Box sx={{ 
+                mb: 5, 
+                textAlign: 'right',
+                borderBottom: '1px solid #bdc3c7',
+                pb: 2
+              }}>
+                <Typography sx={{ 
+                  fontSize: '12pt',
+                  fontWeight: '600',
+                  color: '#34495e',
+                  mb: 1
+                }}>
+                  발주일자: {purchaseOrderDate}
+                </Typography>
+                {purchaseOrderName && (
+                  <Typography sx={{ 
+                    fontSize: '11pt',
+                    fontWeight: '500',
+                    color: '#7f8c8d'
+                  }}>
+                    발주명: {purchaseOrderName}
+                  </Typography>
+                )}
+              </Box>
+
+              {/* 수신/발신 정보 */}
+              <Box sx={{ mb: 5 }}>
+                <Box sx={{ 
+                  mb: 3,
+                  p: 2,
+                  backgroundColor: '#f8f9fa',
+                  borderRadius: 1,
+                  border: '1px solid #e9ecef'
+                }}>
+                  <Typography sx={{ 
+                    fontWeight: 'bold', 
+                    fontSize: '13pt',
+                    mb: 1,
+                    color: '#2c3e50'
+                  }}>
+                    수신: {selectedVendorForPrint ? selectedVendorForPrint : '거래처명을 선택해주세요'}
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 3, ml: 2 }}>
+                    <Typography sx={{ fontSize: '11pt', color: '#7f8c8d' }}>
+                      담당자: <span style={{ borderBottom: '1px solid #bdc3c7', padding: '0 10px' }}>_________________</span>
+                    </Typography>
+                    <Typography sx={{ fontSize: '11pt', color: '#7f8c8d' }}>
+                      연락처: <span style={{ borderBottom: '1px solid #bdc3c7', padding: '0 10px' }}>_________________</span>
+                    </Typography>
+                  </Box>
+                </Box>
+                <Box sx={{ 
+                  p: 2,
+                  backgroundColor: '#e8f4fd',
+                  borderRadius: 1,
+                  border: '1px solid #bee5eb'
+                }}>
+                  <Typography sx={{ 
+                    fontWeight: 'bold', 
+                    fontSize: '13pt',
+                    mb: 1,
+                    color: '#2c3e50'
+                  }}>
+                    발신: {selectedCompanyInfo?.name || '우리회사'}
+                  </Typography>
+                  <Typography sx={{ 
+                    fontSize: '11pt', 
+                    color: '#7f8c8d',
+                    ml: 2
+                  }}>
+                    연락처: {selectedCompanyInfo?.contact || '_________________'}
+                  </Typography>
+                  <Typography sx={{ 
+                    fontSize: '11pt', 
+                    color: '#7f8c8d',
+                    ml: 2
+                  }}>
+                    주소: {selectedCompanyInfo?.address || '_________________'}
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* 프로젝트 정보 */}
+              {(() => {
+                const currentOrder = orders[activeTab];
+                if (currentOrder) {
+                  return (
+                    <Box sx={{ mb: 5 }}>
+                      <Typography sx={{ 
+                        fontWeight: 'bold', 
+                        fontSize: '15pt',
+                        mb: 3,
+                        color: '#2c3e50',
+                        borderBottom: '2px solid #27ae60',
+                        pb: 1,
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}>
+                        <Box sx={{ 
+                          width: 4, 
+                          height: 20, 
+                          backgroundColor: '#27ae60', 
+                          mr: 2,
+                          borderRadius: 1
+                        }} />
+                        프로젝트 정보
+                      </Typography>
+                      <Grid container spacing={3}>
+                        <Grid item xs={6}>
+                          <Box sx={{ 
+                            p: 2,
+                            backgroundColor: '#e8f5e8',
+                            borderRadius: 1,
+                            border: '1px solid #4caf50'
+                          }}>
+                            <Typography sx={{ 
+                              fontSize: '11pt', 
+                              mb: 1.5,
+                              fontWeight: '600',
+                              color: '#2e7d32'
+                            }}>
+                              프로젝트 주소: {(currentOrder as any).address || '_________________'}
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Box sx={{ 
+                            p: 2,
+                            backgroundColor: '#fff3e0',
+                            borderRadius: 1,
+                            border: '1px solid #ff9800'
+                          }}>
+                            <Typography sx={{ 
+                              fontSize: '11pt', 
+                              mb: 1.5,
+                              fontWeight: '600',
+                              color: '#e65100'
+                            }}>
+                              납품방법: {deliveryMethod}
+                            </Typography>
+                            <Typography sx={{ 
+                              fontSize: '11pt',
+                              fontWeight: '600',
+                              color: '#e65100'
+                            }}>
+                              납품일자: {deliveryDate ? new Date(deliveryDate).toLocaleDateString('ko-KR') : '_________________'}
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid item xs={12}>
+                          <Box sx={{ 
+                            p: 2,
+                            backgroundColor: '#f3e5f5',
+                            borderRadius: 1,
+                            border: '1px solid #9c27b0',
+                            mt: 2
+                          }}>
+                            <Typography sx={{ 
+                              fontSize: '11pt', 
+                              mb: 1.5,
+                              fontWeight: '600',
+                              color: '#6a1b9a'
+                            }}>
+                              납품지 연락처: {selectedCompanyInfo?.deliveryContact || selectedCompanyInfo?.contact || '_________________'}
+                            </Typography>
+                            <Typography sx={{ 
+                              fontSize: '11pt',
+                              fontWeight: '600',
+                              color: '#6a1b9a'
+                            }}>
+                              납품지 주소: {selectedCompanyInfo?.deliveryAddress || selectedCompanyInfo?.address || '_________________'}
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      </Grid>
+                    </Box>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* 제품목록 */}
+              <Box sx={{ mb: 5 }}>
+                <Typography sx={{ 
+                  fontWeight: 'bold', 
+                  fontSize: '15pt',
+                  mb: 3,
+                  color: '#2c3e50',
+                  borderBottom: '2px solid #3498db',
+                  pb: 1,
+                  display: 'flex',
+                  alignItems: 'center'
+                }}>
+                  <Box sx={{ 
+                    width: 4, 
+                    height: 20, 
+                    backgroundColor: '#3498db', 
+                    mr: 2,
+                    borderRadius: 1
+                  }} />
+                  제품목록
+                </Typography>
+                <TableContainer sx={{ 
+                  border: '2px solid #bdc3c7',
+                  borderRadius: 1,
+                  overflow: 'hidden'
+                }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow sx={{ backgroundColor: '#34495e' }}>
+                        <TableCell sx={{ 
+                          border: '1px solid #95a5a6', 
+                          textAlign: 'center',
+                          fontWeight: 'bold',
+                          fontSize: '9pt',
+                          py: 1.5,
+                          color: 'white'
+                        }}>순번</TableCell>
+                        <TableCell sx={{ 
+                          border: '1px solid #95a5a6', 
+                          textAlign: 'center',
+                          fontWeight: 'bold',
+                          fontSize: '9pt',
+                          py: 1.5,
+                          color: 'white'
+                        }}>공간</TableCell>
+
+                        <TableCell sx={{ 
+                          border: '1px solid #95a5a6', 
+                          textAlign: 'center',
+                          fontWeight: 'bold',
+                          fontSize: '9pt',
+                          py: 1.5,
+                          color: 'white'
+                        }}>제품코드</TableCell>
+                        <TableCell sx={{ 
+                          border: '1px solid #95a5a6', 
+                          textAlign: 'center',
+                          fontWeight: 'bold',
+                          fontSize: '9pt',
+                          py: 1.5,
+                          color: 'white'
+                        }}>세부내용</TableCell>
+                        <TableCell sx={{ 
+                          border: '1px solid #95a5a6', 
+                          textAlign: 'center',
+                          fontWeight: 'bold',
+                          fontSize: '9pt',
+                          py: 1.5,
+                          color: 'white'
+                        }}>가로</TableCell>
+                        <TableCell sx={{ 
+                          border: '1px solid #95a5a6', 
+                          textAlign: 'center',
+                          fontWeight: 'bold',
+                          fontSize: '9pt',
+                          py: 1.5,
+                          color: 'white'
+                        }}>세로</TableCell>
+                        <TableCell sx={{ 
+                          border: '1px solid #95a5a6', 
+                          textAlign: 'center',
+                          fontWeight: 'bold',
+                          fontSize: '9pt',
+                          py: 1.5,
+                          color: 'white'
+                        }}>수량</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {(() => {
+                        const selectedOrder = vendorPurchaseOrders[orders[activeTab]?.id]?.find(order => order.vendor === selectedVendorForPrint);
+                        const items = selectedOrder?.items || [];
+                        
+                        if (items.length === 0) {
+                          return (
+                            <TableRow>
+                              <TableCell 
+                                colSpan={8} 
+                                sx={{ 
+                                  textAlign: 'center', 
+                                  py: 3,
+                                  color: '#7f8c8d',
+                                  fontStyle: 'italic'
+                                }}
+                              >
+                                등록된 제품이 없습니다.
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }
+                        
+                        return items.map((item: any, index: number) => (
+                          <TableRow key={index} sx={{ 
+                            '&:nth-of-type(even)': { backgroundColor: '#f8f9fa' },
+                            '&:hover': { backgroundColor: '#e3f2fd' }
+                          }}>
+                            <TableCell sx={{ 
+                              border: '1px solid #bdc3c7', 
+                              textAlign: 'center',
+                              fontSize: '9pt',
+                              py: 1,
+                              fontWeight: '600'
+                            }}>{index + 1}</TableCell>
+                            <TableCell sx={{ 
+                              border: '1px solid #bdc3c7', 
+                              textAlign: 'center',
+                              fontSize: '9pt',
+                              py: 1
+                            }}>{item.space || item.spaceCustom || '-'}</TableCell>
+
+                            <TableCell sx={{ 
+                              border: '1px solid #bdc3c7', 
+                              textAlign: 'center',
+                              fontSize: '9pt',
+                              py: 1,
+                              fontFamily: 'monospace'
+                            }}>{item.productCode || '-'}</TableCell>
+                            <TableCell sx={{ 
+                              border: '1px solid #bdc3c7', 
+                              textAlign: 'left',
+                              fontSize: '9pt',
+                              py: 1,
+                              maxWidth: '120px'
+                            }}>
+                              {item.details || item.productName || '-'}
+                            </TableCell>
+                            <TableCell sx={{ 
+                              border: '1px solid #bdc3c7', 
+                              textAlign: 'left',
+                              fontSize: '9pt',
+                              py: 1,
+                              maxWidth: '120px'
+                            }}>
+                              {item.note || item.notes || '-'}
+                            </TableCell>
+                            <TableCell sx={{ 
+                              border: '1px solid #bdc3c7', 
+                              textAlign: 'center',
+                              fontSize: '9pt',
+                              py: 1,
+                              fontWeight: '600'
+                            }}>
+                              {item.widthMM || item.productionWidth || '-'}
+                            </TableCell>
+                            <TableCell sx={{ 
+                              border: '1px solid #bdc3c7', 
+                              textAlign: 'center',
+                              fontSize: '9pt',
+                              py: 1,
+                              fontWeight: '600'
+                            }}>
+                              {item.heightMM || item.productionHeight || '-'}
+                            </TableCell>
+                            <TableCell sx={{ 
+                              border: '1px solid #bdc3c7', 
+                              textAlign: 'center',
+                              fontSize: '9pt',
+                              py: 1,
+                              fontWeight: 'bold',
+                              color: '#e74c3c'
+                            }}>{item.quantity || '-'}</TableCell>
+                          </TableRow>
+                        ));
+                      })()}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+
+
+
+              {/* 추가전달사항 */}
+              <Box>
+                <Typography sx={{ 
+                  fontWeight: 'bold', 
+                  fontSize: '15pt',
+                  mb: 3,
+                  color: '#2c3e50',
+                  borderBottom: '2px solid #9b59b6',
+                  pb: 1,
+                  display: 'flex',
+                  alignItems: 'center'
+                }}>
+                  <Box sx={{ 
+                    width: 4, 
+                    height: 20, 
+                    backgroundColor: '#9b59b6', 
+                    mr: 2,
+                    borderRadius: 1
+                  }} />
+                  추가전달사항
+                </Typography>
+                <Box sx={{ 
+                  minHeight: '120px',
+                  border: '2px solid #bdc3c7',
+                  borderRadius: 1,
+                  p: 3,
+                  backgroundColor: '#f8f9fa',
+                  backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 24px, #e9ecef 24px, #e9ecef 25px)',
+                  lineHeight: '25px'
+                }}>
+                  {additionalNotes ? (
+                    <Typography sx={{ 
+                      fontSize: '11pt', 
+                      color: '#2c3e50',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word'
+                    }}>
+                      {additionalNotes}
+                    </Typography>
+                  ) : (
+                    <>
+                      <Typography sx={{ fontSize: '11pt', color: '#7f8c8d', mb: 1 }}>
+                        _________________________________________________________________
+                      </Typography>
+                      <Typography sx={{ fontSize: '11pt', color: '#7f8c8d', mb: 1 }}>
+                        _________________________________________________________________
+                      </Typography>
+                      <Typography sx={{ fontSize: '11pt', color: '#7f8c8d', mb: 1 }}>
+                        _________________________________________________________________
+                      </Typography>
+                      <Typography sx={{ fontSize: '11pt', color: '#7f8c8d' }}>
+                        _________________________________________________________________
+                      </Typography>
+                    </>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ 
+          p: 3, 
+          borderTop: '2px solid #ecf0f1',
+          backgroundColor: '#f8f9fa',
+          display: 'flex',
+          justifyContent: 'space-between'
+        }}>
+          <Box>
+            <Typography sx={{ 
+              fontSize: '10pt', 
+              color: '#7f8c8d',
+              fontStyle: 'italic'
+            }}>
+              * 발주서 내용을 확인 후 인쇄하세요
+            </Typography>
+          </Box>
+          <Box>
+            <Button 
+              onClick={() => setPurchaseOrderPrintModalOpen(false)}
+              sx={{ 
+                mr: 2,
+                color: '#7f8c8d',
+                borderColor: '#bdc3c7',
+                '&:hover': {
+                  borderColor: '#95a5a6',
+                  backgroundColor: 'rgba(127, 140, 141, 0.1)',
+                },
+              }}
+              variant="outlined"
+            >
+              취소
+            </Button>
+            <Button 
+              onClick={() => {
+                handlePrintPurchaseOrder('print');
+                setPurchaseOrderPrintModalOpen(false);
+              }}
+              variant="contained"
+              startIcon={<PrintIcon />}
+              sx={{
+                background: 'linear-gradient(45deg, #3498db, #2980b9)',
+                boxShadow: '0 4px 15px rgba(52, 152, 219, 0.3)',
+                '&:hover': {
+                  background: 'linear-gradient(45deg, #2980b9, #1f5f8b)',
+                  boxShadow: '0 6px 20px rgba(52, 152, 219, 0.4)',
+                  transform: 'translateY(-1px)',
+                },
+                transition: 'all 0.3s ease',
+              }}
+            >
+              인쇄
+            </Button>
+          </Box>
+        </DialogActions>
+      </Dialog>
+
+      {/* 수정 가능한 발주서 테이블 모달 */}
+      <Dialog
+        open={editablePurchaseOrderModalOpen}
+        onClose={handleEditablePurchaseOrderClose}
+        maxWidth="xl"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            maxHeight: '90vh',
+          },
+        }}
+      >
+        <DialogTitle sx={{ 
+          color: '#2c3e50', 
+          fontWeight: 'bold',
+          borderBottom: '2px solid #ecf0f1',
+          pb: 2,
+          backgroundColor: '#f8f9fa',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <EditIcon sx={{ mr: 1, color: '#3498db' }} />
+            {editablePurchaseOrderVendor} 거래처 발주서 수정
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<PrintIcon />}
+              onClick={() => {
+                // 현재 수정된 데이터로 발주서 출력 미리보기
+                const currentOrderId = orders[activeTab]?.id;
+                if (currentOrderId && editablePurchaseOrderVendor) {
+                  // 임시로 vendorPurchaseOrders 업데이트
+                  setVendorPurchaseOrders(prev => ({
+                    ...prev,
+                    [currentOrderId]: prev[currentOrderId].map(order => 
+                      order.vendor === editablePurchaseOrderVendor 
+                        ? { ...order, items: editablePurchaseOrderData }
+                        : order
+                    )
+                  }));
+                  
+                  // 선택된 거래처 설정
+                  setSelectedVendorForPrint(editablePurchaseOrderVendor);
+                  
+                  // 발주서 출력 미리보기 모달 열기
+                  setTimeout(() => {
+                    setPurchaseOrderPrintModalOpen(true);
+                  }, 100);
+                }
+              }}
+              sx={{
+                borderColor: '#3498db',
+                color: '#3498db',
+                '&:hover': {
+                  borderColor: '#2980b9',
+                  backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                },
+              }}
+            >
+              출력
+            </Button>
+            <IconButton
+              onClick={handleEditablePurchaseOrderClose}
+              sx={{
+                color: '#7f8c8d',
+                '&:hover': {
+                  backgroundColor: 'rgba(127, 140, 141, 0.1)',
+                },
+              }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          <Box sx={{ p: 2 }}>
+            {/* 도구 모음 */}
+            <Box sx={{ 
+              mb: 2, 
+              display: 'flex', 
+              gap: 1, 
+              alignItems: 'center',
+              borderBottom: '1px solid #e9ecef',
+              pb: 2
+            }}>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={handleEditablePurchaseOrderAddRow}
+                sx={{
+                  backgroundColor: '#27ae60',
+                  '&:hover': {
+                    backgroundColor: '#229954',
+                  },
+                }}
+              >
+                행 추가
+              </Button>
+              <Typography sx={{ ml: 2, color: '#7f8c8d', fontSize: '0.875rem' }}>
+                총 {editablePurchaseOrderData.length}개 제품
+              </Typography>
+            </Box>
+
+            {/* 발주서 기본 정보 */}
+            <Box sx={{ 
+              mb: 2, 
+              display: 'flex', 
+              gap: 2, 
+              alignItems: 'center',
+              borderBottom: '1px solid #e9ecef',
+              pb: 2
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography sx={{ color: '#2c3e50', fontSize: '0.875rem', fontWeight: '500' }}>
+                  발주일자:
+                </Typography>
+                <TextField
+                  type="date"
+                  value={purchaseOrderDate}
+                  onChange={(e) => setPurchaseOrderDate(e.target.value)}
+                  size="small"
+                  sx={{ 
+                    minWidth: 150,
+                    '& .MuiOutlinedInput-root': {
+                      fontSize: '0.875rem'
+                    },
+                    '& .MuiInputBase-input': {
+                      color: 'var(--text-color)'
+                    }
+                  }}
+                />
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography sx={{ color: '#2c3e50', fontSize: '0.875rem', fontWeight: '500' }}>
+                  발주명:
+                </Typography>
+                <TextField
+                  value={purchaseOrderName}
+                  onChange={(e) => setPurchaseOrderName(e.target.value)}
+                  placeholder="발주서 제목을 입력하세요"
+                  size="small"
+                  sx={{ 
+                    minWidth: 200,
+                    '& .MuiOutlinedInput-root': {
+                      fontSize: '0.875rem'
+                    },
+                    '& .MuiInputBase-input': {
+                      color: 'var(--text-color)'
+                    }
+                  }}
+                />
+              </Box>
+            </Box>
+
+            {/* 납품 정보 */}
+            <Box sx={{ 
+              mb: 2, 
+              display: 'flex', 
+              gap: 2, 
+              alignItems: 'center',
+              borderBottom: '1px solid #e9ecef',
+              pb: 2
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography sx={{ color: '#2c3e50', fontSize: '0.875rem', fontWeight: '500' }}>
+                  납품방법:
+                </Typography>
+                <Select
+                  value={deliveryMethod}
+                  onChange={(e) => setDeliveryMethod(e.target.value)}
+                  size="small"
+                  sx={{ 
+                    minWidth: 120,
+                    '& .MuiOutlinedInput-root': {
+                      fontSize: '0.875rem'
+                    },
+                    '& .MuiSelect-select': {
+                      color: 'var(--text-color)'
+                    },
+                    '& .MuiMenuItem-root': {
+                      color: 'var(--text-color)'
+                    },
+                    '& .MuiPaper-root': {
+                      backgroundColor: 'var(--background-color)',
+                      color: 'var(--text-color)'
+                    }
+                  }}
+                >
+                  <MenuItem value="직접배송">직접배송</MenuItem>
+                  <MenuItem value="택배">택배</MenuItem>
+                  <MenuItem value="화물">화물</MenuItem>
+                </Select>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography sx={{ color: '#2c3e50', fontSize: '0.875rem', fontWeight: '500' }}>
+                  납품일자:
+                </Typography>
+                <Select
+                  value={deliveryDate}
+                  onChange={(e) => setDeliveryDate(e.target.value)}
+                  size="small"
+                  sx={{ 
+                    minWidth: 120,
+                    '& .MuiOutlinedInput-root': {
+                      fontSize: '0.875rem'
+                    },
+                    '& .MuiSelect-select': {
+                      color: 'var(--text-color)'
+                    },
+                    '& .MuiMenuItem-root': {
+                      color: 'var(--text-color)'
+                    },
+                    '& .MuiPaper-root': {
+                      backgroundColor: 'var(--background-color)',
+                      color: 'var(--text-color)'
+                    }
+                  }}
+                >
+                  {Array.from({ length: 10 }, (_, i) => {
+                    const date = new Date();
+                    date.setDate(date.getDate() + i);
+                    const dateString = date.toISOString().split('T')[0];
+                    const displayDate = date.toLocaleDateString('ko-KR', { 
+                      month: 'short', 
+                      day: 'numeric',
+                      weekday: 'short'
+                    });
+                    return (
+                      <MenuItem key={dateString} value={dateString}>
+                        {displayDate}
+                      </MenuItem>
+                    );
+                  })}
+                </Select>
+              </Box>
+            </Box>
+
+            {/* 추가 전달사항 */}
+            <Box sx={{ 
+              mb: 2, 
+              borderBottom: '1px solid #e9ecef',
+              pb: 2
+            }}>
+              <Typography sx={{ 
+                color: '#2c3e50', 
+                fontSize: '0.875rem', 
+                fontWeight: '500',
+                mb: 1
+              }}>
+                추가 전달사항:
+              </Typography>
+              <TextField
+                multiline
+                rows={3}
+                value={additionalNotes}
+                onChange={(e) => setAdditionalNotes(e.target.value)}
+                placeholder="발주서에 포함할 추가 전달사항을 입력하세요..."
+                fullWidth
+                size="small"
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    fontSize: '0.875rem',
+                    '& textarea': {
+                      color: 'var(--text-color)',
+                      resize: 'vertical'
+                    }
+                  }
+                }}
+              />
+            </Box>
+
+            {/* 수정 가능한 테이블 */}
+            <TableContainer sx={{ 
+              border: '1px solid #ddd',
+              borderRadius: 1,
+              width: '100%',
+              overflowX: 'auto',
+              overflowY: 'visible'
+            }}>
+              <Table size="small" stickyHeader sx={{ minWidth: 1200 }}>
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: '#ecf0f1' }}>
+                                         <TableCell sx={{ 
+                       border: '1px solid #95a5a6', 
+                       textAlign: 'center',
+                       fontWeight: 'bold',
+                       fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                       py: { xs: 0.5, sm: 0.75, md: 1 },
+                       color: '#2c3e50',
+                       width: '5%',
+                       minWidth: 60,
+                       px: 0.5
+                     }}>순번</TableCell>
+                     <TableCell sx={{ 
+                       border: '1px solid #95a5a6', 
+                       textAlign: 'center',
+                       fontWeight: 'bold',
+                       fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                       py: { xs: 0.5, sm: 0.75, md: 1 },
+                       color: '#2c3e50',
+                       width: '10%',
+                       minWidth: 120,
+                       px: 0.5
+                     }}>공간</TableCell>
+                     <TableCell sx={{ 
+                       border: '1px solid #95a5a6', 
+                       textAlign: 'center',
+                       fontWeight: 'bold',
+                       fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                       py: { xs: 0.5, sm: 0.75, md: 1 },
+                       color: '#2c3e50',
+                       width: '12%',
+                       minWidth: 144,
+                       px: 0.5
+                     }}>제품코드</TableCell>
+                     <TableCell sx={{ 
+                       border: '1px solid #95a5a6', 
+                       textAlign: 'center',
+                       fontWeight: 'bold',
+                       fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                       py: { xs: 0.5, sm: 0.75, md: 1 },
+                       color: '#2c3e50',
+                       width: '20%',
+                       minWidth: 240,
+                       px: 0.5
+                     }}>세부내용</TableCell>
+                     <TableCell sx={{ 
+                       border: '1px solid #95a5a6', 
+                       textAlign: 'center',
+                       fontWeight: 'bold',
+                       fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                       py: { xs: 0.5, sm: 0.75, md: 1 },
+                       color: '#2c3e50',
+                       width: '20%',
+                       minWidth: 240,
+                       px: 0.5
+                     }}>세부내용</TableCell>
+                     <TableCell sx={{ 
+                       border: '1px solid #95a5a6', 
+                       textAlign: 'center',
+                       fontWeight: 'bold',
+                       fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                       py: { xs: 0.5, sm: 0.75, md: 1 },
+                       color: '#2c3e50',
+                       width: '10%',
+                       minWidth: 120,
+                       px: 0.5
+                     }}>가로(mm)</TableCell>
+                     <TableCell sx={{ 
+                       border: '1px solid #95a5a6', 
+                       textAlign: 'center',
+                       fontWeight: 'bold',
+                       fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                       py: { xs: 0.5, sm: 0.75, md: 1 },
+                       color: '#2c3e50',
+                       width: '10%',
+                       minWidth: 120,
+                       px: 0.5
+                     }}>세로(mm)</TableCell>
+                     <TableCell sx={{ 
+                       border: '1px solid #95a5a6', 
+                       textAlign: 'center',
+                       fontWeight: 'bold',
+                       fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                       py: { xs: 0.5, sm: 0.75, md: 1 },
+                       color: '#2c3e50',
+                       width: '8%',
+                       minWidth: 96,
+                       px: 0.5
+                     }}>수량</TableCell>
+                     <TableCell sx={{ 
+                       border: '1px solid #95a5a6', 
+                       textAlign: 'center',
+                       fontWeight: 'bold',
+                       fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                       py: { xs: 0.5, sm: 0.75, md: 1 },
+                       color: '#2c3e50',
+                       width: '10%',
+                       minWidth: 120,
+                       px: 0.5
+                     }}>작업</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {editablePurchaseOrderData.map((row, index) => (
+                    <TableRow key={row.id || index} sx={{ 
+                      '&:nth-of-type(even)': { backgroundColor: '#f8f9fa' },
+                      '&:hover': { backgroundColor: '#e3f2fd' },
+                      height: 'auto'
+                    }}>
+                                             <TableCell sx={{ 
+                         border: '1px solid #bdc3c7', 
+                         textAlign: 'center',
+                         fontSize: { xs: '8pt', sm: '9pt', md: '10pt' },
+                         py: { xs: 0.25, sm: 0.5 },
+                         fontWeight: '600',
+                         color: '#2c3e50',
+                         px: 0.5,
+                         height: 'auto',
+                         verticalAlign: 'top'
+                       }}>{index + 1}</TableCell>
+                      <TableCell sx={{ 
+                        border: '1px solid #bdc3c7', 
+                        textAlign: 'center',
+                        fontSize: { xs: '8pt', sm: '9pt', md: '9pt' },
+                        py: { xs: 0.25, sm: 0.5 },
+                        px: 0.5,
+                        height: 'auto',
+                        verticalAlign: 'top'
+                      }}>
+                                                 <TextField
+                           size="small"
+                           value={row.space || row.spaceCustom || ''}
+                           onChange={(e) => handleEditablePurchaseOrderRowChange(index, 'space', e.target.value)}
+                           sx={{ 
+                             width: '100%',
+                             '& .MuiOutlinedInput-root': {
+                               fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                               height: { xs: 32, sm: 34, md: 36 },
+                               '& input': {
+                                 color: '#2c3e50',
+                                 fontWeight: '500',
+                                 padding: { xs: '6px 8px', sm: '8px 10px', md: '8px 12px' }
+                               }
+                             }
+                           }}
+                         />
+                      </TableCell>
+                      <TableCell sx={{ 
+                        border: '1px solid #bdc3c7', 
+                        textAlign: 'center',
+                        fontSize: { xs: '8pt', sm: '9pt', md: '9pt' },
+                        py: { xs: 0.25, sm: 0.5 },
+                        px: 0.5,
+                        height: 'auto',
+                        verticalAlign: 'top'
+                      }}>
+                                                 <TextField
+                           size="small"
+                           value={row.productCode || ''}
+                           onChange={(e) => handleEditablePurchaseOrderRowChange(index, 'productCode', e.target.value)}
+                           sx={{ 
+                             width: '100%',
+                             '& .MuiOutlinedInput-root': {
+                               fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                               height: { xs: 32, sm: 34, md: 36 },
+                               '& input': {
+                                 color: '#2c3e50',
+                                 fontWeight: '500',
+                                 padding: { xs: '6px 8px', sm: '8px 10px', md: '8px 12px' }
+                               }
+                             }
+                           }}
+                         />
+                      </TableCell>
+                      <TableCell sx={{ 
+                        border: '1px solid #bdc3c7', 
+                        textAlign: 'center',
+                        fontSize: { xs: '8pt', sm: '9pt', md: '9pt' },
+                        py: { xs: 0.25, sm: 0.5 },
+                        px: 0.5,
+                        height: 'auto',
+                        verticalAlign: 'top'
+                      }}>
+                                                 <TextField
+                           size="small"
+                           multiline
+                           value={row.details || ''}
+                           onChange={(e) => handleEditablePurchaseOrderRowChange(index, 'details', e.target.value)}
+                           sx={{ 
+                             width: '100%',
+                             '& .MuiOutlinedInput-root': {
+                               fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                               minHeight: { xs: 32, sm: 34, md: 36 },
+                               height: 'auto',
+                               '& textarea': {
+                                 color: '#2c3e50',
+                                 fontWeight: '500',
+                                 resize: 'none',
+                                 lineHeight: '1.2',
+                                 padding: { xs: '6px 8px', sm: '8px 10px', md: '8px 12px' },
+                                 overflow: 'hidden',
+                                 height: 'auto',
+                                 minHeight: 'inherit'
+                               }
+                             }
+                           }}
+                         />
+                      </TableCell>
+                      <TableCell sx={{ 
+                        border: '1px solid #bdc3c7', 
+                        textAlign: 'center',
+                        fontSize: { xs: '8pt', sm: '9pt', md: '9pt' },
+                        py: { xs: 0.25, sm: 0.5 },
+                        px: 0.5,
+                        height: 'auto',
+                        verticalAlign: 'top'
+                      }}>
+                                                 <TextField
+                           size="small"
+                           multiline
+                           value={row.productionDetails || ''}
+                           onChange={(e) => handleEditablePurchaseOrderRowChange(index, 'productionDetails', e.target.value)}
+                           sx={{ 
+                             width: '100%',
+                             '& .MuiOutlinedInput-root': {
+                               fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                               minHeight: { xs: 32, sm: 34, md: 36 },
+                               height: 'auto',
+                               '& textarea': {
+                                 color: '#2c3e50',
+                                 fontWeight: '500',
+                                 resize: 'none',
+                                 lineHeight: '1.2',
+                                 padding: { xs: '6px 8px', sm: '8px 10px', md: '8px 12px' },
+                                 overflow: 'hidden',
+                                 height: 'auto',
+                                 minHeight: 'inherit'
+                               }
+                             }
+                           }}
+                         />
+                      </TableCell>
+                      <TableCell sx={{ 
+                        border: '1px solid #bdc3c7', 
+                        textAlign: 'center',
+                        fontSize: { xs: '8pt', sm: '9pt', md: '9pt' },
+                        py: { xs: 0.25, sm: 0.5 },
+                        px: 0.5,
+                        height: 'auto',
+                        verticalAlign: 'top'
+                      }}>
+                                                 <TextField
+                           size="small"
+                           type="number"
+                           value={row.widthMM || row.productionWidth || ''}
+                           onChange={(e) => handleEditablePurchaseOrderRowChange(index, 'widthMM', Number(e.target.value))}
+                           sx={{ 
+                             width: '100%',
+                             '& .MuiOutlinedInput-root': {
+                               fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                               height: { xs: 32, sm: 34, md: 36 },
+                               '& input': {
+                                 color: '#2c3e50',
+                                 fontWeight: '500',
+                                 padding: { xs: '6px 8px', sm: '8px 10px', md: '8px 12px' }
+                               }
+                             }
+                           }}
+                         />
+                      </TableCell>
+                      <TableCell sx={{ 
+                        border: '1px solid #bdc3c7', 
+                        textAlign: 'center',
+                        fontSize: { xs: '8pt', sm: '9pt', md: '9pt' },
+                        py: { xs: 0.25, sm: 0.5 },
+                        px: 0.5,
+                        height: 'auto',
+                        verticalAlign: 'top'
+                      }}>
+                                                 <TextField
+                           size="small"
+                           type="number"
+                           value={row.heightMM || row.productionHeight || ''}
+                           onChange={(e) => handleEditablePurchaseOrderRowChange(index, 'heightMM', Number(e.target.value))}
+                           sx={{ 
+                             width: '100%',
+                             '& .MuiOutlinedInput-root': {
+                               fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                               height: { xs: 32, sm: 34, md: 36 },
+                               '& input': {
+                                 color: '#2c3e50',
+                                 fontWeight: '500',
+                                 padding: { xs: '6px 8px', sm: '8px 10px', md: '8px 12px' }
+                               }
+                             }
+                           }}
+                         />
+                      </TableCell>
+                      <TableCell sx={{ 
+                        border: '1px solid #bdc3c7', 
+                        textAlign: 'center',
+                        fontSize: { xs: '8pt', sm: '9pt', md: '9pt' },
+                        py: { xs: 0.25, sm: 0.5 },
+                        px: 0.5,
+                        height: 'auto',
+                        verticalAlign: 'top'
+                      }}>
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={row.quantity || ''}
+                          onChange={(e) => handleEditablePurchaseOrderRowChange(index, 'quantity', Number(e.target.value))}
+                          sx={{ 
+                            width: '100%',
+                            '& .MuiOutlinedInput-root': {
+                              fontSize: { xs: '9pt', sm: '10pt', md: '11pt' },
+                              height: { xs: 32, sm: 34, md: 36 },
+                              '& input': {
+                                color: '#2c3e50',
+                                fontWeight: '500',
+                                padding: { xs: '6px 8px', sm: '8px 10px', md: '8px 12px' }
+                              }
+                            }
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ 
+                        border: '1px solid #bdc3c7', 
+                        textAlign: 'center',
+                        fontSize: { xs: '8pt', sm: '9pt', md: '9pt' },
+                        py: { xs: 0.25, sm: 0.5 },
+                        px: 0.5,
+                        height: 'auto',
+                        verticalAlign: 'top'
+                      }}>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleEditablePurchaseOrderDeleteRow(index)}
+                          sx={{
+                            color: '#e74c3c',
+                            '&:hover': {
+                              backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                            },
+                          }}
+                        >
+                          <DeleteIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ 
+          p: 2, 
+          borderTop: '2px solid #ecf0f1',
+          backgroundColor: '#f8f9fa',
+          display: 'flex',
+          justifyContent: 'space-between'
+        }}>
+          <Box>
+            <Typography sx={{ 
+              fontSize: '10pt', 
+              color: '#7f8c8d',
+              fontStyle: 'italic'
+            }}>
+              * 엑셀처럼 직접 수정할 수 있습니다. 수정 후 저장 버튼을 클릭하세요.
+            </Typography>
+          </Box>
+          <Box>
+            <Button 
+              onClick={handleEditablePurchaseOrderClose}
+              sx={{ 
+                mr: 2,
+                color: '#7f8c8d',
+                borderColor: '#bdc3c7',
+                '&:hover': {
+                  borderColor: '#95a5a6',
+                  backgroundColor: 'rgba(127, 140, 141, 0.1)',
+                },
+              }}
+              variant="outlined"
+            >
+              취소
+            </Button>
+            <Button 
+              onClick={handleEditablePurchaseOrderSave}
+              variant="contained"
+              startIcon={<SaveIcon />}
+              sx={{
+                background: 'linear-gradient(45deg, #3498db, #2980b9)',
+                boxShadow: '0 4px 15px rgba(52, 152, 219, 0.3)',
+                '&:hover': {
+                  background: 'linear-gradient(45deg, #2980b9, #1f5f8b)',
+                  boxShadow: '0 6px 20px rgba(52, 152, 219, 0.4)',
+                  transform: 'translateY(-1px)',
+                },
+                transition: 'all 0.3s ease',
+              }}
+            >
+              저장
+            </Button>
+          </Box>
+        </DialogActions>
+      </Dialog>
+
+      {/* 우리회사정보 선택 모달 */}
+      <Dialog
+        open={companyInfoModalOpen}
+        onClose={() => setCompanyInfoModalOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ color: '#333', fontWeight: 'bold' }}>
+          우리회사정보 선택
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2, color: '#666' }}>
+            발주서에 사용할 우리회사정보를 선택하세요.
+          </Typography>
+          <Grid container spacing={2}>
+            {companyInfoList.map((company, index) => (
+              <Grid item xs={12} md={6} key={company.id || index}>
+                <Card
+                  sx={{
+                    cursor: 'pointer',
+                    border: selectedCompanyInfo?.id === company.id ? '2px solid #FF6B9D' : '1px solid #ddd',
+                    '&:hover': {
+                      borderColor: '#FF6B9D',
+                      boxShadow: '0 4px 12px rgba(255, 107, 157, 0.2)',
+                    },
+                  }}
+                  onClick={() => setSelectedCompanyInfo(company)}
+                >
+                  <CardContent>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
+                      {company.name}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#666', mb: 0.5 }}>
+                      대표자: {company.ceo}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#666', mb: 0.5 }}>
+                      연락처: {company.contact}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#666', mb: 0.5 }}>
+                      주소: {company.address}
+                    </Typography>
+                    {company.deliveryCompanyName && (
+                      <Typography variant="body2" sx={{ color: '#FF6B9D', fontWeight: 'bold', mt: 1 }}>
+                        납품지: {company.deliveryCompanyName}
+                      </Typography>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCompanyInfoModalOpen(false)}>
+            취소
+          </Button>
+          <Button 
+            onClick={() => {
+              setCompanyInfoModalOpen(false);
+            }}
+            variant="contained"
+            sx={{
+              backgroundColor: '#FF6B9D',
+              '&:hover': {
+                backgroundColor: '#FF4757',
+              },
+            }}
+          >
+            선택 완료
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };
