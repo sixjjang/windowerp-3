@@ -1538,13 +1538,13 @@ const OrderManagement: React.FC = () => {
     if (productIndex <= 0 || productIndex >= productRows.length) return;
     
     // 제품 그룹들을 찾기
-    const productGroups = [];
-    let currentGroup = [];
+    const productGroups: Array<Array<any>> = [];
+    let currentGroup: Array<any> = [];
     
     for (let i = 0; i < currentRows.length; i++) {
       if (currentRows[i].type === 'product') {
         if (currentGroup.length > 0) {
-          productGroups.push(currentGroup);
+          productGroups.push([...currentGroup]);
         }
         currentGroup = [currentRows[i]];
       } else if (currentRows[i].type === 'option') {
@@ -1552,7 +1552,7 @@ const OrderManagement: React.FC = () => {
       }
     }
     if (currentGroup.length > 0) {
-      productGroups.push(currentGroup);
+      productGroups.push([...currentGroup]);
     }
     
     // 현재 제품 그룹과 이전 제품 그룹의 위치를 바꾸기
@@ -1577,13 +1577,13 @@ const OrderManagement: React.FC = () => {
     if (productIndex < 0 || productIndex >= productRows.length - 1) return;
     
     // 제품 그룹들을 찾기
-    const productGroups = [];
-    let currentGroup = [];
+    const productGroups: Array<Array<any>> = [];
+    let currentGroup: Array<any> = [];
     
     for (let i = 0; i < currentRows.length; i++) {
       if (currentRows[i].type === 'product') {
         if (currentGroup.length > 0) {
-          productGroups.push(currentGroup);
+          productGroups.push([...currentGroup]);
         }
         currentGroup = [currentRows[i]];
       } else if (currentRows[i].type === 'option') {
@@ -1591,7 +1591,7 @@ const OrderManagement: React.FC = () => {
       }
     }
     if (currentGroup.length > 0) {
-      productGroups.push(currentGroup);
+      productGroups.push([...currentGroup]);
     }
     
     // 현재 제품 그룹과 다음 제품 그룹의 위치를 바꾸기
