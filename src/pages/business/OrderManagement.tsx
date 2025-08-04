@@ -6884,7 +6884,7 @@ const OrderManagement: React.FC = () => {
                       sx={{
                         backgroundColor: isBulkEditMode 
                           ? (selectedOrderRows.has(index) ? 'rgba(255, 193, 7, 0.3)' : 'inherit')
-                          : (selectedRowIndex === index ? 'rgba(25, 118, 210, 0.1)' : 'inherit'),
+                          : (selectedRowIndex === index ? 'rgba(25, 118, 210, 0.25)' : 'inherit'),
                         cursor: 'pointer',
                         fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)', // 제품행만 0.3px 작게
                         '&:hover': {
