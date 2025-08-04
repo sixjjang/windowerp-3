@@ -1433,6 +1433,11 @@ const OrderManagement: React.FC = () => {
   const [editOptionDialogOpen, setEditOptionDialogOpen] = useState(false);
   const [editingOption, setEditingOption] = useState<any>(null);
   const [editOptionQuantity, setEditOptionQuantity] = useState(1);
+  
+  // 옵션 복사 확인 다이얼로그 상태
+  const [copyOptionDialogOpen, setCopyOptionDialogOpen] = useState(false);
+  const [copyTargetRow, setCopyTargetRow] = useState<any>(null);
+  const [copyTargetRowIndex, setCopyTargetRowIndex] = useState<number | null>(null);
   const [optionData, setOptionData] = useState<any[][]>([]);
   const [optionDataLoaded, setOptionDataLoaded] = useState(false);
   const [outputAnchorEl, setOutputAnchorEl] = useState<null | HTMLElement>(null);
@@ -1532,31 +1537,33 @@ const OrderManagement: React.FC = () => {
     
     if (productIndex <= 0 || productIndex >= productRows.length) return;
     
-    // 제품 행들의 인덱스를 찾기
-    const productIndices = currentRows
-      .map((row, index) => row.type === 'product' ? index : -1)
-      .filter(index => index !== -1);
+    // 제품 그룹들을 찾기
+    const productGroups = [];
+    let currentGroup = [];
     
-    const currentProductIndex = productIndices[productIndex];
-    const previousProductIndex = productIndices[productIndex - 1];
+    for (let i = 0; i < currentRows.length; i++) {
+      if (currentRows[i].type === 'product') {
+        if (currentGroup.length > 0) {
+          productGroups.push(currentGroup);
+        }
+        currentGroup = [currentRows[i]];
+      } else if (currentRows[i].type === 'option') {
+        currentGroup.push(currentRows[i]);
+      }
+    }
+    if (currentGroup.length > 0) {
+      productGroups.push(currentGroup);
+    }
     
-    if (currentProductIndex === undefined || previousProductIndex === undefined) return;
+    // 현재 제품 그룹과 이전 제품 그룹의 위치를 바꾸기
+    if (productIndex > 0 && productIndex < productGroups.length) {
+      const temp = productGroups[productIndex];
+      productGroups[productIndex] = productGroups[productIndex - 1];
+      productGroups[productIndex - 1] = temp;
+    }
     
-    // 현재 제품과 이전 제품 사이의 모든 행(옵션 포함)을 함께 이동
-    const nextProductIndex = productIndices[productIndex + 1] || currentRows.length;
-    const previousProductStartIndex = productIndices[productIndex - 2] !== undefined ? productIndices[productIndex - 2] + 1 : 0;
-    
-    const rowsToMove = currentRows.slice(currentProductIndex, nextProductIndex);
-    const remainingRows = [
-      ...currentRows.slice(0, currentProductIndex),
-      ...currentRows.slice(nextProductIndex)
-    ];
-    
-    const newRows = [
-      ...remainingRows.slice(0, previousProductStartIndex),
-      ...rowsToMove,
-      ...remainingRows.slice(previousProductStartIndex)
-    ];
+    // 새로운 배열 구성
+    const newRows = productGroups.flat();
     
     const updatedOrders = [...orders];
     updatedOrders[activeTab].rows = newRows;
@@ -1569,32 +1576,33 @@ const OrderManagement: React.FC = () => {
     
     if (productIndex < 0 || productIndex >= productRows.length - 1) return;
     
-    // 제품 행들의 인덱스를 찾기
-    const productIndices = currentRows
-      .map((row, index) => row.type === 'product' ? index : -1)
-      .filter(index => index !== -1);
+    // 제품 그룹들을 찾기
+    const productGroups = [];
+    let currentGroup = [];
     
-    const currentProductIndex = productIndices[productIndex];
-    const nextProductIndex = productIndices[productIndex + 1];
+    for (let i = 0; i < currentRows.length; i++) {
+      if (currentRows[i].type === 'product') {
+        if (currentGroup.length > 0) {
+          productGroups.push(currentGroup);
+        }
+        currentGroup = [currentRows[i]];
+      } else if (currentRows[i].type === 'option') {
+        currentGroup.push(currentRows[i]);
+      }
+    }
+    if (currentGroup.length > 0) {
+      productGroups.push(currentGroup);
+    }
     
-    if (currentProductIndex === undefined || nextProductIndex === undefined) return;
-    
-    // 다음 제품과 그 옵션들의 끝 인덱스 찾기
-    const nextNextProductIndex = productIndices[productIndex + 2] || currentRows.length;
-    
-    // 현재 제품과 그 옵션들을 추출
-    const currentProductWithOptions = currentRows.slice(currentProductIndex, nextProductIndex);
-    
-    // 다음 제품과 그 옵션들을 추출
-    const nextProductWithOptions = currentRows.slice(nextProductIndex, nextNextProductIndex);
+    // 현재 제품 그룹과 다음 제품 그룹의 위치를 바꾸기
+    if (productIndex >= 0 && productIndex < productGroups.length - 1) {
+      const temp = productGroups[productIndex];
+      productGroups[productIndex] = productGroups[productIndex + 1];
+      productGroups[productIndex + 1] = temp;
+    }
     
     // 새로운 배열 구성
-    const newRows = [
-      ...currentRows.slice(0, currentProductIndex),
-      ...nextProductWithOptions,
-      ...currentProductWithOptions,
-      ...currentRows.slice(nextNextProductIndex)
-    ];
+    const newRows = productGroups.flat();
     
     const updatedOrders = [...orders];
     updatedOrders[activeTab].rows = newRows;
@@ -2357,7 +2365,22 @@ const OrderManagement: React.FC = () => {
     const currentRows = orders[activeTab]?.rows || [];
     const rowToCopy = currentRows[rowIndex];
     
-    if (rowToCopy) {
+    if (rowToCopy && rowToCopy.type === 'product') {
+      // 해당 제품 다음에 있는 옵션들 찾기
+      const nextIndex = rowIndex + 1;
+      const hasOptions = nextIndex < currentRows.length && currentRows[nextIndex].type === 'option';
+      
+      if (hasOptions) {
+        // 옵션이 있는 경우 확인 다이얼로그 표시
+        setCopyTargetRow(rowToCopy);
+        setCopyTargetRowIndex(rowIndex);
+        setCopyOptionDialogOpen(true);
+      } else {
+        // 옵션이 없는 경우 바로 복사
+        copyProductWithoutOptions(rowToCopy, rowIndex);
+      }
+    } else if (rowToCopy) {
+      // 제품이 아닌 경우 바로 복사
       const copiedRow = {
         ...rowToCopy,
         id: Date.now() + Math.random(),
@@ -2370,6 +2393,55 @@ const OrderManagement: React.FC = () => {
       setSnackbarMessage(`${rowIndex + 1}번 행이 복사되었습니다.`);
       setSnackbarOpen(true);
     }
+  };
+
+  // 제품만 복사 (옵션 제외)
+  const copyProductWithoutOptions = (rowToCopy: any, rowIndex: number) => {
+    const currentRows = orders[activeTab]?.rows || [];
+    const copiedRow = {
+      ...rowToCopy,
+      id: Date.now() + Math.random(),
+    };
+    
+    const updatedOrders = [...orders];
+    updatedOrders[activeTab].rows = [...currentRows, copiedRow];
+    setOrders(updatedOrders);
+    
+    setSnackbarMessage(`${rowIndex + 1}번 제품이 복사되었습니다. (옵션 제외)`);
+    setSnackbarOpen(true);
+  };
+
+  // 제품과 옵션 함께 복사
+  const copyProductWithOptions = (rowToCopy: any, rowIndex: number) => {
+    const currentRows = orders[activeTab]?.rows || [];
+    const copiedRows = [];
+    
+    // 제품 복사
+    const copiedProduct = {
+      ...rowToCopy,
+      id: Date.now() + Math.random(),
+    };
+    copiedRows.push(copiedProduct);
+    
+    // 해당 제품의 옵션들 찾아서 복사
+    let nextIndex = rowIndex + 1;
+    while (nextIndex < currentRows.length && currentRows[nextIndex].type === 'option') {
+      const optionRow = currentRows[nextIndex];
+      const copiedOption = {
+        ...optionRow,
+        id: Date.now() + Math.random() + nextIndex,
+      };
+      copiedRows.push(copiedOption);
+      nextIndex++;
+    }
+    
+    const updatedOrders = [...orders];
+    updatedOrders[activeTab].rows = [...currentRows, ...copiedRows];
+    setOrders(updatedOrders);
+    
+    const optionCount = copiedRows.length - 1;
+    setSnackbarMessage(`${rowIndex + 1}번 제품과 ${optionCount}개의 옵션이 복사되었습니다.`);
+    setSnackbarOpen(true);
   };
 
   // 선택된 행 삭제 핸들러
@@ -13812,6 +13884,89 @@ const OrderManagement: React.FC = () => {
             }}
           >
             선택 완료
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 옵션 복사 확인 다이얼로그 */}
+      <Dialog
+        open={copyOptionDialogOpen}
+        onClose={() => setCopyOptionDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ 
+          color: 'var(--text-color)', 
+          backgroundColor: 'var(--surface-color)',
+          borderBottom: '1px solid var(--border-color)'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+              localhost:3000 내용:
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ 
+          backgroundColor: 'var(--surface-color)', 
+          color: 'var(--text-color)',
+          pt: 3
+        }}>
+          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.6 }}>
+            이 제품에는 <span style={{ color: '#ff4444', fontWeight: 'bold' }}>옵션</span>이 있습니다. 옵션을 포함해서 복사하시겠습니까?
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 1, color: 'var(--text-color)', opacity: 0.8 }}>
+            "확인"을 누르면 옵션을 포함하여 복사됩니다.
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'var(--text-color)', opacity: 0.8 }}>
+            "취소"를 누르면 옵션 없이 복사됩니다.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ 
+          backgroundColor: 'var(--surface-color)', 
+          color: 'var(--text-color)',
+          borderTop: '1px solid var(--border-color)',
+          p: 2,
+          gap: 1
+        }}>
+          <Button 
+            onClick={() => {
+              if (copyTargetRow && copyTargetRowIndex !== null) {
+                copyProductWithoutOptions(copyTargetRow, copyTargetRowIndex);
+              }
+              setCopyOptionDialogOpen(false);
+              setCopyTargetRow(null);
+              setCopyTargetRowIndex(null);
+            }}
+            variant="outlined"
+            sx={{
+              borderColor: 'var(--primary-color)',
+              color: 'var(--primary-color)',
+              '&:hover': {
+                borderColor: 'var(--primary-color)',
+                backgroundColor: 'rgba(25, 118, 210, 0.04)',
+              },
+            }}
+          >
+            취소
+          </Button>
+          <Button 
+            onClick={() => {
+              if (copyTargetRow && copyTargetRowIndex !== null) {
+                copyProductWithOptions(copyTargetRow, copyTargetRowIndex);
+              }
+              setCopyOptionDialogOpen(false);
+              setCopyTargetRow(null);
+              setCopyTargetRowIndex(null);
+            }}
+            variant="contained"
+            sx={{
+              backgroundColor: 'var(--primary-color)',
+              '&:hover': {
+                backgroundColor: 'var(--primary-color-dark)',
+              },
+            }}
+          >
+            확인
           </Button>
         </DialogActions>
       </Dialog>
