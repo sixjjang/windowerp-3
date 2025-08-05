@@ -1474,6 +1474,88 @@ const OrderManagement: React.FC = () => {
     }
   };
 
+  // 고객저장 함수
+  const handleSaveCustomer = async () => {
+    const currentOrder = orders[activeTab];
+    if (!currentOrder) return;
+
+    const customerData = {
+      customerName: currentOrder.customerName,
+      contact: currentOrder.contact,
+      emergencyContact: currentOrder.emergencyContact,
+      address: currentOrder.address,
+      projectName: currentOrder.projectName,
+      type: currentOrder.type
+    };
+
+    try {
+      const response = await fetch('/api/customers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(customerData),
+      });
+
+      if (response.ok) {
+        setSnackbarMessage('고객정보가 저장되었습니다.');
+        setSnackbarOpen(true);
+      } else {
+        setSnackbarMessage('고객정보 저장에 실패했습니다.');
+        setSnackbarOpen(true);
+      }
+    } catch (error) {
+      console.error('고객정보 저장 오류:', error);
+      setSnackbarMessage('고객정보 저장 중 오류가 발생했습니다.');
+      setSnackbarOpen(true);
+    }
+  };
+
+  // 고객리스트 관련 상태
+  const [customerListModalOpen, setCustomerListModalOpen] = useState(false);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [customerSearch, setCustomerSearch] = useState('');
+
+  // 고객리스트 열기 함수
+  const handleOpenCustomerList = async () => {
+    try {
+      const response = await fetch('/api/customers');
+      if (response.ok) {
+        const customerData = await response.json();
+        setCustomers(customerData);
+        setCustomerListModalOpen(true);
+      } else {
+        setSnackbarMessage('고객 목록을 불러오는데 실패했습니다.');
+        setSnackbarOpen(true);
+      }
+    } catch (error) {
+      console.error('고객 목록 로드 오류:', error);
+      setSnackbarMessage('고객 목록을 불러오는 중 오류가 발생했습니다.');
+      setSnackbarOpen(true);
+    }
+  };
+
+  // 고객 선택 함수
+  const handleCustomerSelect = (customer: any) => {
+    const updatedOrders = [...orders];
+    if (updatedOrders[activeTab]) {
+      updatedOrders[activeTab] = {
+        ...updatedOrders[activeTab],
+        customerName: customer.name || '',
+        contact: customer.tel || '',
+        emergencyContact: customer.emergencyTel || '',
+        address: customer.address || '',
+        projectName: customer.projectName || '',
+        type: customer.type || ''
+      };
+      setOrders(updatedOrders);
+    }
+    setCustomerListModalOpen(false);
+    setSnackbarMessage('고객 정보가 주문서에 적용되었습니다.');
+    setSnackbarOpen(true);
+  };
+
+
   // 견적관리와 동일한 주문서 작성 기능들
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [optionDialogOpen, setOptionDialogOpen] = useState(false);
@@ -1549,27 +1631,27 @@ const OrderManagement: React.FC = () => {
   };
 
   const [columnVisibility, setColumnVisibility] = useState({
-    vendor: true,
-    brand: false,
-    space: true,
-    productCode: true,
-    productType: false,
-    productName: true,
-    width: false,
-    details: true,
-    widthMM: true,
-    heightMM: true,
-    area: true,
-    lineDir: false,
-    lineLen: false,
-    pleatAmount: false,
-    widthCount: false,
-    quantity: true,
-    totalPrice: true,
-    salePrice: true,
-    cost: true,
-    purchaseCost: true,
-    margin: true,
+    vendor: true,        // 거래처
+    brand: false,        // 브랜드
+    space: true,         // 공간
+    productCode: true,   // 제품코드
+    productType: false,  // 제품종류
+    productName: true,   // 제품명
+    width: false,        // 폭
+    details: true,       // 세부내용
+    widthMM: true,       // 가로(mm)
+    heightMM: true,      // 세로(mm)
+    area: true,          // 면적(㎡)
+    lineDir: true,       // 줄방향
+    lineLen: true,       // 줄길이
+    pleatAmount: false,  // 주름양
+    widthCount: false,   // 폭수
+    quantity: true,      // 수량
+    totalPrice: true,    // 판매금액
+    salePrice: true,     // 판매단가
+    cost: true,          // 입고금액
+    purchaseCost: true,  // 입고원가
+    margin: true,        // 마진
   });
 
   // 제품검색 관련 상태 추가
@@ -1610,6 +1692,7 @@ const OrderManagement: React.FC = () => {
     field: string;
   } | null>(null);
   const [editingValue, setEditingValue] = useState<string>('');
+  const [editingCustomValue, setEditingCustomValue] = useState<string>('');
 
   // 공간 옵션
   const spaceOptions = [
@@ -1645,15 +1728,15 @@ const OrderManagement: React.FC = () => {
         updatedRows[rowIndex].customLineLength = updatedRows[rowIndex].customLineLength || '';
       }
       
-      // 가로/세로 변경 시 면적 재계산
-      if (field === 'widthMM' || field === 'heightMM') {
-        const width = Number(updatedRows[rowIndex].widthMM) || 0;
-        const height = Number(updatedRows[rowIndex].heightMM) || 0;
-        if (width > 0 && height > 0) {
-          const area = (width * height) / 1000000; // mm² to m²
-          updatedRows[rowIndex].area = area.toFixed(1);
+              // 가로/세로 변경 시 면적 재계산
+        if (field === 'widthMM' || field === 'heightMM') {
+          const width = Number(updatedRows[rowIndex].widthMM) || 0;
+          const height = Number(updatedRows[rowIndex].heightMM) || 0;
+          if (width > 0 && height > 0) {
+            const area = (width * height) / 1000000; // mm² to m²
+            updatedRows[rowIndex].area = Number(area.toFixed(1));
+          }
         }
-      }
       
       // 주문서 업데이트
       const updatedOrder = { ...orders[activeTab], rows: updatedRows };
@@ -1679,7 +1762,7 @@ const OrderManagement: React.FC = () => {
     }
   };
 
-  // 인라인 편집 가능한 셀 컴포넌트 (텍스트 전용)
+  // 간단한 인라인 편집 셀 컴포넌트
   const EditableCell = ({ 
     rowIndex, 
     field, 
@@ -1713,86 +1796,6 @@ const OrderManagement: React.FC = () => {
           }}
           autoFocus
         />
-      );
-    }
-
-    // 일반 표시 모드
-    return (
-      <Box
-        onClick={() => handleCellClick(rowIndex, field, value)}
-        sx={{
-          cursor: 'pointer',
-          padding: '4px 8px',
-          borderRadius: '4px',
-          '&:hover': {
-            backgroundColor: 'rgba(0, 0, 0, 0.04)',
-            border: '1px solid rgba(0, 0, 0, 0.1)'
-          }
-        }}
-      >
-        {value || ''}
-      </Box>
-    );
-  };
-
-  // 드롭다운 편집 가능한 셀 컴포넌트
-  const EditableDropdownCell = ({ 
-    rowIndex, 
-    field, 
-    value, 
-    isEditing, 
-    onEdit, 
-    onCancel, 
-    onKeyPress, 
-    options 
-  }: {
-    rowIndex: number;
-    field: string;
-    value: string;
-    isEditing: boolean;
-    onEdit: (rowIndex: number, field: string, value: string) => void;
-    onCancel: () => void;
-    onKeyPress: (e: React.KeyboardEvent, rowIndex: number, field: string) => void;
-    options: string[];
-  }) => {
-    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-
-    if (isEditing) {
-      return (
-        <Box>
-          <Button
-            onClick={(e) => setAnchorEl(e.currentTarget)}
-            variant="outlined"
-            size="small"
-            sx={{
-              fontSize: 'inherit',
-              padding: '4px 8px',
-              minWidth: 'auto'
-            }}
-          >
-            {editingValue || '선택'}
-          </Button>
-          <Menu
-            anchorEl={anchorEl}
-            open={Boolean(anchorEl)}
-            onClose={() => {
-              setAnchorEl(null);
-              onCancel();
-            }}
-          >
-            {options.map((option) => (
-              <MenuItem
-                key={option}
-                onClick={() => {
-                  onEdit(rowIndex, field, option);
-                  setAnchorEl(null);
-                }}
-              >
-                {option}
-              </MenuItem>
-            ))}
-          </Menu>
-        </Box>
       );
     }
 
@@ -2348,7 +2351,6 @@ const OrderManagement: React.FC = () => {
       return newSet;
     });
   };
-
   // 제품행 선택 관련 핸들러들
   const handleBulkEditModeToggle = () => {
     setIsBulkEditMode(!isBulkEditMode);
@@ -3136,7 +3138,6 @@ const OrderManagement: React.FC = () => {
       handleOptionSearch(optionTypeMap[optionSearchTab]);
     }
   }, [optionDialogOpen, optionSearchTab]);
-
   // 정렬 설정 변경 시 옵션 목록 재정렬
   useEffect(() => {
     if (optionDialogOpen && optionDataLoaded) {
@@ -3853,7 +3854,6 @@ const OrderManagement: React.FC = () => {
     setSnackbarMessage('주문서가 성공적으로 작성되었습니다.');
     setSnackbarOpen(true);
   };
-
   // 거래처별 발주서 생성
   const generateVendorPurchaseOrders = () => {
     const currentOrder = orders[activeTab];
@@ -6190,7 +6190,6 @@ const OrderManagement: React.FC = () => {
     
     return baseDetails;
   };
-
   // 공간명 자동 생성 함수
   const generateSpaceNames = (baseSpaceName: string, count: number): string[] => {
     const spaceNames: string[] = [];
@@ -6807,7 +6806,6 @@ const OrderManagement: React.FC = () => {
     // 상태 업데이트 (무한 루프 방지)
     setEditRow(newEditRow);
   };
-
   const handleEditSave = () => {
     if (editRowIdx === null) return;
     const currentRows = orders[activeTab]?.rows || [];
@@ -7425,7 +7423,7 @@ const OrderManagement: React.FC = () => {
                 size="small"
                 sx={{ 
                   minWidth: 200, 
-                  flex: 1,
+                  maxWidth: 300,
                   '& .MuiInputBase-root': {
                     backgroundColor: 'var(--background-color)',
                     border: '1px solid var(--border-color)',
@@ -7444,6 +7442,26 @@ const OrderManagement: React.FC = () => {
                   },
                 }}
               />
+              <Box sx={{ display: 'flex', gap: 1, ml: 1 }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  size="medium"
+                  onClick={handleSaveCustomer}
+                  sx={{ height: 40, minWidth: 100 }}
+                >
+                  고객저장
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="info"
+                  size="medium"
+                  onClick={handleOpenCustomerList}
+                  sx={{ height: 40, minWidth: 100 }}
+                >
+                  고객리스트
+                </Button>
+              </Box>
               {orders[activeTab].contractNo && (
                 <TextField
                   label="계약번호"
@@ -8087,47 +8105,62 @@ const OrderManagement: React.FC = () => {
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.space : columnVisibility.space) && (
-                        <TableCell sx={{ 
-                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
-                        }}>
-                          {row && row.type === 'option' ? (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Typography variant="caption" sx={{ color: '#4caf50', fontWeight: 'bold' }}>
-                                └
-                              </Typography>
-                              <Typography variant="body2" sx={{ color: '#4caf50', fontWeight: 'bold' }}>
-                                옵션
-                              </Typography>
-                            </Box>
-                          ) : (
-                            <EditableDropdownCell
-                              rowIndex={index}
-                              field="space"
-                              value={row?.space || ''}
-                              isEditing={editingCell?.rowIndex === index && editingCell?.field === 'space'}
-                              onEdit={handleCellEdit}
-                              onCancel={handleCellCancel}
-                              onKeyPress={handleKeyPress}
-                              options={spaceOptions}
+                        <TableCell
+                          sx={{ fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)', color: row && row.type === 'option' ? '#4caf50' : 'inherit' }}
+                          onClick={() => {
+                            if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'space')) {
+                              setEditingCell({ rowIndex: index, field: 'space' });
+                              setEditingValue(row?.space || '');
+                            }
+                          }}
+                        >
+                          {editingCell?.rowIndex === index && editingCell?.field === 'space' ? (
+                            <TextField
+                              value={editingValue}
+                              onChange={e => setEditingValue(e.target.value)}
+                              onBlur={() => handleCellEdit(index, 'space', editingValue)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleCellEdit(index, 'space', editingValue);
+                                if (e.key === 'Escape') handleCellCancel();
+                              }}
+                              size="small"
+                              autoFocus
+                              sx={{ minWidth: 80, fontSize: 'inherit' }}
                             />
+                          ) : (
+                            row?.space || ''
                           )}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.productCode : columnVisibility.productCode) && (
-                        <TableCell sx={{ 
-                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
-                        }}>
-                          <EditableCell
-                            rowIndex={index}
-                            field="productCode"
-                            value={row?.productCode || ''}
-                            isEditing={editingCell?.rowIndex === index && editingCell?.field === 'productCode'}
-                            onEdit={handleCellEdit}
-                            onCancel={handleCellCancel}
-                            onKeyPress={handleKeyPress}
-                          />
+                        <TableCell
+                          sx={{ 
+                            fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                            color: row && row.type === 'option' ? '#4caf50' : 'inherit'
+                          }}
+                          onClick={() => {
+                            if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'productCode')) {
+                              setEditingCell({ rowIndex: index, field: 'productCode' });
+                              setEditingValue(row?.productCode || '');
+                            }
+                          }}
+                        >
+                          {editingCell?.rowIndex === index && editingCell?.field === 'productCode' ? (
+                            <TextField
+                              value={editingValue}
+                              onChange={e => setEditingValue(e.target.value)}
+                              onBlur={() => handleCellEdit(index, 'productCode', editingValue)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleCellEdit(index, 'productCode', editingValue);
+                                if (e.key === 'Escape') handleCellCancel();
+                              }}
+                              size="small"
+                              autoFocus
+                              sx={{ minWidth: 80, fontSize: 'inherit' }}
+                            />
+                          ) : (
+                            row?.productCode || ''
+                          )}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.productType : columnVisibility.productType) && (
@@ -8163,28 +8196,97 @@ const OrderManagement: React.FC = () => {
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.details : columnVisibility.details) && (
-                        <TableCell sx={{ 
-                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
-                        }}>
-                          {row?.details}
+                        <TableCell
+                          sx={{ 
+                            fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                            color: row && row.type === 'option' ? '#4caf50' : 'inherit'
+                          }}
+                          onClick={() => {
+                            if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'details')) {
+                              setEditingCell({ rowIndex: index, field: 'details' });
+                              setEditingValue(row?.details || '');
+                            }
+                          }}
+                        >
+                          {editingCell?.rowIndex === index && editingCell?.field === 'details' ? (
+                            <TextField
+                              value={editingValue}
+                              onChange={e => setEditingValue(e.target.value)}
+                              onBlur={() => handleCellEdit(index, 'details', editingValue)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleCellEdit(index, 'details', editingValue);
+                                if (e.key === 'Escape') handleCellCancel();
+                              }}
+                              size="small"
+                              autoFocus
+                              sx={{ minWidth: 80, fontSize: 'inherit' }}
+                            />
+                          ) : (
+                            row?.details || ''
+                          )}
                         </TableCell>
                       )}
                       
                       {(isMobile ? mobileProductColumnVisibility.widthMM : columnVisibility.widthMM) && (
-                        <TableCell sx={{ 
-                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
-                        }}>
-                          {row?.widthMM ? Number(row.widthMM).toLocaleString() : ''}
+                        <TableCell
+                          sx={{ 
+                            fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                            color: row && row.type === 'option' ? '#4caf50' : 'inherit'
+                          }}
+                          onClick={() => {
+                            if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'widthMM')) {
+                              setEditingCell({ rowIndex: index, field: 'widthMM' });
+                              setEditingValue(row?.widthMM ? String(row.widthMM) : '');
+                            }
+                          }}
+                        >
+                          {editingCell?.rowIndex === index && editingCell?.field === 'widthMM' ? (
+                            <TextField
+                              value={editingValue}
+                              onChange={e => setEditingValue(e.target.value)}
+                              onBlur={() => handleCellEdit(index, 'widthMM', editingValue)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleCellEdit(index, 'widthMM', editingValue);
+                                if (e.key === 'Escape') handleCellCancel();
+                              }}
+                              size="small"
+                              autoFocus
+                              sx={{ minWidth: 80, fontSize: 'inherit' }}
+                            />
+                          ) : (
+                            row?.widthMM ? Number(row.widthMM).toLocaleString() : ''
+                          )}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.heightMM : columnVisibility.heightMM) && (
-                        <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
-                        }}>
-                          {row.heightMM ? Number(row.heightMM).toLocaleString() : ''}
+                        <TableCell
+                          sx={{ 
+                            fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                            color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          }}
+                          onClick={() => {
+                            if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'heightMM')) {
+                              setEditingCell({ rowIndex: index, field: 'heightMM' });
+                              setEditingValue(row?.heightMM ? String(row.heightMM) : '');
+                            }
+                          }}
+                        >
+                          {editingCell?.rowIndex === index && editingCell?.field === 'heightMM' ? (
+                            <TextField
+                              value={editingValue}
+                              onChange={e => setEditingValue(e.target.value)}
+                              onBlur={() => handleCellEdit(index, 'heightMM', editingValue)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleCellEdit(index, 'heightMM', editingValue);
+                                if (e.key === 'Escape') handleCellCancel();
+                              }}
+                              size="small"
+                              autoFocus
+                              sx={{ minWidth: 80, fontSize: 'inherit' }}
+                            />
+                          ) : (
+                            row.heightMM ? Number(row.heightMM).toLocaleString() : ''
+                          )}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.area : columnVisibility.area) && (
@@ -8196,19 +8298,158 @@ const OrderManagement: React.FC = () => {
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.lineDir : columnVisibility.lineDir) && (
-                        <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
-                        }}>
-                          {row.lineDirection}
+                        <TableCell
+                          sx={{ 
+                            fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                            color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          }}
+                          onClick={() => {
+                            if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'lineDirection')) {
+                              setEditingCell({ rowIndex: index, field: 'lineDirection' });
+                              setEditingValue(row?.lineDirection || '');
+                            }
+                          }}
+                        >
+                          {editingCell?.rowIndex === index && editingCell?.field === 'lineDirection' ? (
+                                                          <TextField
+                                select
+                                value={editingValue}
+                                onChange={e => setEditingValue(e.target.value)}
+                                onBlur={() => handleCellEdit(index, 'lineDirection', editingValue)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') handleCellEdit(index, 'lineDirection', editingValue);
+                                  if (e.key === 'Escape') handleCellCancel();
+                                }}
+                                size="small"
+                                autoFocus
+                                sx={{ 
+                                  minWidth: 80, 
+                                  fontSize: 'inherit',
+                                  '& .MuiSelect-select': {
+                                    color: '#000000 !important'
+                                  },
+                                  '& .MuiInputBase-input': {
+                                    color: '#000000 !important'
+                                  }
+                                }}
+                              >
+                              {lineDirectionOptions.map((option) => (
+                                <MenuItem key={option} value={option}>
+                                  {option}
+                                </MenuItem>
+                              ))}
+                            </TextField>
+                          ) : (
+                            row.lineDirection || ''
+                          )}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.lineLen : columnVisibility.lineLen) && (
-                        <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
-                        }}>
-                          {row.lineLength === '직접입력' ? row.customLineLength : row.lineLength}
+                        <TableCell
+                          sx={{ 
+                            fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                            color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          }}
+                          onClick={() => {
+                            if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'lineLength')) {
+                              setEditingCell({ rowIndex: index, field: 'lineLength' });
+                              setEditingValue(row?.lineLength || '');
+                              setEditingCustomValue(row?.customLineLength || '');
+                            }
+                          }}
+                        >
+                          {editingCell?.rowIndex === index && editingCell?.field === 'lineLength' ? (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                                             <TextField
+                                 select
+                                 value={editingValue}
+                                 onChange={e => setEditingValue(e.target.value)}
+                                 onBlur={() => handleCellEdit(index, 'lineLength', editingValue)}
+                                 onKeyDown={e => {
+                                   if (e.key === 'Enter') handleCellEdit(index, 'lineLength', editingValue);
+                                   if (e.key === 'Escape') handleCellCancel();
+                                 }}
+                                 size="small"
+                                 autoFocus
+                                 sx={{ 
+                                   minWidth: 80, 
+                                   fontSize: 'inherit',
+                                   '& .MuiSelect-select': {
+                                     color: '#000000 !important'
+                                   },
+                                   '& .MuiInputBase-input': {
+                                     color: '#000000 !important'
+                                   }
+                                 }}
+                               >
+                                {lineLengthOptions.map((option) => (
+                                  <MenuItem key={option} value={option}>
+                                    {option}
+                                  </MenuItem>
+                                ))}
+                              </TextField>
+                              {editingValue === '직접입력' && (
+                                <TextField
+                                  value={editingCustomValue}
+                                  onChange={e => setEditingCustomValue(e.target.value)}
+                                  onBlur={() => {
+                                    const currentRows = orders[activeTab]?.rows || [];
+                                    const updatedRows = [...currentRows];
+                                    if (updatedRows[index]) {
+                                      updatedRows[index] = { 
+                                        ...updatedRows[index], 
+                                        lineLength: '직접입력',
+                                        customLineLength: editingCustomValue 
+                                      };
+                                      const updatedOrder = { ...orders[activeTab], rows: updatedRows };
+                                      const updatedOrders = [...orders];
+                                      updatedOrders[activeTab] = updatedOrder;
+                                      setOrders(updatedOrders);
+                                    }
+                                    setEditingCell(null);
+                                    setEditingValue('');
+                                    setEditingCustomValue('');
+                                  }}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                      const currentRows = orders[activeTab]?.rows || [];
+                                      const updatedRows = [...currentRows];
+                                      if (updatedRows[index]) {
+                                        updatedRows[index] = { 
+                                          ...updatedRows[index], 
+                                          lineLength: '직접입력',
+                                          customLineLength: editingCustomValue 
+                                        };
+                                        const updatedOrder = { ...orders[activeTab], rows: updatedRows };
+                                        const updatedOrders = [...orders];
+                                        updatedOrders[activeTab] = updatedOrder;
+                                        setOrders(updatedOrders);
+                                      }
+                                      setEditingCell(null);
+                                      setEditingValue('');
+                                      setEditingCustomValue('');
+                                    }
+                                    if (e.key === 'Escape') {
+                                      setEditingCell(null);
+                                      setEditingValue('');
+                                      setEditingCustomValue('');
+                                    }
+                                  }}
+                                  size="small"
+                                  placeholder="직접 입력"
+                                  sx={{ 
+                                    minWidth: 80, 
+                                    fontSize: 'inherit',
+                                    '& .MuiInputBase-input': {
+                                      color: '#000000 !important'
+                                    }
+                                  }}
+                                />
+                              )}
+                            </Box>
+                          ) : (
+                            row.lineLength === '직접입력' ? row.customLineLength : row.lineLength || ''
+                          )}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.pleatAmount : columnVisibility.pleatAmount) && (
@@ -8412,7 +8653,6 @@ const OrderManagement: React.FC = () => {
                 발주서 만들기
               </Button>
             </Box>
-
             {/* 할인 설정 - 소비자금액 바로 아래 */}
             {orders[activeTab]?.rows && orders[activeTab].rows.length > 0 && (
               <Box sx={{ 
@@ -8928,31 +9168,31 @@ const OrderManagement: React.FC = () => {
                 <TableHead>
                   <TableRow>
                     {(isMobile ? mobileSavedOrderColumnVisibility.address : savedOrderColumnVisibility.address) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>주소</TableCell>
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>주소</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.customerName : savedOrderColumnVisibility.customerName) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>고객명</TableCell>
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>고객명</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.contact : savedOrderColumnVisibility.contact) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>연락처</TableCell>
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>연락처</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.estimateNo : savedOrderColumnVisibility.estimateNo) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>주문번호</TableCell>
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>주문번호</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.estimateDate : savedOrderColumnVisibility.estimateDate) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>주문일자</TableCell>
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>주문일자</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.installationDate : savedOrderColumnVisibility.installationDate) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>시공일자</TableCell>
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>시공일자</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.totalAmount : savedOrderColumnVisibility.totalAmount) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>소비자금액</TableCell>
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>소비자금액</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.discountedAmount : savedOrderColumnVisibility.discountedAmount) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>할인후금액</TableCell>
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>할인후금액</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.actions : savedOrderColumnVisibility.actions) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold' }}>액션</TableCell>
+                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>액션</TableCell>
                     )}
                   </TableRow>
                 </TableHead>
@@ -9012,7 +9252,7 @@ const OrderManagement: React.FC = () => {
                         }}
                       >
                         {(isMobile ? mobileSavedOrderColumnVisibility.address : savedOrderColumnVisibility.address) && (
-                          <TableCell sx={{ color: '#000' }}>
+                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                               <span>{order.address}</span>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -9049,10 +9289,15 @@ const OrderManagement: React.FC = () => {
                                     label="미수금"
                                     color="error"
                                     size="small"
+                                    onClick={() => handleOpenPaymentModal(order)}
                                     sx={{ 
                                       height: 20, 
                                       fontSize: '0.75rem',
-                                      fontWeight: 'bold'
+                                      fontWeight: 'bold',
+                                      cursor: 'pointer',
+                                      '&:hover': {
+                                        opacity: 0.8
+                                      }
                                     }}
                                   />
                                 )}
@@ -9073,19 +9318,19 @@ const OrderManagement: React.FC = () => {
                           </TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.customerName : savedOrderColumnVisibility.customerName) && (
-                          <TableCell sx={{ color: '#000' }}>{order.customerName}</TableCell>
+                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>{order.customerName}</TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.contact : savedOrderColumnVisibility.contact) && (
-                          <TableCell sx={{ color: '#000' }}>{order.contact}</TableCell>
+                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>{order.contact}</TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.estimateNo : savedOrderColumnVisibility.estimateNo) && (
-                          <TableCell sx={{ color: '#000' }}>{order.estimateNo}</TableCell>
+                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>{order.estimateNo}</TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.estimateDate : savedOrderColumnVisibility.estimateDate) && (
-                          <TableCell sx={{ color: '#000' }}>{order.estimateDate}</TableCell>
+                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>{order.estimateDate}</TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.installationDate : savedOrderColumnVisibility.installationDate) && (
-                          <TableCell sx={{ color: '#000' }}>{order.installationDate ? new Date(order.installationDate).toLocaleString('ko-KR', {
+                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>{order.installationDate ? new Date(order.installationDate).toLocaleString('ko-KR', {
                             year: 'numeric',
                             month: '2-digit',
                             day: '2-digit',
@@ -9094,13 +9339,13 @@ const OrderManagement: React.FC = () => {
                           }) : '-'}</TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.totalAmount : savedOrderColumnVisibility.totalAmount) && (
-                          <TableCell sx={{ color: '#000' }}>{totalAmount.toLocaleString()}원</TableCell>
+                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>{totalAmount.toLocaleString()}원</TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.discountedAmount : savedOrderColumnVisibility.discountedAmount) && (
-                          <TableCell sx={{ color: '#000' }}>{discountedAmount.toLocaleString()}원</TableCell>
+                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>{discountedAmount.toLocaleString()}원</TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.actions : savedOrderColumnVisibility.actions) && (
-                          <TableCell>
+                          <TableCell sx={{ fontSize: 'calc(1rem + 0.8px)' }}>
                             <Box sx={{ display: 'flex', gap: 0.5, flexDirection: isMobile ? 'column' : 'row' }}>
                               <Tooltip title="로드">
                                 <IconButton
@@ -12832,7 +13077,8 @@ const OrderManagement: React.FC = () => {
           alignItems: 'center',
           gap: 1,
           fontSize: isMobile ? '1.2rem' : '1.25rem',
-          pb: isMobile ? 1 : 2
+          pb: isMobile ? 1 : 2,
+          color: 'var(--text-color)'
         }}>
           {isMobile && (
             <IconButton
@@ -15200,6 +15446,116 @@ const OrderManagement: React.FC = () => {
             }}
           >
             확인
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 고객리스트 모달 */}
+      <Dialog
+        open={customerListModalOpen}
+        onClose={() => setCustomerListModalOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ 
+          color: 'var(--text-color)', 
+          backgroundColor: 'var(--surface-color)',
+          borderBottom: '1px solid var(--border-color)'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+              고객 목록
+            </Typography>
+            <IconButton
+              onClick={() => setCustomerListModalOpen(false)}
+              sx={{ color: 'var(--text-color)' }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ 
+          backgroundColor: 'var(--surface-color)', 
+          color: 'var(--text-color)',
+          pt: 3
+        }}>
+          <TextField
+            label="고객 검색"
+            value={customerSearch}
+            onChange={(e) => setCustomerSearch(e.target.value)}
+            size="small"
+            fullWidth
+            sx={{ mb: 2 }}
+            InputProps={{
+              startAdornment: <SearchIcon sx={{ mr: 1, color: 'var(--text-secondary-color)' }} />,
+            }}
+          />
+          <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}>고객명</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}>연락처</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}>비상연락처</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}>주소</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}>액션</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {customers
+                  .filter(customer => 
+                    customer.name?.toLowerCase().includes(customerSearch.toLowerCase()) ||
+                    customer.tel?.includes(customerSearch) ||
+                    customer.address?.toLowerCase().includes(customerSearch.toLowerCase())
+                  )
+                  .map((customer, index) => (
+                    <TableRow key={customer.id || index} hover>
+                      <TableCell sx={{ color: 'var(--text-color)' }}>{customer.name || ''}</TableCell>
+                      <TableCell sx={{ color: 'var(--text-color)' }}>{customer.tel || ''}</TableCell>
+                      <TableCell sx={{ color: 'var(--text-color)' }}>{customer.emergencyTel || ''}</TableCell>
+                      <TableCell sx={{ color: 'var(--text-color)' }}>{customer.address || ''}</TableCell>
+                      <TableCell>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => handleCustomerSelect(customer)}
+                          sx={{
+                            borderColor: 'var(--primary-color)',
+                            color: 'var(--primary-color)',
+                            '&:hover': {
+                              borderColor: 'var(--primary-color)',
+                              backgroundColor: 'rgba(25, 118, 210, 0.04)',
+                            },
+                          }}
+                        >
+                          선택
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions sx={{ 
+          backgroundColor: 'var(--surface-color)', 
+          color: 'var(--text-color)',
+          borderTop: '1px solid var(--border-color)',
+          p: 2
+        }}>
+          <Button 
+            onClick={() => setCustomerListModalOpen(false)}
+            variant="outlined"
+            sx={{
+              borderColor: 'var(--primary-color)',
+              color: 'var(--primary-color)',
+              '&:hover': {
+                borderColor: 'var(--primary-color)',
+                backgroundColor: 'rgba(25, 118, 210, 0.04)',
+              },
+            }}
+          >
+            닫기
           </Button>
         </DialogActions>
       </Dialog>
