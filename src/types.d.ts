@@ -93,6 +93,8 @@ export interface EstimateRow {
   optionLabel?: string;
   options?: OptionItem[];
   isManualQuantity?: boolean; // 수동 수량 설정 여부
+  productId?: number; // 옵션의 경우 부모 제품 ID
+  optionType?: string; // 옵션 타입
   // 추가 필드들
   lineDirection?: string;
   lineLength?: string;

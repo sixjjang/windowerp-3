@@ -921,21 +921,21 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
       case 'details':
         return row.details || '-';
       case 'widthMM':
-        return row.widthMM ? `${row.widthMM}mm` : '-';
+        return row.widthMM ? `${Number(row.widthMM).toLocaleString()}mm` : '-';
       case 'heightMM':
-        return row.heightMM ? `${row.heightMM}mm` : '-';
+        return row.heightMM ? `${Number(row.heightMM).toLocaleString()}mm` : '-';
       case 'area':
-        return row.area ? `${row.area}㎡` : '-';
+        return row.area ? `${Number(row.area).toLocaleString()}㎡` : '-';
       case 'lineDir':
         return row.lineDir || '-';
       case 'lineLen':
-        return row.lineLen ? `${row.lineLen}cm` : '-';
+        return row.lineLen ? `${Number(row.lineLen).toLocaleString()}cm` : '-';
       case 'pleatAmount':
-        return row.pleatAmount ? `${row.pleatAmount}` : '-';
+        return row.pleatAmount ? `${Number(row.pleatAmount).toLocaleString()}` : '-';
       case 'widthCount':
-        return row.widthCount ? `${row.widthCount}폭` : '-';
+        return row.widthCount ? `${Number(row.widthCount).toLocaleString()}폭` : '-';
       case 'quantity':
-        return row.quantity || '-';
+        return row.quantity ? Number(row.quantity).toLocaleString() : '-';
       case 'totalPrice':
         return row.totalPrice === 0
           ? '*서비스 상품입니다.'

@@ -293,14 +293,14 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                         </td>
                         <td style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                           {item.productionWidth && item.productionHeight
-                            ? `${item.productionWidth} x ${item.productionHeight}`
+                            ? `${Number(item.productionWidth).toLocaleString()} x ${Number(item.productionHeight).toLocaleString()}`
                             : '-'}
                         </td>
                         <td style={{ border: '1px solid var(--border-color)', padding: 6 }}>
-                          {item.area ? item.area.toFixed(2) : '-'}
+                          {item.area ? Number(item.area).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
                         </td>
                         <td style={{ border: '1px solid var(--border-color)', padding: 6 }}>
-                          {item.widthCount || '-'}
+                          {item.widthCount ? Number(item.widthCount).toLocaleString() : '-'}
                         </td>
                         <td style={{ border: '1px solid var(--border-color)', padding: 6 }}>
                           {item.unitPrice

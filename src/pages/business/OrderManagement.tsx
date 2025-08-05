@@ -150,6 +150,7 @@ interface Contract {
   customerName: string;
   customerContact: string;
   customerAddress: string;
+  address?: string; // 주소 필드 추가 (기존 customerAddress와 별도)
   projectName: string;
   projectType: string;
   totalAmount: number;
@@ -705,6 +706,17 @@ const ContractListModal: React.FC<{
       const savedContracts = localStorage.getItem('contracts');
       if (savedContracts) {
         const parsedContracts = JSON.parse(savedContracts);
+        console.log('로드된 계약 데이터:', parsedContracts);
+        // 각 계약의 주소 필드 확인
+        parsedContracts.forEach((contract: any, index: number) => {
+          console.log(`계약 ${index + 1}:`, {
+            contractNo: contract.contractNo,
+            customerName: contract.customerName,
+            address: contract.address,
+            customerAddress: contract.customerAddress,
+            projectName: contract.projectName
+          });
+        });
         setContracts(parsedContracts);
       }
     } catch (error) {
@@ -727,7 +739,7 @@ const ContractListModal: React.FC<{
       contract.contractNo?.toLowerCase().includes(search) ||
       contract.customerName?.toLowerCase().includes(search) ||
       contract.projectName?.toLowerCase().includes(search) ||
-      contract.customerAddress?.toLowerCase().includes(search)
+      ((contract as any).address || contract.customerAddress)?.toLowerCase().includes(search)
     );
   });
 
@@ -749,7 +761,9 @@ const ContractListModal: React.FC<{
         alignItems: 'center',
         gap: 1,
         fontSize: isMobile ? '1.2rem' : '1.25rem',
-        pb: isMobile ? 1 : 2
+        pb: isMobile ? 1 : 2,
+        color: 'var(--text-color)',
+        backgroundColor: 'var(--surface-color)'
       }}>
         {isMobile && (
           <IconButton
@@ -757,16 +771,18 @@ const ContractListModal: React.FC<{
             color="inherit"
             onClick={onClose}
             aria-label="close"
-            sx={{ mr: 1 }}
+            sx={{ mr: 1, color: 'var(--text-color)' }}
           >
             <ArrowBackIcon />
           </IconButton>
         )}
-        <AssignmentIcon sx={{ mr: 1 }} />
-        계약 목록에서 선택
+        <AssignmentIcon sx={{ mr: 1, color: 'var(--text-color)' }} />
+        <Typography variant="h6" sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>
+          계약 목록에서 선택
+        </Typography>
         <Typography variant="subtitle2" sx={{
           mt: isMobile ? 0.5 : 1,
-          color: '#666',
+          color: 'var(--text-secondary-color)',
           fontWeight: 'normal',
           fontSize: isMobile ? '0.9rem' : '0.875rem'
         }}>
@@ -774,7 +790,7 @@ const ContractListModal: React.FC<{
         </Typography>
       </DialogTitle>
       
-      <DialogContent>
+      <DialogContent sx={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-color)' }}>
         {/* 검색 필터 */}
         <Box sx={{ mb: 2 }}>
           <TextField
@@ -786,7 +802,16 @@ const ContractListModal: React.FC<{
             sx={{
               '& .MuiInputBase-input': {
                 fontSize: isMobile ? '1rem' : '0.875rem',
-                padding: isMobile ? '12px 14px' : '8.5px 14px'
+                padding: isMobile ? '12px 14px' : '8.5px 14px',
+                color: 'var(--text-color)'
+              },
+              '& .MuiInputBase-input::placeholder': {
+                color: 'var(--text-secondary-color)'
+              },
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: 'var(--border-color)' },
+                '&:hover fieldset': { borderColor: 'var(--hover-color)' },
+                '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' }
               }
             }}
           />
@@ -795,20 +820,18 @@ const ContractListModal: React.FC<{
         {/* 계약 목록 */}
         {loading ? (
           <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography>계약 목록을 불러오는 중...</Typography>
+            <Typography sx={{ color: 'var(--text-color)' }}>계약 목록을 불러오는 중...</Typography>
           </Box>
         ) : filteredContracts.length > 0 ? (
           <TableContainer>
             <Table size={isMobile ? "small" : "medium"}>
               <TableHead>
                 <TableRow>
-                  <TableCell>계약번호</TableCell>
-                  <TableCell>고객명</TableCell>
-                  <TableCell>프로젝트명</TableCell>
-                  <TableCell>주소</TableCell>
-                  <TableCell>계약일자</TableCell>
-                  <TableCell>계약금액</TableCell>
-                  <TableCell>액션</TableCell>
+                  <TableCell sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>계약번호</TableCell>
+                  <TableCell sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>주소</TableCell>
+                  <TableCell sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>고객명</TableCell>
+                  <TableCell sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>계약일자</TableCell>
+                  <TableCell sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>계약금액</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -819,25 +842,12 @@ const ContractListModal: React.FC<{
                     sx={{ cursor: 'pointer' }}
                     onClick={() => handleSelectContract(contract)}
                   >
-                    <TableCell>{contract.contractNo}</TableCell>
-                    <TableCell>{contract.customerName}</TableCell>
-                    <TableCell>{contract.projectName}</TableCell>
-                    <TableCell>{contract.customerAddress}</TableCell>
-                    <TableCell>{contract.contractDate}</TableCell>
-                    <TableCell>
+                    <TableCell sx={{ color: 'var(--text-color)' }}>{contract.contractNo}</TableCell>
+                    <TableCell sx={{ color: 'var(--text-color)' }}>{(contract as any).address || contract.customerAddress || '-'}</TableCell>
+                    <TableCell sx={{ color: 'var(--text-color)' }}>{contract.customerName}</TableCell>
+                    <TableCell sx={{ color: 'var(--text-color)' }}>{contract.contractDate}</TableCell>
+                    <TableCell sx={{ color: 'var(--text-color)' }}>
                       {contract.totalAmount?.toLocaleString()}원
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="small"
-                        variant="contained"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSelectContract(contract);
-                        }}
-                      >
-                        선택
-                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -846,7 +856,7 @@ const ContractListModal: React.FC<{
           </TableContainer>
         ) : (
           <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography color="text.secondary">
+            <Typography sx={{ color: 'var(--text-secondary-color)' }}>
               {searchTerm ? '검색 결과가 없습니다.' : '저장된 계약이 없습니다.'}
             </Typography>
           </Box>
@@ -854,8 +864,16 @@ const ContractListModal: React.FC<{
       </DialogContent>
       
       {!isMobile && (
-        <DialogActions>
-          <Button onClick={onClose}>닫기</Button>
+        <DialogActions sx={{ backgroundColor: 'var(--surface-color)', borderTop: '1px solid var(--border-color)' }}>
+          <Button 
+            onClick={onClose}
+            sx={{ 
+              color: 'var(--text-color)',
+              '&:hover': { backgroundColor: 'var(--hover-color)' }
+            }}
+          >
+            닫기
+          </Button>
         </DialogActions>
       )}
     </Dialog>
@@ -1019,7 +1037,14 @@ const OrderManagement: React.FC = () => {
     mouseX: number;
     mouseY: number;
     order: any;
+    selectedRow?: any;
   } | null>(null);
+
+  // 블라인드 나누기 관련 상태
+  const [divideModalOpen, setDivideModalOpen] = useState(false);
+  const [divideType, setDivideType] = useState<'split' | 'copy'>('split');
+  const [divideCount, setDivideCount] = useState(2);
+  const [selectedRowForDivide, setSelectedRowForDivide] = useState<any>(null);
 
   // 주문서 탭 컨텍스트 메뉴 상태
   const [tabContextMenu, setTabContextMenu] = useState<{
@@ -1310,7 +1335,7 @@ const OrderManagement: React.FC = () => {
               item.details?.includes(keyword)
             );
             
-            return {
+            const convertedRow = {
               id: index + 1,
               type: isOption ? 'option' as const : 'product' as const,
               vendor: item.vendor || '',
@@ -1341,6 +1366,13 @@ const OrderManagement: React.FC = () => {
               productionWidth: item.productionWidth || 0,
               productionHeight: item.productionHeight || 0,
             };
+            
+            // 제품인 경우 세부내용 자동 계산 적용
+            if (convertedRow.type === 'product') {
+              convertedRow.details = updateDetailsInRealTime(convertedRow);
+            }
+            
+            return convertedRow;
           }) || [],
         };
       } else {
@@ -1355,34 +1387,41 @@ const OrderManagement: React.FC = () => {
             item.details?.includes(keyword)
           );
           
-          return {
+          const convertedRow = {
             id: index + 1,
             type: isOption ? 'option' as const : 'product' as const,
-          vendor: item.vendor || '',
-          brand: item.brand || '',
-          space: item.space || '',
-          productType: item.productType || '',
-          curtainType: item.curtainType || '',
-          pleatType: item.pleatType || '',
-          productName: item.productName || '',
-          width: item.width || '',
-          details: item.details || '',
-          widthMM: item.widthMM || 0,
-          heightMM: item.heightMM || 0,
-          area: item.area || 0,
-          lineDir: item.lineDir || '',
-          lineLen: item.lineLen || 0,
-          pleatAmount: item.pleatAmount || '',
-          widthCount: item.widthCount || 0,
-          quantity: item.quantity || 1,
-          totalPrice: item.totalPrice || 0,
-          salePrice: item.salePrice || 0,
-          cost: item.cost || 0,
-          purchaseCost: item.purchaseCost || 0,
-          margin: item.margin || 0,
-          note: item.note || '',
-        };
-      }) || [];
+            vendor: item.vendor || '',
+            brand: item.brand || '',
+            space: item.space || '',
+            productType: item.productType || '',
+            curtainType: item.curtainType || '',
+            pleatType: item.pleatType || '',
+            productName: item.productName || '',
+            width: item.width || '',
+            details: item.details || '',
+            widthMM: item.widthMM || 0,
+            heightMM: item.heightMM || 0,
+            area: item.area || 0,
+            lineDir: item.lineDir || '',
+            lineLen: item.lineLen || 0,
+            pleatAmount: item.pleatAmount || '',
+            widthCount: item.widthCount || 0,
+            quantity: item.quantity || 1,
+            totalPrice: item.totalPrice || 0,
+            salePrice: item.salePrice || 0,
+            cost: item.cost || 0,
+            purchaseCost: item.purchaseCost || 0,
+            margin: item.margin || 0,
+            note: item.note || '',
+          };
+          
+          // 제품인 경우 세부내용 자동 계산 적용
+          if (convertedRow.type === 'product') {
+            convertedRow.details = updateDetailsInRealTime(convertedRow);
+          }
+          
+          return convertedRow;
+        }) || [];
       }
       
       // 주문서 업데이트
@@ -1484,6 +1523,31 @@ const OrderManagement: React.FC = () => {
   const [discountAmount, setDiscountAmount] = useState('');
   const [discountRate, setDiscountRate] = useState('');
   const [discountedTotalInput, setDiscountedTotalInput] = useState('');
+  // 모바일용 제품 목록 표시항목 (순번, 거래처, 공간, 제품코드, 세부내용, 가로, 세로)
+  const mobileProductColumnVisibility = {
+    vendor: true,
+    brand: false,
+    space: true,
+    productCode: true,
+    productType: false,
+    productName: false,
+    width: false,
+    details: true,
+    widthMM: true,
+    heightMM: true,
+    area: false,
+    lineDir: false,
+    lineLen: false,
+    pleatAmount: false,
+    widthCount: false,
+    quantity: false,
+    totalPrice: false,
+    salePrice: false,
+    cost: false,
+    purchaseCost: false,
+    margin: false,
+  };
+
   const [columnVisibility, setColumnVisibility] = useState({
     vendor: true,
     brand: false,
@@ -1548,37 +1612,23 @@ const OrderManagement: React.FC = () => {
   // 제품 이동 함수들
   const moveProductUp = (productIndex: number) => {
     const currentRows = orders[activeTab]?.rows || [];
-    const productRows = currentRows.filter(row => row.type === 'product');
+    const productGroups = getProductGroups(currentRows);
     
-    if (productIndex <= 0 || productIndex >= productRows.length) return;
-    
-    // 제품 그룹들을 찾기
-    const productGroups: Array<Array<any>> = [];
-    let currentGroup: Array<any> = [];
-    
-    for (let i = 0; i < currentRows.length; i++) {
-      if (currentRows[i].type === 'product') {
-        if (currentGroup.length > 0) {
-          productGroups.push([...currentGroup]);
-        }
-        currentGroup = [currentRows[i]];
-      } else if (currentRows[i].type === 'option') {
-        currentGroup.push(currentRows[i]);
-      }
-    }
-    if (currentGroup.length > 0) {
-      productGroups.push([...currentGroup]);
-    }
+    if (productIndex <= 0 || productIndex >= productGroups.length) return;
     
     // 현재 제품 그룹과 이전 제품 그룹의 위치를 바꾸기
-    if (productIndex > 0 && productIndex < productGroups.length) {
-      const temp = productGroups[productIndex];
-      productGroups[productIndex] = productGroups[productIndex - 1];
-      productGroups[productIndex - 1] = temp;
-    }
+    const newRows = [...currentRows];
     
-    // 새로운 배열 구성
-    const newRows = productGroups.flat();
+    // 현재 그룹과 이전 그룹의 범위
+    const currentGroup = productGroups[productIndex] as { product: any; options: any[]; startIndex: number; endIndex: number };
+    const prevGroup = productGroups[productIndex - 1] as { product: any; options: any[]; startIndex: number; endIndex: number };
+    
+    // 현재 그룹의 모든 항목들을 제거
+    const currentGroupItems = newRows.slice(currentGroup.startIndex, currentGroup.endIndex + 1);
+    newRows.splice(currentGroup.startIndex, currentGroup.endIndex - currentGroup.startIndex + 1);
+    
+    // 이전 그룹 앞에 현재 그룹 삽입
+    newRows.splice(prevGroup.startIndex, 0, ...currentGroupItems);
     
     const updatedOrders = [...orders];
     updatedOrders[activeTab].rows = newRows;
@@ -1587,48 +1637,72 @@ const OrderManagement: React.FC = () => {
 
   const moveProductDown = (productIndex: number) => {
     const currentRows = orders[activeTab]?.rows || [];
-    const productRows = currentRows.filter(row => row.type === 'product');
+    const productGroups = getProductGroups(currentRows);
     
-    if (productIndex < 0 || productIndex >= productRows.length - 1) return;
-    
-    // 제품 그룹들을 찾기
-    const productGroups: Array<Array<any>> = [];
-    let currentGroup: Array<any> = [];
-    
-    for (let i = 0; i < currentRows.length; i++) {
-      if (currentRows[i].type === 'product') {
-        if (currentGroup.length > 0) {
-          productGroups.push([...currentGroup]);
-        }
-        currentGroup = [currentRows[i]];
-      } else if (currentRows[i].type === 'option') {
-        currentGroup.push(currentRows[i]);
-      }
-    }
-    if (currentGroup.length > 0) {
-      productGroups.push([...currentGroup]);
-    }
+    if (productIndex < 0 || productIndex >= productGroups.length - 1) return;
     
     // 현재 제품 그룹과 다음 제품 그룹의 위치를 바꾸기
-    if (productIndex >= 0 && productIndex < productGroups.length - 1) {
-      const temp = productGroups[productIndex];
-      productGroups[productIndex] = productGroups[productIndex + 1];
-      productGroups[productIndex + 1] = temp;
-    }
+    const newRows = [...currentRows];
     
-    // 새로운 배열 구성
-    const newRows = productGroups.flat();
+    // 현재 그룹과 다음 그룹의 범위
+    const currentGroup = productGroups[productIndex] as { product: any; options: any[]; startIndex: number; endIndex: number };
+    const nextGroup = productGroups[productIndex + 1] as { product: any; options: any[]; startIndex: number; endIndex: number };
+    
+    // 현재 그룹의 모든 항목들을 제거
+    const currentGroupItems = newRows.slice(currentGroup.startIndex, currentGroup.endIndex + 1);
+    newRows.splice(currentGroup.startIndex, currentGroup.endIndex - currentGroup.startIndex + 1);
+    
+    // 다음 그룹 뒤에 현재 그룹 삽입
+    newRows.splice(nextGroup.endIndex + 1, 0, ...currentGroupItems);
     
     const updatedOrders = [...orders];
     updatedOrders[activeTab].rows = newRows;
     setOrders(updatedOrders);
   };
 
+  // 제품 그룹을 찾는 함수 (제품 + 연결된 옵션들)
+  const getProductGroups = (rows: any[]) => {
+    const groups: Array<{ product: any; options: any[]; startIndex: number; endIndex: number }> = [];
+    let currentGroup: { product: any; options: any[]; startIndex: number; endIndex: number } | null = null;
+    
+    rows.forEach((row, index) => {
+      if (row && row.type === 'product') {
+        // 이전 그룹이 있으면 저장
+        if (currentGroup) {
+          (currentGroup as any).endIndex = index - 1;
+          groups.push(currentGroup);
+        }
+        
+        // 새 그룹 시작
+        currentGroup = {
+          product: row,
+          options: [],
+          startIndex: index,
+          endIndex: index
+        };
+      } else if (row && row.type === 'option' && currentGroup) {
+        // 현재 제품에 연결된 옵션인지 확인
+        if (row.productId === (currentGroup as any).product.id) {
+          (currentGroup as any).options.push(row);
+          (currentGroup as any).endIndex = index;
+        }
+      }
+    });
+    
+    // 마지막 그룹 저장
+    if (currentGroup) {
+      (currentGroup as any).endIndex = rows.length - 1;
+      groups.push(currentGroup);
+    }
+    
+    return groups;
+  };
+
   // 제품 번호 가져오기 함수
   const getProductNumber = (row: any) => {
     const currentRows = orders[activeTab]?.rows || [];
-    const productRows = currentRows.filter(r => r.type === 'product');
-    const productIndex = productRows.findIndex(r => r.id === row.id);
+    const productRows = currentRows.filter(r => r && r.type === 'product');
+    const productIndex = productRows.findIndex(r => r && r.id === row.id);
     return productIndex >= 0 ? productIndex + 1 : null;
   };
 
@@ -2386,7 +2460,12 @@ const OrderManagement: React.FC = () => {
       }
     }
 
-        setEditRowIdx(originalIndex);
+    // space 필드의 공백 제거 (중간방 2 -> 중간방2)
+    if (rowData.space && rowData.space.includes(' ')) {
+      rowData.space = rowData.space.replace(/\s+/g, '');
+    }
+
+    setEditRowIdx(originalIndex);
     setEditRow(rowData);
     setEditOpen(true);
   };
@@ -2536,7 +2615,7 @@ const OrderManagement: React.FC = () => {
   const handleOpenOptionDialog = () => {
     // 현재 주문서에 제품이 있는지 확인
     const rows = orders[activeTab]?.rows || [];
-    const productRows = rows.filter(row => row.type === 'product');
+    const productRows = rows.filter(row => row && row.type === 'product');
     
     if (productRows.length === 0) {
       setSnackbarMessage('옵션을 추가하려면 먼저 제품을 선택해주세요.');
@@ -2551,7 +2630,7 @@ const OrderManagement: React.FC = () => {
   const handleAddRailOption = () => {
     // 1. 현재 주문서의 제품 행만 추출
     const rows = orders[activeTab]?.rows || [];
-    const productRows = rows.filter(row => row.type === 'product');
+    const productRows = rows.filter(row => row && row.type === 'product');
     if (productRows.length === 0) {
       setSnackbarMessage('추가할 제품이 없습니다.');
       setSnackbarOpen(true);
@@ -3031,11 +3110,12 @@ const OrderManagement: React.FC = () => {
     const newOptionRow = {
       id: Date.now() + Math.random(),
       type: 'option' as const,
+      productId: selectedRowIndex !== null ? currentRows[selectedRowIndex].id : undefined, // 제품과 연결하는 productId 추가
       vendor: option.vendor || '',
       brand: option.brand || '',
       space: '',
       productType: option.optionType || '',
-      optionType: option.optionType || '', // optionType 필드 추가
+      optionType: option.optionType || optionTypeMap[optionSearchTab] || '기타옵션', // optionType 필드 추가 (탭 정보 활용)
       curtainType: '',
       pleatType: '',
       productName: option.optionName,
@@ -3577,44 +3657,69 @@ const OrderManagement: React.FC = () => {
       return;
     }
 
+    // 디버깅: 발주경로 설정 확인
+    console.log('=== 발주서 생성 디버깅 ===');
+    console.log('발주경로 설정:', purchasePathSettings);
+    console.log('커튼전동 설정:', purchasePathSettings['커튼전동']);
+    
+    // 옵션 데이터 상세 확인
+    const options = currentOrder.rows.filter(row => row.type === 'option');
+    console.log('옵션들:', options.map(option => ({
+      id: option.id,
+      productId: (option as any).productId,
+      productName: option.productName,
+      vendor: option.vendor,
+      optionType: (option as any).optionType
+    })));
+
 
 
     // 옵션 분류 함수
     const classifyOptionsByPurchasePath = (productRow: any, allRows: any[]) => {
       const productOptions = allRows.filter(row => 
-        row.type === 'option' && row.productId === productRow.id
+        row.type === 'option' && (row as any).productId === productRow.id
       );
       
-
+      console.log(`제품 ${productRow.id} (${productRow.productName})의 연결된 옵션들:`, productOptions);
       
       const productVendorOptions: any[] = [];
       const optionVendorOptions: any[] = [];
       
       productOptions.forEach(option => {
         // optionType이 없는 경우 productType에서 추출하거나 기본값 사용
-        let optionType = option.optionType;
+        let optionType = (option as any).optionType;
         if (!optionType) {
           // 기존 옵션들은 productType에 optionType 정보가 있을 수 있음
           optionType = option.productType || '기타옵션';
         }
         
+        console.log(`옵션 ${option.productName}의 optionType:`, optionType);
+        
         const settings = purchasePathSettings[optionType];
+        console.log(`옵션 ${option.productName}의 발주경로 설정:`, settings);
         
         // 발주예외가 체크된 옵션은 제외
         if (settings?.excludeFromPurchase) {
+          console.log(`옵션 ${option.productName}은 발주예외로 제외됨`);
           return;
         }
         
         const purchasePath = settings?.purchasePath || 'product'; // 기본값: 제품거래처
+        console.log(`옵션 ${option.productName}의 발주경로:`, purchasePath);
         
         if (purchasePath === 'product') {
           productVendorOptions.push(option);
+          console.log(`옵션 ${option.productName}을 제품거래처 옵션으로 분류`);
         } else {
           optionVendorOptions.push(option);
+          console.log(`옵션 ${option.productName}을 옵션거래처 옵션으로 분류`);
         }
       });
       
-
+      console.log(`제품 ${productRow.id}의 분류 결과:`, {
+        productVendorOptions: productVendorOptions.length,
+        optionVendorOptions: optionVendorOptions.length
+      });
       
       return { productVendorOptions, optionVendorOptions };
     };
@@ -3625,6 +3730,7 @@ const OrderManagement: React.FC = () => {
     
     currentOrder.rows.forEach((row: any) => {
       if (row.type === 'product' && row.vendor) {
+        console.log(`\n=== 제품 ${row.productName} (${row.vendor}) 처리 ===`);
         const { productVendorOptions, optionVendorOptions } = classifyOptionsByPurchasePath(row, currentOrder.rows);
         
         // 제품거래처 옵션들을 제품과 함께 그룹화
@@ -3635,26 +3741,32 @@ const OrderManagement: React.FC = () => {
           ...row,
           options: productVendorOptions
         });
+        console.log(`${row.vendor} 그룹에 제품 추가됨`);
         
         // 옵션거래처 옵션들을 처리
         optionVendorOptions.forEach(option => {
           const optionVendor = option.vendor || '미지정';
+          console.log(`옵션거래처 옵션 처리: ${option.productName} (${optionVendor})`);
           
           // 옵션거래처가 제품거래처와 같은 경우, 제품과 함께 그룹화
           if (optionVendor === row.vendor) {
+            console.log(`옵션거래처(${optionVendor}) = 제품거래처(${row.vendor}) → 제품과 함께 그룹화`);
             // 제품거래처 그룹에 옵션 추가
             const existingProductIndex = vendorGroups[row.vendor].findIndex(item => 
               item.id === row.id
             );
             if (existingProductIndex !== -1) {
               vendorGroups[row.vendor][existingProductIndex].options.push(option);
+              console.log(`제품거래처 그룹에 옵션 추가됨`);
             }
           } else {
+            console.log(`옵션거래처(${optionVendor}) ≠ 제품거래처(${row.vendor}) → 별도 그룹화`);
             // 다른 거래처인 경우 별도 그룹화
             if (!optionVendorGroups[optionVendor]) {
               optionVendorGroups[optionVendor] = [];
             }
             optionVendorGroups[optionVendor].push(option);
+            console.log(`옵션거래처 그룹에 옵션 추가됨`);
           }
         });
       }
@@ -3663,32 +3775,37 @@ const OrderManagement: React.FC = () => {
     // 모든 발주서 생성 (제품거래처 + 옵션거래처)
     const allPurchaseOrders: any[] = [];
     
-
+    console.log('\n=== 최종 그룹화 결과 ===');
+    console.log('제품거래처 그룹:', vendorGroups);
+    console.log('옵션거래처 그룹:', optionVendorGroups);
     
-    // 제품거래처 발주서
+    // 통합된 거래처별 발주서 생성
+    const consolidatedVendorGroups: { [key: string]: any[] } = {};
+    
+    // 제품거래처 그룹 처리
     Object.keys(vendorGroups).forEach(vendor => {
-
-      allPurchaseOrders.push({
-        vendor,
-        items: vendorGroups[vendor],
-        memo: '',
-        createdAt: new Date().toISOString(),
-        orderInfo: {
-          customerName: currentOrder.customerName,
-          address: currentOrder.address,
-          projectName: currentOrder.projectName,
-          estimateNo: currentOrder.estimateNo,
-          estimateDate: currentOrder.estimateDate,
-        }
-      });
+      if (!consolidatedVendorGroups[vendor]) {
+        consolidatedVendorGroups[vendor] = [];
+      }
+      consolidatedVendorGroups[vendor].push(...vendorGroups[vendor]);
+      console.log(`제품거래처 그룹 ${vendor} 통합됨`);
     });
     
-    // 옵션거래처 발주서
+    // 옵션거래처 그룹 처리 (동일 거래처가 있으면 통합, 없으면 새로 생성)
     Object.keys(optionVendorGroups).forEach(vendor => {
-
+      if (!consolidatedVendorGroups[vendor]) {
+        consolidatedVendorGroups[vendor] = [];
+      }
+      consolidatedVendorGroups[vendor].push(...optionVendorGroups[vendor]);
+      console.log(`옵션거래처 그룹 ${vendor} 통합됨`);
+    });
+    
+    // 통합된 발주서 생성
+    Object.keys(consolidatedVendorGroups).forEach(vendor => {
+      console.log(`통합 발주서 생성: ${vendor} (${consolidatedVendorGroups[vendor].length}개 아이템)`);
       allPurchaseOrders.push({
         vendor,
-        items: optionVendorGroups[vendor],
+        items: consolidatedVendorGroups[vendor],
         memo: '',
         createdAt: new Date().toISOString(),
         orderInfo: {
@@ -5156,17 +5273,107 @@ const OrderManagement: React.FC = () => {
     }
   };
 
-  // 행 우클릭 메뉴 핸들러
+  // 모바일 길게 누르기 타이머 상태
+  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
+  const [longPressTarget, setLongPressTarget] = useState<{rowIndex: number, row: any} | null>(null);
+
+  // 모바일 터치 시작 핸들러 (제품 행용)
+  const handleTouchStart = (rowIndex: number, row: any) => {
+    const timer = setTimeout(() => {
+      console.log('모바일 길게 누르기 감지:', row);
+      
+      // 블라인드 제품인 경우 나누기 메뉴를 포함한 컨텍스트 메뉴 표시
+      if (row.productType === '블라인드' && row.type === 'product') {
+        setContextMenu({
+          mouseX: 50, // 모바일에서는 화면 중앙에 표시
+          mouseY: 50,
+          order: orders[activeTab],
+          selectedRow: row
+        });
+      } else {
+        // 기존 행 컨텍스트 메뉴
+        setRowContextMenu({
+          mouseX: 50, // 모바일에서는 화면 중앙에 표시
+          mouseY: 50,
+          rowIndex: rowIndex,
+          row: row,
+        });
+      }
+      
+      setLongPressTarget(null);
+    }, 500); // 500ms로 길게 누르는 시간 단축
+    
+    setLongPressTimer(timer);
+    setLongPressTarget({rowIndex, row});
+  };
+
+  // 모바일 터치 시작 핸들러 (저장된 주문서용)
+  const handleSavedOrderTouchStart = (order: any) => {
+    const timer = setTimeout(() => {
+      console.log('모바일 길게 누르기 감지 (저장된 주문서):', order);
+      
+      setContextMenu({
+        mouseX: 50, // 모바일에서는 화면 중앙에 표시
+        mouseY: 50,
+        order: order,
+      });
+      
+      setLongPressTarget(null);
+    }, 500); // 500ms로 길게 누르는 시간 단축
+    
+    setLongPressTimer(timer);
+    setLongPressTarget({rowIndex: -1, row: order});
+  };
+
+  // 모바일 터치 시작 핸들러 (주문서 탭용)
+  const handleTabTouchStart = (orderIndex: number) => {
+    const timer = setTimeout(() => {
+      console.log('모바일 길게 누르기 감지 (주문서 탭):', orderIndex);
+      
+      setTabContextMenu({
+        mouseX: 50, // 모바일에서는 화면 중앙에 표시
+        mouseY: 50,
+        orderIndex: orderIndex,
+      });
+      
+      setLongPressTarget(null);
+    }, 500); // 500ms로 길게 누르는 시간 단축
+    
+    setLongPressTimer(timer);
+    setLongPressTarget({rowIndex: -2, row: {orderIndex}}); // -2는 주문서 탭을 의미
+  };
+
+  // 모바일 터치 종료 핸들러
+  const handleTouchEnd = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+    setLongPressTarget(null);
+  };
+
+  // 행 우클릭 메뉴 핸들러 (웹용)
   const handleRowContextMenu = (event: React.MouseEvent, rowIndex: number, row: any) => {
     event.preventDefault();
     console.log('행 우클릭 메뉴:', row);
     
-    setRowContextMenu({
-      mouseX: event.clientX + 2,
-      mouseY: event.clientY - 6,
-      rowIndex: rowIndex,
-      row: row,
-    });
+    // 블라인드 제품인 경우 나누기 메뉴를 포함한 컨텍스트 메뉴 표시
+    if (row.productType === '블라인드' && row.type === 'product') {
+      setContextMenu({
+        mouseX: event.clientX + 2,
+        mouseY: event.clientY - 6,
+        order: orders[activeTab],
+        selectedRow: row
+      });
+    } else {
+      // 기존 행 컨텍스트 메뉴
+      setRowContextMenu({
+        mouseX: event.clientX + 2,
+        mouseY: event.clientY - 6,
+        rowIndex: rowIndex,
+        row: row,
+      });
+    }
   };
 
   const handleCloseRowContextMenu = () => {
@@ -5365,6 +5572,210 @@ const OrderManagement: React.FC = () => {
     setContextMenu(null);
   };
 
+  // 일괄변경 모드에서 제품 위로 이동
+  const moveBulkEditProductUp = () => {
+    console.log('moveBulkEditProductUp 호출됨');
+    const currentRows = orders[activeTab]?.rows || [];
+    const selectedIndices = Array.from(selectedOrderRows).sort((a, b) => a - b);
+    
+    console.log('selectedIndices:', selectedIndices);
+    console.log('currentRows:', currentRows);
+    
+    if (selectedIndices.length === 0) return;
+    
+    // 배열 범위 체크
+    const validIndices = selectedIndices.filter(index => 
+      index >= 0 && index < currentRows.length
+    );
+    
+    if (validIndices.length === 0) {
+      console.log('유효한 인덱스가 없음');
+      setSnackbarMessage('유효하지 않은 선택입니다.');
+      setSnackbarOpen(true);
+      return;
+    }
+    
+    // 제품 그룹들을 찾기
+    const productGroups = getProductGroups(currentRows);
+    console.log('productGroups:', productGroups);
+    
+    // 선택된 제품 그룹 찾기
+    const selectedProductGroups: number[] = [];
+    productGroups.forEach((group, groupIndex) => {
+      const groupIndices: number[] = [];
+      for (let i = group.startIndex; i <= group.endIndex; i++) {
+        groupIndices.push(i);
+      }
+      
+      // 선택된 인덱스와 겹치는지 확인
+      const hasSelectedItems = validIndices.some(index => groupIndices.includes(index));
+      if (hasSelectedItems) {
+        selectedProductGroups.push(groupIndex);
+      }
+    });
+    
+    console.log('selectedProductGroups:', selectedProductGroups);
+    
+    if (selectedProductGroups.length === 0) {
+      console.log('선택된 제품 그룹이 없음');
+      setSnackbarMessage('이동할 제품 그룹이 없습니다.');
+      setSnackbarOpen(true);
+      return;
+    }
+    
+    // 가장 작은 그룹 인덱스 찾기
+    const minGroupIndex = Math.min(...selectedProductGroups);
+    console.log('minGroupIndex:', minGroupIndex);
+    
+    if (minGroupIndex <= 0) {
+      console.log('이미 맨 위에 있음');
+      return; // 이미 맨 위에 있음
+    }
+    
+    // 현재 그룹과 이전 그룹의 범위
+    const currentGroup = productGroups[minGroupIndex] as { product: any; options: any[]; startIndex: number; endIndex: number };
+    const prevGroup = productGroups[minGroupIndex - 1] as { product: any; options: any[]; startIndex: number; endIndex: number };
+    
+    console.log(`그룹 ${minGroupIndex}를 그룹 ${minGroupIndex - 1} 앞으로 이동`);
+    
+    // 현재 그룹의 모든 항목들을 제거
+    const newRows = [...currentRows];
+    const currentGroupItems = newRows.slice(currentGroup.startIndex, currentGroup.endIndex + 1);
+    newRows.splice(currentGroup.startIndex, currentGroup.endIndex - currentGroup.startIndex + 1);
+    
+    // 이전 그룹 앞에 현재 그룹 삽입
+    newRows.splice(prevGroup.startIndex, 0, ...currentGroupItems);
+    
+    console.log('이동 완료');
+    
+    // 주문서 업데이트
+    const updatedOrder = { ...orders[activeTab], rows: newRows };
+    const updatedOrders = [...orders];
+    updatedOrders[activeTab] = updatedOrder;
+    setOrders(updatedOrders);
+    
+    // 선택된 인덱스 업데이트 (제품 그룹 단위)
+    const newSelectedIndices = new Set<number>();
+    const movedGroupSize = currentGroup.endIndex - currentGroup.startIndex + 1;
+    const newStartIndex = prevGroup.startIndex;
+    
+    for (let i = 0; i < movedGroupSize; i++) {
+      newSelectedIndices.add(newStartIndex + i);
+    }
+    setSelectedOrderRows(newSelectedIndices);
+    
+    setSnackbarMessage('선택된 제품 그룹이 위로 이동되었습니다.');
+    setSnackbarOpen(true);
+  };
+
+  // 일괄변경 모드 종료
+  const exitBulkEditMode = () => {
+    setIsBulkEditMode(false);
+    setSelectedOrderRows(new Set<number>());
+    setSnackbarMessage('일괄변경 모드가 종료되었습니다.');
+    setSnackbarOpen(true);
+  };
+
+  // 일괄변경 모드에서 제품 아래로 이동
+  const moveBulkEditProductDown = () => {
+    console.log('moveBulkEditProductDown 함수 시작');
+    const currentRows = orders[activeTab]?.rows || [];
+    const selectedIndices = Array.from(selectedOrderRows).sort((a, b) => a - b);
+    
+    console.log('currentRows:', currentRows);
+    console.log('selectedIndices:', selectedIndices);
+    console.log('selectedIndices.length:', selectedIndices.length);
+    
+    if (selectedIndices.length === 0) {
+      console.log('selectedIndices가 비어있음');
+      return;
+    }
+    
+    // 배열 범위 체크
+    const validIndices = selectedIndices.filter(index => 
+      index >= 0 && index < currentRows.length
+    );
+    
+    if (validIndices.length === 0) {
+      console.log('유효한 인덱스가 없음');
+      setSnackbarMessage('유효하지 않은 선택입니다.');
+      setSnackbarOpen(true);
+      return;
+    }
+    
+    // 제품 그룹들을 찾기
+    const productGroups = getProductGroups(currentRows);
+    console.log('productGroups:', productGroups);
+    
+    // 선택된 제품 그룹 찾기
+    const selectedProductGroups: number[] = [];
+    productGroups.forEach((group, groupIndex) => {
+      const groupIndices: number[] = [];
+      for (let i = group.startIndex; i <= group.endIndex; i++) {
+        groupIndices.push(i);
+      }
+      
+      // 선택된 인덱스와 겹치는지 확인
+      const hasSelectedItems = validIndices.some(index => groupIndices.includes(index));
+      if (hasSelectedItems) {
+        selectedProductGroups.push(groupIndex);
+      }
+    });
+    
+    console.log('selectedProductGroups:', selectedProductGroups);
+    
+    if (selectedProductGroups.length === 0) {
+      console.log('선택된 제품 그룹이 없음');
+      setSnackbarMessage('이동할 제품 그룹이 없습니다.');
+      setSnackbarOpen(true);
+      return;
+    }
+    
+    // 가장 큰 그룹 인덱스 찾기
+    const maxGroupIndex = Math.max(...selectedProductGroups);
+    console.log('maxGroupIndex:', maxGroupIndex);
+    
+    if (maxGroupIndex >= productGroups.length - 1) {
+      console.log('이미 맨 아래에 있음');
+      return; // 이미 맨 아래에 있음
+    }
+    
+    // 현재 그룹과 다음 그룹의 범위
+    const currentGroup = productGroups[maxGroupIndex] as { product: any; options: any[]; startIndex: number; endIndex: number };
+    const nextGroup = productGroups[maxGroupIndex + 1] as { product: any; options: any[]; startIndex: number; endIndex: number };
+    
+    console.log(`그룹 ${maxGroupIndex}를 그룹 ${maxGroupIndex + 1} 뒤로 이동`);
+    
+    // 현재 그룹의 모든 항목들을 제거
+    const newRows = [...currentRows];
+    const currentGroupItems = newRows.slice(currentGroup.startIndex, currentGroup.endIndex + 1);
+    newRows.splice(currentGroup.startIndex, currentGroup.endIndex - currentGroup.startIndex + 1);
+    
+    // 다음 그룹 뒤에 현재 그룹 삽입
+    newRows.splice(nextGroup.endIndex + 1, 0, ...currentGroupItems);
+    
+    console.log('이동 완료');
+    
+    // 주문서 업데이트
+    const updatedOrder = { ...orders[activeTab], rows: newRows };
+    const updatedOrders = [...orders];
+    updatedOrders[activeTab] = updatedOrder;
+    setOrders(updatedOrders);
+    
+    // 선택된 인덱스 업데이트 (제품 그룹 단위)
+    const newSelectedIndices = new Set<number>();
+    const movedGroupSize = currentGroup.endIndex - currentGroup.startIndex + 1;
+    const newStartIndex = nextGroup.endIndex + 1;
+    
+    for (let i = 0; i < movedGroupSize; i++) {
+      newSelectedIndices.add(newStartIndex + i);
+    }
+    setSelectedOrderRows(newSelectedIndices);
+    
+    setSnackbarMessage('선택된 제품 그룹이 아래로 이동되었습니다.');
+    setSnackbarOpen(true);
+  };
+
   // 우클릭 메뉴에서 일괄변경 시작하는 함수
   const handleBulkEditFromContextMenu = (rowIndex: number) => {
     // 해당 행이 제품인지 확인
@@ -5399,6 +5810,10 @@ const OrderManagement: React.FC = () => {
     }
 
     // 일괄변경 모드 활성화 및 제품 선택
+    console.log('일괄변경 모드 활성화');
+    console.log('selectedIndices:', selectedIndices);
+    console.log('selectedIndices.size:', selectedIndices.size);
+    
     setIsBulkEditMode(true);
     setSelectedOrderRows(selectedIndices);
     
@@ -5457,6 +5872,71 @@ const OrderManagement: React.FC = () => {
     setRowContextMenu(null);
   };
 
+  // 블라인드 나누기 컨텍스트 메뉴 액션 핸들러
+  const handleBlindContextMenuAction = (action: string) => {
+    console.log('handleBlindContextMenuAction 호출됨:', action);
+    console.log('contextMenu:', contextMenu);
+    console.log('selectedRow:', contextMenu?.selectedRow);
+    
+    if (!contextMenu?.selectedRow) {
+      console.log('selectedRow가 없음');
+      return;
+    }
+
+    const selectedRow = contextMenu.selectedRow;
+    console.log('selectedRow:', selectedRow);
+    
+    switch (action) {
+      case 'divideSplit':
+        setSelectedRowForDivide(selectedRow);
+        setDivideType('split');
+        setDivideModalOpen(true);
+        break;
+      case 'divideCopy':
+        setSelectedRowForDivide(selectedRow);
+        setDivideType('copy');
+        setDivideModalOpen(true);
+        break;
+      case 'edit':
+        // 제품 정보 수정 모달 열기
+        const rowIndex = orders[activeTab]?.rows?.findIndex((r: any) => r.id === selectedRow.id);
+        if (rowIndex !== undefined && rowIndex !== -1) {
+          handleEditRow(rowIndex);
+        }
+        break;
+      case 'addOption':
+        // 옵션 추가
+        const addOptionRowIndex = orders[activeTab]?.rows?.findIndex((r: any) => r.id === selectedRow.id);
+        if (addOptionRowIndex !== undefined && addOptionRowIndex !== -1) {
+          handleAddOption(addOptionRowIndex);
+        }
+        break;
+      case 'bulkEdit':
+        // 일괄변경
+        const bulkEditRowIndex = orders[activeTab]?.rows?.findIndex((r: any) => r.id === selectedRow.id);
+        if (bulkEditRowIndex !== undefined && bulkEditRowIndex !== -1) {
+          handleBulkEditFromContextMenu(bulkEditRowIndex);
+        }
+        break;
+      case 'copy':
+        // 복사
+        const copyRowIndex = orders[activeTab]?.rows?.findIndex((r: any) => r.id === selectedRow.id);
+        if (copyRowIndex !== undefined && copyRowIndex !== -1) {
+          handleCopyRow(copyRowIndex);
+        }
+        break;
+      case 'delete':
+        // 제품 삭제
+        const deleteRowIndex = orders[activeTab]?.rows?.findIndex((r: any) => r.id === selectedRow.id);
+        if (deleteRowIndex !== undefined && deleteRowIndex !== -1) {
+          handleDeleteRow(deleteRowIndex);
+        }
+        break;
+    }
+    
+    setContextMenu(null);
+  };
+
   // 제품 정보 수정 모달 핸들러들
   // 세부내용 전용 핸들러
   const handleDetailsChange = (value: string) => {
@@ -5503,6 +5983,110 @@ const OrderManagement: React.FC = () => {
     }
     
     return baseDetails;
+  };
+
+  // 공간명 자동 생성 함수
+  const generateSpaceNames = (baseSpaceName: string, count: number): string[] => {
+    const spaceNames: string[] = [];
+    const currentOrder = orders[activeTab];
+    const existingSpaces = currentOrder?.rows?.map((row: any) => row.space).filter(Boolean) || [];
+    
+    // 기존 공간명에서 번호가 있는 것들을 찾아서 최대 번호 확인
+    const baseNameRegex = new RegExp(`^${baseSpaceName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d+)$`);
+    const existingNumbers = existingSpaces
+      .map(space => {
+        const match = space.match(baseNameRegex);
+        return match ? parseInt(match[1]) : 0;
+      })
+      .filter(num => num > 0)
+      .sort((a, b) => a - b);
+    
+    // 다음 번호부터 시작
+    let nextNumber = 1;
+    if (existingNumbers.length > 0) {
+      nextNumber = Math.max(...existingNumbers) + 1;
+    }
+    
+    // 새로운 공간명들 생성
+    for (let i = 0; i < count; i++) {
+      spaceNames.push(`${baseSpaceName}${nextNumber + i}`);
+    }
+    
+    return spaceNames;
+  };
+
+  // 블라인드 나누기 처리 함수
+  const handleDivideBlind = () => {
+    console.log('handleDivideBlind 호출됨');
+    console.log('selectedRowForDivide:', selectedRowForDivide);
+    
+    if (!selectedRowForDivide) {
+      console.log('selectedRowForDivide가 없음');
+      return;
+    }
+
+    const originalRow = selectedRowForDivide;
+    const currentOrder = orders[activeTab];
+    const originalIndex = currentOrder.rows.findIndex((r: any) => r.id === originalRow.id);
+    
+    console.log('originalRow:', originalRow);
+    console.log('currentOrder:', currentOrder);
+    console.log('originalIndex:', originalIndex);
+    
+    if (originalIndex === -1) {
+      console.log('originalIndex를 찾을 수 없음');
+      return;
+    }
+
+    // 공간명 생성
+    const baseSpaceName = originalRow.space || '공간';
+    const spaceNames = generateSpaceNames(baseSpaceName, divideCount);
+    
+    // 나눈 제품들 생성
+    const dividedProducts: any[] = [];
+    
+    for (let i = 0; i < divideCount; i++) {
+      const newProduct = { ...originalRow };
+      newProduct.id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+      newProduct.space = spaceNames[i];
+      
+      if (divideType === 'split') {
+        // 분할: 가로 사이즈를 균등하게 나누기
+        const originalWidth = Number(originalRow.widthMM) || 0;
+        const dividedWidth = Math.round(originalWidth / divideCount);
+        newProduct.widthMM = dividedWidth;
+        
+        // 면적 재계산
+        const heightMM = Number(originalRow.heightMM) || 0;
+        newProduct.area = (dividedWidth * heightMM) / 1000000;
+        
+        // 세부내용 업데이트
+        newProduct.details = updateDetailsInRealTime(newProduct);
+      }
+      // copy 타입은 가로 사이즈 변경 없음
+      
+      dividedProducts.push(newProduct);
+    }
+    
+    // 원본 제품 제거하고 나눈 제품들 삽입
+    const newRows = [...currentOrder.rows];
+    newRows.splice(originalIndex, 1, ...dividedProducts);
+    
+    // 주문서 업데이트
+    const updatedOrder = { ...currentOrder, rows: newRows };
+    const updatedOrders = [...orders];
+    updatedOrders[activeTab] = updatedOrder;
+    setOrders(updatedOrders);
+    
+    // 모달 닫기
+    setDivideModalOpen(false);
+    setContextMenu(null);
+    setSelectedRowForDivide(null);
+    
+    // 성공 메시지
+    const actionText = divideType === 'split' ? '분할' : '복사';
+    setSnackbarMessage(`블라인드 제품이 ${divideCount}개로 ${actionText}되었습니다.`);
+    setSnackbarOpen(true);
   };
 
   // 연결된 옵션들의 세부내용을 가져오는 함수
@@ -6425,6 +7009,8 @@ const OrderManagement: React.FC = () => {
                       key={order.id} 
                       label={`주문서-${order.estimateNo}`}
                       onContextMenu={(e) => orderIndex >= 0 && handleTabContextMenu(e, orderIndex)}
+                      onTouchStart={() => orderIndex >= 0 && handleTabTouchStart(orderIndex)}
+                      onTouchEnd={handleTouchEnd}
                       sx={{
                         textTransform: 'none',
                         fontWeight: 'medium',
@@ -6879,7 +7465,7 @@ const OrderManagement: React.FC = () => {
                   border: '1px solid rgba(255, 193, 7, 0.3)'
                 }}>
                   <Typography variant="body2" color="warning.main" sx={{ fontWeight: 'bold' }}>
-                    일괄변경 모드 활성화
+                    일괄변경 모드
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     선택된 행: {selectedOrderRows.size}개
@@ -6900,6 +7486,47 @@ const OrderManagement: React.FC = () => {
                     size="small"
                   >
                     선택 삭제
+                  </Button>
+                  <Divider orientation="vertical" flexItem />
+                  <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 'bold' }}>
+                    순번 이동:
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    onClick={() => {
+                      console.log('위로 버튼 클릭됨');
+                      console.log('selectedOrderRows:', selectedOrderRows);
+                      moveBulkEditProductUp();
+                    }}
+                    disabled={selectedOrderRows.size === 0}
+                    size="small"
+                    startIcon={<ArrowUpIcon />}
+                  >
+                    위로
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    onClick={() => {
+                      console.log('아래로 버튼 클릭됨');
+                      console.log('selectedOrderRows:', selectedOrderRows);
+                      moveBulkEditProductDown();
+                    }}
+                    disabled={selectedOrderRows.size === 0}
+                    size="small"
+                    startIcon={<ArrowDownIcon />}
+                  >
+                    아래로
+                  </Button>
+                  <Divider orientation="vertical" flexItem />
+                  <Button
+                    variant="contained"
+                    color="error"
+                    onClick={exitBulkEditMode}
+                    size="small"
+                  >
+                    종료
                   </Button>
                 </Box>
               )}
@@ -6925,16 +7552,16 @@ const OrderManagement: React.FC = () => {
                   variant="outlined"
                   size="small"
                   color="secondary"
-                  disabled={(orders[activeTab]?.rows || []).filter(row => row.type === 'product').length === 0}
+                  disabled={(orders[activeTab]?.rows || []).filter(row => row && row.type === 'product').length === 0}
                   sx={{ 
                     minWidth: 80, 
                     fontSize: 13, 
                     py: 0.5, 
                     px: 1.5,
-                    opacity: (orders[activeTab]?.rows || []).filter(row => row.type === 'product').length === 0 ? 0.5 : 1
+                    opacity: (orders[activeTab]?.rows || []).filter(row => row && row.type === 'product').length === 0 ? 0.5 : 1
                   }}
                   onClick={handleOpenOptionDialog}
-                  title={(orders[activeTab]?.rows || []).filter(row => row.type === 'product').length === 0 ? '제품을 먼저 선택해주세요' : '옵션 추가'}
+                  title={(orders[activeTab]?.rows || []).filter(row => row && row.type === 'product').length === 0 ? '제품을 먼저 선택해주세요' : '옵션 추가'}
                 >
                   옵션추가
                 </Button>
@@ -7072,48 +7699,48 @@ const OrderManagement: React.FC = () => {
                       </TableCell>
                     )}
                     <TableCell>순번</TableCell>
-                    {columnVisibility.vendor && <TableCell>거래처</TableCell>}
-                    {columnVisibility.brand && <TableCell>브랜드</TableCell>}
-                    {columnVisibility.space && <TableCell>공간</TableCell>}
-                    {columnVisibility.productCode && <TableCell>제품코드</TableCell>}
-                    {columnVisibility.productType && <TableCell>제품종류</TableCell>}
-                    {columnVisibility.productName && <TableCell>제품명</TableCell>}
-                    {columnVisibility.width && <TableCell>폭</TableCell>}
-                    {columnVisibility.details && <TableCell>세부내용</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.vendor : columnVisibility.vendor) && <TableCell>거래처</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.brand : columnVisibility.brand) && <TableCell>브랜드</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.space : columnVisibility.space) && <TableCell>공간</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.productCode : columnVisibility.productCode) && <TableCell>제품코드</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.productType : columnVisibility.productType) && <TableCell>제품종류</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.productName : columnVisibility.productName) && <TableCell>제품명</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.width : columnVisibility.width) && <TableCell>폭</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.details : columnVisibility.details) && <TableCell>세부내용</TableCell>}
                     
-                    {columnVisibility.widthMM && <TableCell>가로(mm)</TableCell>}
-                    {columnVisibility.heightMM && <TableCell>세로(mm)</TableCell>}
-                    {columnVisibility.area && <TableCell>면적(㎡)</TableCell>}
-                    {columnVisibility.lineDir && <TableCell>줄방향</TableCell>}
-                    {columnVisibility.lineLen && <TableCell>줄길이</TableCell>}
-                    {columnVisibility.pleatAmount && <TableCell>주름양</TableCell>}
-                    {columnVisibility.widthCount && <TableCell>폭수</TableCell>}
-                    {columnVisibility.quantity && <TableCell>수량</TableCell>}
-                    {columnVisibility.totalPrice && <TableCell>판매금액</TableCell>}
-                    {columnVisibility.salePrice && <TableCell>판매단가</TableCell>}
-                    {columnVisibility.cost && <TableCell>입고금액</TableCell>}
-                    {columnVisibility.purchaseCost && <TableCell>입고원가</TableCell>}
-                    {columnVisibility.margin && <TableCell>마진</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.widthMM : columnVisibility.widthMM) && <TableCell>가로(mm)</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.heightMM : columnVisibility.heightMM) && <TableCell>세로(mm)</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.area : columnVisibility.area) && <TableCell>면적(㎡)</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.lineDir : columnVisibility.lineDir) && <TableCell>줄방향</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.lineLen : columnVisibility.lineLen) && <TableCell>줄길이</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.pleatAmount : columnVisibility.pleatAmount) && <TableCell>주름양</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.widthCount : columnVisibility.widthCount) && <TableCell>폭수</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.quantity : columnVisibility.quantity) && <TableCell>수량</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.totalPrice : columnVisibility.totalPrice) && <TableCell>판매금액</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.salePrice : columnVisibility.salePrice) && <TableCell>판매단가</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.cost : columnVisibility.cost) && <TableCell>입고금액</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.purchaseCost : columnVisibility.purchaseCost) && <TableCell>입고원가</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.margin : columnVisibility.margin) && <TableCell>마진</TableCell>}
                     <TableCell>작업</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {orders[activeTab]?.rows?.map((row, index) => (
                     <TableRow 
-                      key={row.id}
+                      key={row?.id || index}
                       sx={{
                         backgroundColor: isBulkEditMode 
                           ? (selectedOrderRows.has(index) ? 'rgba(255, 193, 7, 0.3)' : 'inherit')
                           : (selectedRowIndex === index ? 'rgba(25, 118, 210, 0.25)' : 'inherit'),
                         cursor: 'pointer',
-                        fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)', // 제품행만 0.3px 작게
+                        fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)', // 제품행만 0.3px 작게
                         '&:hover': {
                           backgroundColor: isBulkEditMode 
                             ? 'rgba(255, 193, 7, 0.1)' 
                             : 'rgba(25, 118, 210, 0.05)'
                         },
                         // 옵션 행 스타일링
-                        ...(row.type === 'option' && {
+                        ...(row && row.type === 'option' && {
                           backgroundColor: 'rgba(76, 175, 80, 0.05)',
                           borderLeft: '4px solid #4caf50',
                           '&:hover': {
@@ -7123,6 +7750,8 @@ const OrderManagement: React.FC = () => {
                       }}
                       onClick={() => handleRowClick(index)}
                       onContextMenu={(e) => handleRowContextMenu(e, index, row)}
+                      onTouchStart={() => handleTouchStart(index, row)}
+                      onTouchEnd={handleTouchEnd}
                     >
                       {isBulkEditMode && (
                         <TableCell>
@@ -7135,11 +7764,11 @@ const OrderManagement: React.FC = () => {
                         </TableCell>
                       )}
                       <TableCell sx={{ 
-                        fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                        color: row.type === 'option' ? '#4caf50' : 'inherit',
+                        fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                        color: row && row.type === 'option' ? '#4caf50' : 'inherit',
                         textAlign: 'center'
                       }}>
-                        {row.type === 'option' ? (
+                        {row && row.type === 'option' ? (
                           // 옵션 행은 순번 표시하지 않음
                           ''
                         ) : (
@@ -7148,7 +7777,7 @@ const OrderManagement: React.FC = () => {
                             const productNumber = getProductNumber(row);
                             if (productNumber === null) return '';
                             
-                            const productRows = orders[activeTab]?.rows?.filter(r => r.type === 'product') || [];
+                            const productRows = orders[activeTab]?.rows?.filter(r => r && r.type === 'product') || [];
                             const canMoveUp = productNumber > 1;
                             const canMoveDown = productNumber < productRows.length;
                             
@@ -7235,28 +7864,28 @@ const OrderManagement: React.FC = () => {
                           })()
                         )}
                       </TableCell>
-                      {columnVisibility.vendor && (
+                      {(isMobile ? mobileProductColumnVisibility.vendor : columnVisibility.vendor) && (
                         <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
                         }}>
-                          {row.vendor}
+                          {row?.vendor}
                         </TableCell>
                       )}
-                      {columnVisibility.brand && (
+                      {(isMobile ? mobileProductColumnVisibility.brand : columnVisibility.brand) && (
                         <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
                         }}>
-                          {row.brand}
+                          {row?.brand}
                         </TableCell>
                       )}
-                      {columnVisibility.space && (
+                      {(isMobile ? mobileProductColumnVisibility.space : columnVisibility.space) && (
                         <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
                         }}>
-                          {row.type === 'option' ? (
+                          {row && row.type === 'option' ? (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <Typography variant="caption" sx={{ color: '#4caf50', fontWeight: 'bold' }}>
                                 └
@@ -7266,84 +7895,76 @@ const OrderManagement: React.FC = () => {
                               </Typography>
                             </Box>
                           ) : (
-                            row.space
+                            row?.space
                           )}
                         </TableCell>
                       )}
-                      {columnVisibility.productCode && (
+                      {(isMobile ? mobileProductColumnVisibility.productCode : columnVisibility.productCode) && (
                         <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
                         }}>
-                          {row.productCode}
+                          {row?.productCode}
                         </TableCell>
                       )}
-                      {columnVisibility.productType && (
+                      {(isMobile ? mobileProductColumnVisibility.productType : columnVisibility.productType) && (
                         <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
                         }}>
-                          {row.productType}
+                          {row?.productType}
                         </TableCell>
                       )}
-                      {columnVisibility.productName && (
+                      {(isMobile ? mobileProductColumnVisibility.productName : columnVisibility.productName) && (
                         <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
                         }}>
-                          {row.type === 'option' ? (
+                          {row && row.type === 'option' ? (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <Typography variant="body2" sx={{ color: '#4caf50', fontWeight: 'bold' }}>
-                                {row.productName}
+                                {row?.productName}
                               </Typography>
                             </Box>
                           ) : (
-                            row.productName
+                            row?.productName
                           )}
                         </TableCell>
                       )}
-                      {columnVisibility.width && (
+                      {(isMobile ? mobileProductColumnVisibility.width : columnVisibility.width) && (
                         <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
                         }}>
-                          {row.width}
+                          {row?.width}
                         </TableCell>
                       )}
-                      {columnVisibility.details && (
+                      {(isMobile ? mobileProductColumnVisibility.details : columnVisibility.details) && (
                         <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
                         }}>
-                          {row.productType === '블라인드' ? (
-                            <>
-                              {row.details.replace(/면적:\s*\d+\.?\d*\s*㎡\s*,?\s*/, '').trim()}
-                              {row.lineDirection && ` | 줄방향: ${row.lineDirection}`}
-                              {row.lineLength && ` | 줄길이: ${row.lineLength === '직접입력' ? row.customLineLength : row.lineLength}`}
-                            </>
-                          ) : (
-                            row.details
-                          )}
+                          {row?.details}
                         </TableCell>
                       )}
                       
-                      {columnVisibility.widthMM && (
+                      {(isMobile ? mobileProductColumnVisibility.widthMM : columnVisibility.widthMM) && (
+                        <TableCell sx={{ 
+                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
+                        }}>
+                          {row?.widthMM ? Number(row.widthMM).toLocaleString() : ''}
+                        </TableCell>
+                      )}
+                      {(isMobile ? mobileProductColumnVisibility.heightMM : columnVisibility.heightMM) && (
                         <TableCell sx={{ 
                           fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
                           color: row.type === 'option' ? '#4caf50' : 'inherit'
                         }}>
-                          {row.widthMM}
+                          {row.heightMM ? Number(row.heightMM).toLocaleString() : ''}
                         </TableCell>
                       )}
-                      {columnVisibility.heightMM && (
-                        <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
-                        }}>
-                          {row.heightMM}
-                        </TableCell>
-                      )}
-                      {columnVisibility.area && (
+                      {(isMobile ? mobileProductColumnVisibility.area : columnVisibility.area) && (
                         <TableCell sx={{ 
                           fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
                           color: row.type === 'option' ? '#4caf50' : 'inherit'
@@ -7351,7 +7972,7 @@ const OrderManagement: React.FC = () => {
                           {row.curtainType === '겉커튼' ? '' : row.area}
                         </TableCell>
                       )}
-                      {columnVisibility.lineDir && (
+                      {(isMobile ? mobileProductColumnVisibility.lineDir : columnVisibility.lineDir) && (
                         <TableCell sx={{ 
                           fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
                           color: row.type === 'option' ? '#4caf50' : 'inherit'
@@ -7359,7 +7980,7 @@ const OrderManagement: React.FC = () => {
                           {row.lineDirection}
                         </TableCell>
                       )}
-                      {columnVisibility.lineLen && (
+                      {(isMobile ? mobileProductColumnVisibility.lineLen : columnVisibility.lineLen) && (
                         <TableCell sx={{ 
                           fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
                           color: row.type === 'option' ? '#4caf50' : 'inherit'
@@ -7367,31 +7988,31 @@ const OrderManagement: React.FC = () => {
                           {row.lineLength === '직접입력' ? row.customLineLength : row.lineLength}
                         </TableCell>
                       )}
-                      {columnVisibility.pleatAmount && (
+                      {(isMobile ? mobileProductColumnVisibility.pleatAmount : columnVisibility.pleatAmount) && (
                         <TableCell sx={{ 
                           fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
                           color: row.type === 'option' ? '#4caf50' : 'inherit'
                         }}>
-                          {row.pleatAmount}
+                          {row.pleatAmount ? Number(row.pleatAmount).toLocaleString() : ''}
                         </TableCell>
                       )}
-                      {columnVisibility.widthCount && (
+                      {(isMobile ? mobileProductColumnVisibility.widthCount : columnVisibility.widthCount) && (
                         <TableCell sx={{ 
                           fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
                           color: row.type === 'option' ? '#4caf50' : 'inherit'
                         }}>
-                          {row.widthCount}
+                          {row.widthCount ? Number(row.widthCount).toLocaleString() : ''}
                         </TableCell>
                       )}
-                      {columnVisibility.quantity && (
+                      {(isMobile ? mobileProductColumnVisibility.quantity : columnVisibility.quantity) && (
                         <TableCell sx={{ 
                           fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
                           color: row.type === 'option' ? '#4caf50' : 'inherit'
                         }}>
-                          {row.quantity}
+                          {row.quantity ? Number(row.quantity).toLocaleString() : ''}
                         </TableCell>
                       )}
-                      {columnVisibility.totalPrice && (
+                      {(isMobile ? mobileProductColumnVisibility.totalPrice : columnVisibility.totalPrice) && (
                         <TableCell sx={{ 
                           fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
                           color: row.type === 'option' ? '#4caf50' : 'inherit'
@@ -7399,7 +8020,7 @@ const OrderManagement: React.FC = () => {
                           {row.totalPrice?.toLocaleString()}
                         </TableCell>
                       )}
-                      {columnVisibility.salePrice && (
+                      {(isMobile ? mobileProductColumnVisibility.salePrice : columnVisibility.salePrice) && (
                         <TableCell sx={{ 
                           fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
                           color: row.type === 'option' ? '#4caf50' : 'inherit'
@@ -7407,7 +8028,7 @@ const OrderManagement: React.FC = () => {
                           {row.salePrice?.toLocaleString()}
                         </TableCell>
                       )}
-                      {columnVisibility.cost && (
+                      {(isMobile ? mobileProductColumnVisibility.cost : columnVisibility.cost) && (
                         <TableCell sx={{ 
                           fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
                           color: row.type === 'option' ? '#4caf50' : 'inherit'
@@ -7415,7 +8036,7 @@ const OrderManagement: React.FC = () => {
                           {row.cost?.toLocaleString()}
                         </TableCell>
                       )}
-                      {columnVisibility.purchaseCost && (
+                      {(isMobile ? mobileProductColumnVisibility.purchaseCost : columnVisibility.purchaseCost) && (
                         <TableCell sx={{ 
                           fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
                           color: row.type === 'option' ? '#4caf50' : 'inherit'
@@ -7423,7 +8044,7 @@ const OrderManagement: React.FC = () => {
                           {row.purchaseCost?.toLocaleString()}
                         </TableCell>
                       )}
-                      {columnVisibility.margin && (
+                      {(isMobile ? mobileProductColumnVisibility.margin : columnVisibility.margin) && (
                         <TableCell sx={{ 
                           fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
                           color: row.type === 'option' ? '#4caf50' : 'inherit'
@@ -7478,18 +8099,18 @@ const OrderManagement: React.FC = () => {
                   <TableRow sx={{ backgroundColor: '#e3f2fd', fontWeight: 'bold' }}>
                     {isBulkEditMode && <TableCell></TableCell>}
                     <TableCell>합계</TableCell>
-                    {columnVisibility.vendor && <TableCell></TableCell>}
-                    {columnVisibility.brand && <TableCell></TableCell>}
-                    {columnVisibility.space && <TableCell></TableCell>}
-                    {columnVisibility.productCode && <TableCell></TableCell>}
-                    {columnVisibility.productType && <TableCell></TableCell>}
-                    {columnVisibility.productName && <TableCell></TableCell>}
-                    {columnVisibility.width && <TableCell></TableCell>}
-                    {columnVisibility.details && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.vendor : columnVisibility.vendor) && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.brand : columnVisibility.brand) && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.space : columnVisibility.space) && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.productCode : columnVisibility.productCode) && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.productType : columnVisibility.productType) && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.productName : columnVisibility.productName) && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.width : columnVisibility.width) && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.details : columnVisibility.details) && <TableCell></TableCell>}
                     
-                    {columnVisibility.widthMM && <TableCell></TableCell>}
-                    {columnVisibility.heightMM && <TableCell></TableCell>}
-                                          {columnVisibility.area && (
+                    {(isMobile ? mobileProductColumnVisibility.widthMM : columnVisibility.widthMM) && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.heightMM : columnVisibility.heightMM) && <TableCell></TableCell>}
+                                          {(isMobile ? mobileProductColumnVisibility.area : columnVisibility.area) && (
                                             <TableCell>
                                               {orders[activeTab]?.rows
                                                 ?.reduce((sum, row) => {
@@ -7502,17 +8123,17 @@ const OrderManagement: React.FC = () => {
                                                 .toFixed(1)}
                                             </TableCell>
                                           )}
-                    {columnVisibility.lineDir && <TableCell></TableCell>}
-                    {columnVisibility.lineLen && <TableCell></TableCell>}
-                    {columnVisibility.pleatAmount && <TableCell></TableCell>}
-                    {columnVisibility.widthCount && <TableCell></TableCell>}
-                                          {columnVisibility.quantity && <TableCell>{orders[activeTab]?.rows?.reduce((sum, row) => sum + (Number(row?.quantity) || 0), 0)}</TableCell>}
-                    {columnVisibility.totalPrice && <TableCell>{sumTotalPrice.toLocaleString()}</TableCell>}
-                    {columnVisibility.salePrice && <TableCell></TableCell>}
-                    {columnVisibility.cost && <TableCell>{orders[activeTab]?.rows?.reduce((sum, row) => sum + (Number(row?.cost) || 0), 0).toLocaleString()}</TableCell>}
-                    {columnVisibility.purchaseCost && <TableCell></TableCell>}
-                    {columnVisibility.margin && <TableCell>{sumMargin.toLocaleString()}</TableCell>}
-                    {!columnVisibility.margin && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.lineDir : columnVisibility.lineDir) && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.lineLen : columnVisibility.lineLen) && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.pleatAmount : columnVisibility.pleatAmount) && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.widthCount : columnVisibility.widthCount) && <TableCell></TableCell>}
+                                          {(isMobile ? mobileProductColumnVisibility.quantity : columnVisibility.quantity) && <TableCell>{orders[activeTab]?.rows?.reduce((sum, row) => sum + (Number(row?.quantity) || 0), 0)}</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.totalPrice : columnVisibility.totalPrice) && <TableCell>{sumTotalPrice.toLocaleString()}</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.salePrice : columnVisibility.salePrice) && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.cost : columnVisibility.cost) && <TableCell>{orders[activeTab]?.rows?.reduce((sum, row) => sum + (Number(row?.cost) || 0), 0).toLocaleString()}</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.purchaseCost : columnVisibility.purchaseCost) && <TableCell></TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.margin : columnVisibility.margin) && <TableCell>{sumMargin.toLocaleString()}</TableCell>}
+                    {!(isMobile ? mobileProductColumnVisibility.margin : columnVisibility.margin) && <TableCell></TableCell>}
                     <TableCell></TableCell>
                   </TableRow>
                 </TableBody>
@@ -8155,6 +8776,8 @@ const OrderManagement: React.FC = () => {
                       <TableRow 
                         key={order.id}
                         onContextMenu={(e) => handleSavedOrderContextMenu(e, order)}
+                        onTouchStart={() => handleSavedOrderTouchStart(order)}
+                        onTouchEnd={handleTouchEnd}
                         sx={{ 
                           cursor: 'pointer',
                           backgroundColor: isAllCompleted ? 'rgba(144, 238, 144, 0.3)' : 'inherit',
@@ -9236,9 +9859,9 @@ const OrderManagement: React.FC = () => {
                               )}
                             </TableCell>
                             <TableCell sx={{ fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>{item.productionDetails || ''}</TableCell>
-                            <TableCell sx={{ fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>{item.productType === '커튼' ? '' : item.widthMM}</TableCell>
-                            <TableCell sx={{ fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>{item.productType === '커튼' ? '' : item.heightMM}</TableCell>
-                            <TableCell sx={{ fontSize: '0.875rem' }}>{item.quantity}</TableCell>
+                            <TableCell sx={{ fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>{item.productType === '커튼' ? '' : (item.widthMM ? Number(item.widthMM).toLocaleString() : '')}</TableCell>
+                            <TableCell sx={{ fontSize: '0.875rem', borderRight: '1px solid #ddd' }}>{item.productType === '커튼' ? '' : (item.heightMM ? Number(item.heightMM).toLocaleString() : '')}</TableCell>
+                            <TableCell sx={{ fontSize: '0.875rem' }}>{item.quantity ? Number(item.quantity).toLocaleString() : ''}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -11302,80 +11925,87 @@ const OrderManagement: React.FC = () => {
                 {editRow.productType === '블라인드' && (
                   <>
                     <Grid item xs={12} md={4}>
-                      <FormControl
+                      <TextField
+                        select
+                        label="줄방향"
+                        value={editRow.lineDirection || ''}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          handleEditChange('lineDirection', e.target.value)
+                        }
                         fullWidth
                         size="small"
                         sx={{
                           '& .MuiOutlinedInput-root': {
                             '& fieldset': { borderColor: 'var(--border-color)' },
                             '&:hover fieldset': { borderColor: 'var(--primary-color)' },
+                            '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
                           },
-                          label: { color: 'var(--text-secondary-color)' },
-                          '.MuiSelect-select': { color: 'var(--text-color)' },
+                          '& .MuiInputLabel-root': { 
+                            color: 'var(--text-secondary-color)',
+                            '&.Mui-focused': { color: 'var(--primary-color)' }
+                          },
+                          '& .MuiSelect-select': { 
+                            color: 'var(--text-color)',
+                            padding: '8.5px 14px'
+                          },
                         }}
                       >
-                        <InputLabel>줄방향</InputLabel>
-                        <Select
-                          value={editRow.lineDirection || ''}
-                          onChange={(e: SelectChangeEvent) =>
-                            handleEditChange('lineDirection', e.target.value)
-                          }
-                          label="줄방향"
-                          displayEmpty
-                        >
-                          <MenuItem value="" sx={{
-                            color: 'var(--text-color)',
-                            backgroundColor: 'var(--background-color)',
-                            '&:hover': {
-                              backgroundColor: 'var(--hover-color)',
-                            },
-                          }}>선택안함</MenuItem>
-                          <MenuItem value="좌" sx={{
-                            color: 'var(--text-color)',
-                            backgroundColor: 'var(--background-color)',
-                            '&:hover': {
-                              backgroundColor: 'var(--hover-color)',
-                            },
-                          }}>좌</MenuItem>
-                          <MenuItem value="우" sx={{
-                            color: 'var(--text-color)',
-                            backgroundColor: 'var(--background-color)',
-                            '&:hover': {
-                              backgroundColor: 'var(--hover-color)',
-                            },
-                          }}>우</MenuItem>
-                          <MenuItem value="없음" sx={{
-                            color: 'var(--text-color)',
-                            backgroundColor: 'var(--background-color)',
-                            '&:hover': {
-                              backgroundColor: 'var(--hover-color)',
-                            },
-                          }}>없음</MenuItem>
-                        </Select>
-                      </FormControl>
+                        <MenuItem value="" sx={{
+                          color: 'var(--text-color)',
+                          backgroundColor: 'var(--background-color)',
+                          '&:hover': {
+                            backgroundColor: 'var(--hover-color)',
+                          },
+                        }}>선택안함</MenuItem>
+                        <MenuItem value="좌" sx={{
+                          color: 'var(--text-color)',
+                          backgroundColor: 'var(--background-color)',
+                          '&:hover': {
+                            backgroundColor: 'var(--hover-color)',
+                          },
+                        }}>좌</MenuItem>
+                        <MenuItem value="우" sx={{
+                          color: 'var(--text-color)',
+                          backgroundColor: 'var(--background-color)',
+                          '&:hover': {
+                            backgroundColor: 'var(--hover-color)',
+                          },
+                        }}>우</MenuItem>
+                        <MenuItem value="없음" sx={{
+                          color: 'var(--text-color)',
+                          backgroundColor: 'var(--background-color)',
+                          '&:hover': {
+                            backgroundColor: 'var(--hover-color)',
+                          },
+                        }}>없음</MenuItem>
+                      </TextField>
                     </Grid>
                     <Grid item xs={12} md={4}>
-                      <FormControl
+                      <TextField
+                        select
+                        label="줄길이"
+                        value={editRow.lineLength || ''}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          handleEditChange('lineLength', e.target.value)
+                        }
                         fullWidth
                         size="small"
                         sx={{
                           '& .MuiOutlinedInput-root': {
                             '& fieldset': { borderColor: 'var(--border-color)' },
                             '&:hover fieldset': { borderColor: 'var(--primary-color)' },
+                            '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
                           },
-                          label: { color: 'var(--text-secondary-color)' },
-                          '.MuiSelect-select': { color: 'var(--text-color)' },
+                          '& .MuiInputLabel-root': { 
+                            color: 'var(--text-secondary-color)',
+                            '&.Mui-focused': { color: 'var(--primary-color)' }
+                          },
+                          '& .MuiSelect-select': { 
+                            color: 'var(--text-color)',
+                            padding: '8.5px 14px'
+                          },
                         }}
                       >
-                        <InputLabel>줄길이</InputLabel>
-                        <Select
-                          value={editRow.lineLength || ''}
-                          onChange={(e: SelectChangeEvent) =>
-                            handleEditChange('lineLength', e.target.value)
-                          }
-                          label="줄길이"
-                          displayEmpty
-                        >
                           <MenuItem value="" sx={{
                             color: 'var(--text-color)',
                             backgroundColor: 'var(--background-color)',
@@ -11432,8 +12062,7 @@ const OrderManagement: React.FC = () => {
                               backgroundColor: 'var(--hover-color)',
                             },
                           }}>없음</MenuItem>
-                        </Select>
-                      </FormControl>
+                      </TextField>
                     </Grid>
                     {editRow.lineLength === '직접입력' && (
                       <Grid item xs={12} md={4}>
@@ -12212,6 +12841,54 @@ const OrderManagement: React.FC = () => {
           복사
         </MenuItem>
         <MenuItem onClick={() => handleContextMenuAction('delete')} sx={{ color: 'error.main' }}>
+          삭제
+        </MenuItem>
+      </Menu>
+
+      {/* 블라인드 제품 컨텍스트 메뉴 */}
+      <Menu
+        open={contextMenu !== null && contextMenu.selectedRow !== undefined}
+        onClose={() => setContextMenu(null)}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenu !== null
+            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+            : undefined
+        }
+        PaperProps={{
+          sx: {
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
+            '& .MuiMenuItem-root': {
+              color: 'var(--text-color)',
+              '&:hover': {
+                backgroundColor: 'var(--hover-color)',
+              },
+            },
+          },
+        }}
+      >
+        <MenuItem onClick={() => handleBlindContextMenuAction('edit')} sx={{ color: 'var(--text-color)' }}>
+          수정
+        </MenuItem>
+        <MenuItem onClick={() => handleBlindContextMenuAction('addOption')} sx={{ color: 'var(--text-color)' }}>
+          옵션추가
+        </MenuItem>
+        <MenuItem onClick={() => handleBlindContextMenuAction('bulkEdit')} sx={{ color: 'var(--text-color)' }}>
+          일괄변경
+        </MenuItem>
+        <MenuItem onClick={() => handleBlindContextMenuAction('copy')} sx={{ color: 'var(--text-color)' }}>
+          복사
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={() => handleBlindContextMenuAction('divideSplit')} sx={{ color: '#4caf50', fontWeight: 'bold' }}>
+          나누기(분할)
+        </MenuItem>
+        <MenuItem onClick={() => handleBlindContextMenuAction('divideCopy')} sx={{ color: '#2196f3', fontWeight: 'bold' }}>
+          나누기(복사)
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={() => handleBlindContextMenuAction('delete')} sx={{ color: 'error.main' }}>
           삭제
         </MenuItem>
       </Menu>
@@ -14105,6 +14782,118 @@ const OrderManagement: React.FC = () => {
             }}
           >
             선택 완료
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 블라인드 나누기 모달 */}
+      <Dialog
+        open={divideModalOpen}
+        onClose={() => setDivideModalOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ 
+          color: 'var(--text-color)', 
+          backgroundColor: 'var(--surface-color)',
+          borderBottom: '1px solid var(--border-color)'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+              블라인드 제품 나누기
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ 
+          backgroundColor: 'var(--surface-color)', 
+          color: 'var(--text-color)',
+          pt: 3
+        }}>
+          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.6 }}>
+            나누기 타입: <span style={{ color: '#4caf50', fontWeight: 'bold' }}>
+              {divideType === 'split' ? '나누기(분할)' : '나누기(복사)'}
+            </span>
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 3, color: 'var(--text-color)', opacity: 0.8 }}>
+            {divideType === 'split' 
+              ? '가로 사이즈를 균등하게 분할하여 나눕니다.' 
+              : '동일한 사이즈로 복사하여 나눕니다.'
+            }
+          </Typography>
+          
+          <TextField
+            label="나눌 개수"
+            type="number"
+            value={divideCount}
+            onChange={(e) => {
+              const value = parseInt(e.target.value);
+              if (value >= 2 && value <= 10) {
+                setDivideCount(value);
+              }
+            }}
+            inputProps={{ min: 2, max: 10 }}
+            fullWidth
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                color: 'var(--text-color)',
+                '& fieldset': {
+                  borderColor: 'var(--border-color)',
+                },
+                '&:hover fieldset': {
+                  borderColor: 'var(--primary-color)',
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: 'var(--primary-color)',
+                },
+              },
+              '& .MuiInputLabel-root': {
+                color: 'var(--text-color)',
+                '&.Mui-focused': {
+                  color: 'var(--primary-color)',
+                },
+              },
+            }}
+          />
+          
+          <Typography variant="caption" sx={{ mt: 1, color: 'var(--text-color)', opacity: 0.6 }}>
+            * 2개에서 10개까지 나눌 수 있습니다.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ 
+          backgroundColor: 'var(--surface-color)', 
+          color: 'var(--text-color)',
+          borderTop: '1px solid var(--border-color)',
+          p: 2,
+          gap: 1
+        }}>
+          <Button 
+            onClick={() => {
+              setDivideModalOpen(false);
+              setSelectedRowForDivide(null);
+            }}
+            variant="outlined"
+            sx={{
+              borderColor: 'var(--primary-color)',
+              color: 'var(--primary-color)',
+              '&:hover': {
+                borderColor: 'var(--primary-color)',
+                backgroundColor: 'rgba(25, 118, 210, 0.04)',
+              },
+            }}
+          >
+            취소
+          </Button>
+          <Button 
+            onClick={handleDivideBlind}
+            variant="contained"
+            sx={{
+              backgroundColor: 'var(--primary-color)',
+              '&:hover': {
+                backgroundColor: 'var(--primary-color-dark)',
+              },
+            }}
+          >
+            나누기
           </Button>
         </DialogActions>
       </Dialog>

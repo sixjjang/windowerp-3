@@ -1427,12 +1427,15 @@ const EstimateManagement: React.FC = () => {
           return newOrder;
         }
         
+        console.log('=== 제품 위로 이동 디버깅 ===');
+        console.log('이동 전 productOrder:', prev);
+        console.log('이동할 그룹:', { start, end, groupSize, groupIndices });
+        
         // 그룹을 제거하고 위쪽에 삽입
         newOrder.splice(start, groupSize);
         newOrder.splice(start - 1, 0, ...groupIndices);
         
-        // 실제 데이터 업데이트
-        updateEstimateWithNewOrder(newOrder);
+        console.log('이동 후 productOrder:', newOrder);
         
         return newOrder;
       });
@@ -1469,12 +1472,15 @@ const EstimateManagement: React.FC = () => {
           return newOrder;
         }
         
+        console.log('=== 제품 아래로 이동 디버깅 ===');
+        console.log('이동 전 productOrder:', prev);
+        console.log('이동할 그룹:', { start, end, groupSize, groupIndices });
+        
         // 그룹을 제거하고 아래쪽에 삽입
         newOrder.splice(start, groupSize);
         newOrder.splice(start + 1, 0, ...groupIndices);
         
-        // 실제 데이터 업데이트
-        updateEstimateWithNewOrder(newOrder);
+        console.log('이동 후 productOrder:', newOrder);
         
         return newOrder;
       });
@@ -1484,19 +1490,31 @@ const EstimateManagement: React.FC = () => {
 
 
   // 제품 순번에 따른 정렬된 행들 계산
-  const getSortedRows = useCallback(() => {
-    if (!estimates[activeTab]?.rows) return [];
+  const getSortedRows = useMemo(() => {
+    console.log('=== getSortedRows 호출 ===');
+    console.log('현재 productOrder:', productOrder);
+    
+    if (!estimates[activeTab]?.rows) {
+      console.log('estimates[activeTab]?.rows 없음');
+      return [];
+    }
     
     const rows = estimates[activeTab].rows;
     const productRows = rows.filter(row => row.type === 'product');
     const optionRows = rows.filter(row => row.type === 'option');
     
+    console.log('전체 rows:', rows.length);
+    console.log('productRows:', productRows.length);
+    console.log('optionRows:', optionRows.length);
+    
     // 제품 순번이 초기화되지 않았다면 초기화
     if (productOrder.length === 0 || productOrder.length !== productRows.length) {
+      console.log('productOrder 초기화 필요');
       // 초기화는 한 번만 수행
       if (productRows.length > 0) {
         const order = productRows.map((_, index) => index);
         setProductOrder(order);
+        console.log('productOrder 초기화됨:', order);
       }
       return rows; // 초기화 중에는 원래 순서 반환
     }
@@ -1510,8 +1528,11 @@ const EstimateManagement: React.FC = () => {
       return productRows[index];
     }).filter(Boolean); // null 값 제거
     
+    console.log('sortedProductRows:', sortedProductRows.length);
+    
     // 안전장치: 정렬된 제품이 원본과 개수가 다르면 원본 반환
     if (sortedProductRows.length !== productRows.length) {
+      console.log('정렬된 제품 개수가 다름 - 원본 반환');
       return rows;
     }
     
@@ -1524,42 +1545,37 @@ const EstimateManagement: React.FC = () => {
       
       sortedRows.push(productRow);
       
-      // 해당 제품의 옵션들 찾기 (배열 순서 기반)
-      const productOptions = optionRows.filter((optionRow, optionIndex) => {
-        // 원본 배열에서 이 옵션이 어떤 제품 바로 뒤에 있는지 확인
-        const originalRows = estimates[activeTab].rows;
-        const optionRowIndex = originalRows.findIndex(row => row.id === optionRow.id);
-        
-        if (optionRowIndex === -1) return false;
-        
-        // 이 옵션 앞의 가장 가까운 제품 찾기
-        for (let i = optionRowIndex - 1; i >= 0; i--) {
-          if (originalRows[i].type === 'product') {
-            return originalRows[i].id === productRow.id;
-          }
-        }
-        return false;
+      // 해당 제품의 옵션들 찾기 (productId 기반)
+      const productOptions = optionRows.filter((optionRow) => {
+        return optionRow.productId === productRow.id;
       });
       
-                // 레일 옵션과 일반 옵션 분리
-          productOptions.forEach(option => {
-            // 레일 옵션은 optionLabel이 "레일"이거나 details에 "레일"이 포함되어 있거나 특정 패턴을 가짐
-            if (option.optionLabel === '레일' || (option.details && (option.details.includes('레일') || option.details.includes('🚇')))) {
-              railOptions.push(option);
-            } else {
-              sortedRows.push(option);
-            }
-          });
+      console.log(`제품 ${productRow.productName}의 옵션 수:`, productOptions.length);
+      
+      // 레일 옵션과 일반 옵션 분리
+      productOptions.forEach(option => {
+        // 레일 옵션은 optionLabel이 "레일"이거나 details에 "레일"이 포함되어 있거나 특정 패턴을 가짐
+        if (option.optionLabel === '레일' || (option.details && (option.details.includes('레일') || option.details.includes('🚇')))) {
+          railOptions.push(option);
+        } else {
+          sortedRows.push(option);
+        }
+      });
     });
     
     // 레일 옵션들을 마지막에 추가
     sortedRows.push(...railOptions);
     
+    console.log('최종 sortedRows:', sortedRows.length);
+    console.log('railOptions:', railOptions.length);
+    
     // 안전장치: 최종 행 개수가 원본과 다르면 원본 반환
     if (sortedRows.length !== rows.length) {
+      console.log('최종 행 개수가 다름 - 원본 반환');
       return rows;
     }
     
+    console.log('정렬된 행들 반환');
     return sortedRows;
   }, [estimates, activeTab, productOrder]);
 
@@ -1602,16 +1618,24 @@ const EstimateManagement: React.FC = () => {
 
   // 제품 순번 변경 시 실제 데이터 업데이트 함수
   const updateEstimateWithNewOrder = useCallback((newOrder: number[]) => {
+    console.log('=== updateEstimateWithNewOrder 호출 ===');
+    console.log('newOrder:', newOrder);
+    
     if (!estimates[activeTab]?.rows || newOrder.length === 0) {
+      console.log('조건 불만족으로 함수 종료');
       return;
     }
     
-      const rows = estimates[activeTab].rows;
-      const productRows = rows.filter(row => row.type === 'product');
-      const optionRows = rows.filter(row => row.type === 'option');
-      
+    const rows = estimates[activeTab].rows;
+    const productRows = rows.filter(row => row.type === 'product');
+    const optionRows = rows.filter(row => row.type === 'option');
+    
+    console.log('현재 rows:', rows.length);
+    console.log('productRows:', productRows.length);
+    console.log('optionRows:', optionRows.length);
+    
     if (newOrder.length === productRows.length) {
-        // 제품 순번에 따라 제품 행들을 정렬
+      // 제품 순번에 따라 제품 행들을 정렬
       const sortedProductRows = newOrder.map(index => {
         // 안전장치: 유효한 인덱스인지 확인
         if (index < 0 || index >= productRows.length) {
@@ -1620,58 +1644,69 @@ const EstimateManagement: React.FC = () => {
         return productRows[index];
       }).filter(Boolean); // null 값 제거
       
+      console.log('sortedProductRows:', sortedProductRows.length);
+      
       // 안전장치: 정렬된 제품이 원본과 개수가 다르면 업데이트하지 않음
       if (sortedProductRows.length !== productRows.length) {
+        console.log('정렬된 제품 개수가 다름');
         return;
       }
-        
-        // 각 제품의 옵션들을 해당 제품 뒤에 배치 (레일 옵션 제외)
-        const sortedRows: any[] = [];
-        const railOptions: any[] = [];
-        
-        sortedProductRows.forEach((productRow) => {
+      
+      // 각 제품의 옵션들을 해당 제품 뒤에 배치 (레일 옵션 제외)
+      const sortedRows: any[] = [];
+      const railOptions: any[] = [];
+      
+      sortedProductRows.forEach((productRow) => {
         if (!productRow) return; // null 체크
         
-          sortedRows.push(productRow);
-          
-          // 해당 제품의 옵션들 찾기 (배열 순서 기반)
-          const productOptions = optionRows.filter((optionRow) => {
-            // 원본 배열에서 이 옵션이 어떤 제품 바로 뒤에 있는지 확인
-            const originalRows = estimates[activeTab].rows;
-            const optionRowIndex = originalRows.findIndex(row => row.id === optionRow.id);
-            
-            if (optionRowIndex === -1) return false;
-            
-            // 이 옵션 앞의 가장 가까운 제품 찾기
-            for (let i = optionRowIndex - 1; i >= 0; i--) {
-              if (originalRows[i].type === 'product') {
-                return originalRows[i].id === productRow.id;
-              }
-            }
-            return false;
-          });
-          
-          // 레일 옵션과 일반 옵션 분리
-          productOptions.forEach(option => {
-            // 레일 옵션은 optionLabel이 "레일"이거나 details에 "레일"이 포함되어 있거나 특정 패턴을 가짐
-            if (option.optionLabel === '레일' || (option.details && (option.details.includes('레일') || option.details.includes('🚇')))) {
-              railOptions.push(option);
-            } else {
-              sortedRows.push(option);
-            }
-          });
+        sortedRows.push(productRow);
+        
+        // 해당 제품의 옵션들 찾기 (productId 기반)
+        const productOptions = optionRows.filter((optionRow) => {
+          return optionRow.productId === productRow.id;
         });
         
-        // 레일 옵션들을 마지막에 추가
-        sortedRows.push(...railOptions);
-        
+        // 레일 옵션과 일반 옵션 분리
+        productOptions.forEach(option => {
+          // 레일 옵션은 optionLabel이 "레일"이거나 details에 "레일"이 포함되어 있거나 특정 패턴을 가짐
+          if (option.optionLabel === '레일' || (option.details && (option.details.includes('레일') || option.details.includes('🚇')))) {
+            railOptions.push(option);
+          } else {
+            sortedRows.push(option);
+          }
+        });
+      });
+      
+      // 레일 옵션들을 마지막에 추가
+      sortedRows.push(...railOptions);
+      
+      console.log('최종 sortedRows:', sortedRows.length);
+      console.log('원본 rows:', rows.length);
+      
       // 안전장치: 최종 행 개수가 원본과 다르면 업데이트하지 않음
       if (sortedRows.length === rows.length) {
+        console.log('실제 데이터 업데이트 실행');
         // 실제 견적서 데이터 업데이트
         updateEstimateRows(activeTab, sortedRows);
+        
+
+      } else {
+        console.log('행 개수가 다름 - 업데이트 취소');
       }
+    } else {
+      console.log('newOrder 길이가 productRows 길이와 다름');
     }
   }, [estimates, activeTab, updateEstimateRows]);
+
+  // productOrder 변경 시 실제 데이터 업데이트
+  useEffect(() => {
+    if (productOrder.length > 0 && estimates[activeTab]?.rows) {
+      const productRows = estimates[activeTab].rows.filter(row => row.type === 'product');
+      if (productOrder.length === productRows.length) {
+        updateEstimateWithNewOrder(productOrder);
+      }
+    }
+  }, [productOrder, estimates, activeTab, updateEstimateWithNewOrder]);
 
   // 디버깅: 견적서 스토어 상태 확인 (개발 환경에서만)
   // 주석 처리하여 반복 로그 방지
@@ -4401,22 +4436,22 @@ const EstimateManagement: React.FC = () => {
     
     const originalRow = rows[idx];
     
-    // 제품인 경우에만 옵션 확인 로직 적용
-    if (originalRow.type === 'product') {
-      // 해당 제품의 옵션들을 찾기 (별도 행으로 저장된 옵션들)
-      const productOptions: EstimateRow[] = [];
-      let currentIndex = idx + 1;
-      
-      // 원본 제품 다음부터 연속된 옵션들을 찾음
-      while (currentIndex < rows.length && rows[currentIndex].type === 'option') {
-        productOptions.push(rows[currentIndex]);
-        currentIndex++;
-      }
-      
-      // 제품 복사
-      const copy = { ...originalRow, id: Date.now() };
-      
-      // 공간 정보에 자동 넘버링 추가
+          // 제품인 경우에만 옵션 확인 로직 적용
+      if (originalRow.type === 'product') {
+        // 해당 제품의 옵션들을 찾기 (별도 행으로 저장된 옵션들)
+        const productOptions: EstimateRow[] = [];
+        let currentIndex = idx + 1;
+        
+        // 원본 제품 다음부터 연속된 옵션들을 찾음
+        while (currentIndex < rows.length && rows[currentIndex].type === 'option') {
+          productOptions.push(rows[currentIndex]);
+          currentIndex++;
+        }
+        
+        // 제품 복사
+        const copy = { ...originalRow, id: Date.now() };
+        
+              // 공간 정보에 자동 넘버링 추가
       const originalSpace = originalRow.space;
       
       if (originalSpace) {
@@ -4424,20 +4459,33 @@ const EstimateManagement: React.FC = () => {
         // 기존 넘버링이 있는지 확인하고 기본 공간명 추출
         const baseSpaceName = originalSpace.replace(/\s*\d+$/, ''); // 끝의 공백과 숫자 제거
         
+        // 원본 항목을 "끝방1"로 변경
+        originalRow.space = `${baseSpaceName}1`;
+        
+        // 기존 번호들을 모두 찾아서 정렬 (원본 포함)
         const existingNumbers = rows
           .filter(row => 
             row.space && 
-            row.space.startsWith(baseSpaceName) &&
-            row.id !== originalRow.id
+            row.space.startsWith(baseSpaceName)
           )
           .map(row => {
-            const match = row.space.match(new RegExp(`^${baseSpaceName}\\s*(\\d+)$`));
+            const match = row.space.match(new RegExp(`^${baseSpaceName}(\\d+)$`));
             return match ? parseInt(match[1]) : 0;
           })
-          .filter(num => num > 0);
+          .filter(num => num > 0)
+          .sort((a, b) => a - b); // 오름차순 정렬
         
-        const nextNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 2;
-        copy.space = `${baseSpaceName} ${nextNumber}`;
+        // 순차적으로 다음 번호 찾기 (1부터 시작)
+        let nextNumber = 1;
+        for (let i = 0; i < existingNumbers.length; i++) {
+          if (existingNumbers[i] !== i + 1) {
+            nextNumber = i + 1;
+            break;
+          }
+          nextNumber = i + 2; // 모든 번호가 연속이면 다음 번호
+        }
+        
+        copy.space = `${baseSpaceName}${nextNumber}`;
       } else {
         // 공간이 비어있거나 없는 경우 기본 넘버링 (1, 2, 3...)
         const existingNumbers = rows
@@ -4451,27 +4499,63 @@ const EstimateManagement: React.FC = () => {
         copy.space = nextNumber.toString();
       }
       
-      // 복사할 항목들을 준비
-      const itemsToInsert: EstimateRow[] = [copy];
+      // 복사할 항목들을 준비 (제품 먼저, 옵션은 나중에)
+      const itemsToInsert: EstimateRow[] = [];
       
-      // 옵션이 있는 경우 사용자에게 확인
+      // 옵션이 있는 경우에만 사용자에게 확인
       if (productOptions.length > 0) {
         const includeOptions = window.confirm('이 제품에는 옵션이 있습니다. 옵션을 포함해서 복사하시겠습니까?\n\n"확인"을 누르면 옵션을 포함하여 복사됩니다.\n"취소"를 누르면 옵션 없이 복사됩니다.');
         
         // 옵션을 포함하는 경우 옵션들도 복사
         if (includeOptions) {
+          // 제품을 먼저 추가
+          itemsToInsert.push(copy);
+          
+          // 옵션들을 순서대로 추가 (원본 순서 유지)
           productOptions.forEach(option => {
             const optionCopy = { ...option, id: Date.now() + Math.random() };
             itemsToInsert.push(optionCopy);
           });
+        } else {
+          // 옵션 없이 제품만 복사
+          itemsToInsert.push(copy);
         }
+      } else {
+        // 옵션이 없는 경우 제품만 복사 (확인 메시지 없음)
+        itemsToInsert.push(copy);
       }
       
       // 복사된 항목들을 원본 제품과 옵션들의 바로 다음에 삽입
-      // 원본 제품의 옵션 개수만큼 인덱스를 조정
       const insertIndex = idx + 1 + productOptions.length;
+      console.log('=== 복사 디버깅 ===');
+      console.log('원본 제품 인덱스:', idx);
+      console.log('원본 제품:', originalRow.productName, originalRow.space);
+      console.log('삽입 인덱스:', insertIndex);
+      console.log('삽입할 항목들:', itemsToInsert.map(item => ({ productName: item.productName, space: item.space })));
       rows.splice(insertIndex, 0, ...itemsToInsert);
       updateEstimateRows(activeTab, rows);
+      
+      // 복사 후 UI 순서 확인
+      setTimeout(() => {
+        const updatedRows = estimates[activeTab]?.rows || [];
+        console.log('=== 복사 후 UI 순서 ===');
+        updatedRows.forEach((row, index) => {
+          if (row.space && row.space.includes('끝방')) {
+            console.log(`인덱스 ${index}:`, row.productName, row.space);
+          }
+        });
+      }, 100);
+      
+      // productOrder 업데이트 - 복사된 제품의 순서를 올바르게 반영
+      if (copy.type === 'product') {
+        // 새로운 제품이 추가된 후의 productOrder를 재계산
+        const updatedRows = estimates[activeTab]?.rows || [];
+        const updatedProductRows = updatedRows.filter(row => row.type === 'product');
+        
+        // 새로운 제품 순서를 계산
+        const newProductOrder = updatedProductRows.map((_, index) => index);
+        setProductOrder(newProductOrder);
+      }
       
       // 복사된 제품의 ID를 저장하여 시각적 표시
       setRecentlyModifiedRowId(copy.id);
@@ -4487,20 +4571,33 @@ const EstimateManagement: React.FC = () => {
         // 기존 넘버링이 있는지 확인하고 기본 공간명 추출
         const baseSpaceName = originalSpace.replace(/\s*\d+$/, ''); // 끝의 공백과 숫자 제거
         
+        // 원본 항목을 "끝방1"로 변경
+        originalRow.space = `${baseSpaceName}1`;
+        
+        // 기존 번호들을 모두 찾아서 정렬 (원본 포함)
         const existingNumbers = rows
           .filter(row => 
             row.space && 
-            row.space.startsWith(baseSpaceName) &&
-            row.id !== originalRow.id
+            row.space.startsWith(baseSpaceName)
           )
           .map(row => {
-            const match = row.space.match(new RegExp(`^${baseSpaceName}\\s*(\\d+)$`));
+            const match = row.space.match(new RegExp(`^${baseSpaceName}(\\d+)$`));
             return match ? parseInt(match[1]) : 0;
           })
-          .filter(num => num > 0);
+          .filter(num => num > 0)
+          .sort((a, b) => a - b); // 오름차순 정렬
         
-        const nextNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 2;
-        copy.space = `${baseSpaceName} ${nextNumber}`;
+        // 순차적으로 다음 번호 찾기 (1부터 시작)
+        let nextNumber = 1;
+        for (let i = 0; i < existingNumbers.length; i++) {
+          if (existingNumbers[i] !== i + 1) {
+            nextNumber = i + 1;
+            break;
+          }
+          nextNumber = i + 2; // 모든 번호가 연속이면 다음 번호
+        }
+        
+        copy.space = `${baseSpaceName}${nextNumber}`;
       } else {
         // 공간이 비어있거나 없는 경우 기본 넘버링 (1, 2, 3...)
         const existingNumbers = rows
@@ -4518,6 +4615,25 @@ const EstimateManagement: React.FC = () => {
       rows.splice(idx + 1, 0, copy);
       updateEstimateRows(activeTab, rows);
       
+      // productOrder 업데이트 - 복사된 제품의 순서를 올바르게 반영
+      if (copy.type === 'product') {
+        // 새로운 제품이 추가된 후의 productOrder를 재계산
+        const updatedRows = estimates[activeTab]?.rows || [];
+        const updatedProductRows = updatedRows.filter(row => row.type === 'product');
+        
+        // 새로운 제품 순서를 계산
+        const newProductOrder = updatedProductRows.map((_, index) => index);
+        setProductOrder(newProductOrder);
+      } else if (copy.type === 'option') {
+        // 옵션 복사 시에는 productOrder 업데이트가 필요 없음 (제품 순서 변경 없음)
+        // 하지만 getSortedRows가 올바르게 작동하도록 rows 업데이트 후 productOrder 재계산
+        const currentProductRows = rows.filter(row => row.type === 'product');
+        if (productOrder.length !== currentProductRows.length) {
+          const newProductOrder = currentProductRows.map((_, index) => index);
+          setProductOrder(newProductOrder);
+        }
+      }
+      
       // 복사된 행의 ID를 저장하여 시각적 표시
       setRecentlyModifiedRowId(copy.id);
     }
@@ -4529,7 +4645,7 @@ const EstimateManagement: React.FC = () => {
     
     // filteredRows의 인덱스를 원본 배열의 인덱스로 변환
     const originalRows = estimates[activeTab].rows;
-    const filteredRows = getSortedRows().filter(row =>
+    const filteredRows = getSortedRows.filter(row =>
       FILTER_FIELDS.every(f => {
         if (!activeFilters[f.key]) return true;
         const val = getRowValue(row, f.key);
@@ -5163,7 +5279,7 @@ const EstimateManagement: React.FC = () => {
   );
 
   // 제품 순번에 따른 정렬된 행들
-  const filteredRows = getSortedRows().filter(row =>
+  const filteredRows = getSortedRows.filter(row =>
     FILTER_FIELDS.every(f => {
       if (!activeFilters[f.key]) return true;
       const val = getRowValue(row, f.key);

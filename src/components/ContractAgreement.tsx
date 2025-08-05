@@ -206,7 +206,14 @@ const ContractAgreement: React.FC<ContractAgreementProps> = ({
             />
           }
           label="위 내용에 동의합니다"
-          sx={{ color: 'var(--text-color)' }}
+          sx={{ 
+            color: 'var(--text-color)',
+            '& .MuiFormControlLabel-label': {
+              color: 'var(--text-color) !important',
+              fontSize: '14px',
+              fontWeight: 'normal'
+            }
+          }}
         />
       </Box>
 
