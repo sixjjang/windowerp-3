@@ -1604,10 +1604,216 @@ const OrderManagement: React.FC = () => {
   const [recommendedPleatCount, setRecommendedPleatCount] = useState(0);
   const [recommendedPleatAmount, setRecommendedPleatAmount] = useState('');
 
+  // 인라인 편집 상태
+  const [editingCell, setEditingCell] = useState<{
+    rowIndex: number;
+    field: string;
+  } | null>(null);
+  const [editingValue, setEditingValue] = useState<string>('');
+
   // 공간 옵션
   const spaceOptions = [
     '거실', '안방', '중간방', '중간방2', '끝방', '주방', '드레스룸', '직접입력'
   ];
+
+  // 줄방향 옵션
+  const lineDirectionOptions = ['좌', '우', '없음'];
+
+  // 줄길이 옵션
+  const lineLengthOptions = ['90', '120', '150', '180', '210', '직접입력'];
+
+  // 인라인 편집 핸들러들
+  const handleCellClick = (rowIndex: number, field: string, value: string) => {
+    // 편집 가능한 필드만 처리
+    const editableFields = ['space', 'productCode', 'details', 'widthMM', 'heightMM', 'lineDirection', 'lineLength'];
+    if (!editableFields.includes(field)) return;
+    
+    setEditingCell({ rowIndex, field });
+    setEditingValue(value || '');
+  };
+
+  const handleCellEdit = (rowIndex: number, field: string, value: string) => {
+    const currentRows = orders[activeTab]?.rows || [];
+    const updatedRows = [...currentRows];
+    
+    if (updatedRows[rowIndex]) {
+      updatedRows[rowIndex] = { ...updatedRows[rowIndex], [field]: value };
+      
+      // 줄길이 직접입력 처리
+      if (field === 'lineLength' && value === '직접입력') {
+        // 직접입력 모드로 설정
+        updatedRows[rowIndex].customLineLength = updatedRows[rowIndex].customLineLength || '';
+      }
+      
+      // 가로/세로 변경 시 면적 재계산
+      if (field === 'widthMM' || field === 'heightMM') {
+        const width = Number(updatedRows[rowIndex].widthMM) || 0;
+        const height = Number(updatedRows[rowIndex].heightMM) || 0;
+        if (width > 0 && height > 0) {
+          const area = (width * height) / 1000000; // mm² to m²
+          updatedRows[rowIndex].area = area.toFixed(1);
+        }
+      }
+      
+      // 주문서 업데이트
+      const updatedOrder = { ...orders[activeTab], rows: updatedRows };
+      const updatedOrders = [...orders];
+      updatedOrders[activeTab] = updatedOrder;
+      setOrders(updatedOrders);
+    }
+    
+    setEditingCell(null);
+    setEditingValue('');
+  };
+
+  const handleCellCancel = () => {
+    setEditingCell(null);
+    setEditingValue('');
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent, rowIndex: number, field: string) => {
+    if (e.key === 'Enter') {
+      handleCellEdit(rowIndex, field, editingValue);
+    } else if (e.key === 'Escape') {
+      handleCellCancel();
+    }
+  };
+
+  // 인라인 편집 가능한 셀 컴포넌트 (텍스트 전용)
+  const EditableCell = ({ 
+    rowIndex, 
+    field, 
+    value, 
+    isEditing, 
+    onEdit, 
+    onCancel, 
+    onKeyPress
+  }: {
+    rowIndex: number;
+    field: string;
+    value: string;
+    isEditing: boolean;
+    onEdit: (rowIndex: number, field: string, value: string) => void;
+    onCancel: () => void;
+    onKeyPress: (e: React.KeyboardEvent, rowIndex: number, field: string) => void;
+  }) => {
+    if (isEditing) {
+      return (
+        <TextField
+          value={editingValue}
+          onChange={(e) => setEditingValue(e.target.value)}
+          onBlur={() => onEdit(rowIndex, field, editingValue)}
+          onKeyDown={(e) => onKeyPress(e, rowIndex, field)}
+          size="small"
+          sx={{
+            '& .MuiInputBase-root': {
+              fontSize: 'inherit',
+              padding: '4px 8px'
+            }
+          }}
+          autoFocus
+        />
+      );
+    }
+
+    // 일반 표시 모드
+    return (
+      <Box
+        onClick={() => handleCellClick(rowIndex, field, value)}
+        sx={{
+          cursor: 'pointer',
+          padding: '4px 8px',
+          borderRadius: '4px',
+          '&:hover': {
+            backgroundColor: 'rgba(0, 0, 0, 0.04)',
+            border: '1px solid rgba(0, 0, 0, 0.1)'
+          }
+        }}
+      >
+        {value || ''}
+      </Box>
+    );
+  };
+
+  // 드롭다운 편집 가능한 셀 컴포넌트
+  const EditableDropdownCell = ({ 
+    rowIndex, 
+    field, 
+    value, 
+    isEditing, 
+    onEdit, 
+    onCancel, 
+    onKeyPress, 
+    options 
+  }: {
+    rowIndex: number;
+    field: string;
+    value: string;
+    isEditing: boolean;
+    onEdit: (rowIndex: number, field: string, value: string) => void;
+    onCancel: () => void;
+    onKeyPress: (e: React.KeyboardEvent, rowIndex: number, field: string) => void;
+    options: string[];
+  }) => {
+    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+
+    if (isEditing) {
+      return (
+        <Box>
+          <Button
+            onClick={(e) => setAnchorEl(e.currentTarget)}
+            variant="outlined"
+            size="small"
+            sx={{
+              fontSize: 'inherit',
+              padding: '4px 8px',
+              minWidth: 'auto'
+            }}
+          >
+            {editingValue || '선택'}
+          </Button>
+          <Menu
+            anchorEl={anchorEl}
+            open={Boolean(anchorEl)}
+            onClose={() => {
+              setAnchorEl(null);
+              onCancel();
+            }}
+          >
+            {options.map((option) => (
+              <MenuItem
+                key={option}
+                onClick={() => {
+                  onEdit(rowIndex, field, option);
+                  setAnchorEl(null);
+                }}
+              >
+                {option}
+              </MenuItem>
+            ))}
+          </Menu>
+        </Box>
+      );
+    }
+
+    // 일반 표시 모드
+    return (
+      <Box
+        onClick={() => handleCellClick(rowIndex, field, value)}
+        sx={{
+          cursor: 'pointer',
+          padding: '4px 8px',
+          borderRadius: '4px',
+          '&:hover': {
+            backgroundColor: 'rgba(0, 0, 0, 0.04)',
+            border: '1px solid rgba(0, 0, 0, 0.1)'
+          }
+        }}
+      >
+        {value || ''}
+      </Box>
+    );
+  };
 
   // 제품 이동 함수들
   const moveProductUp = (productIndex: number) => {
@@ -7895,7 +8101,16 @@ const OrderManagement: React.FC = () => {
                               </Typography>
                             </Box>
                           ) : (
-                            row?.space
+                            <EditableDropdownCell
+                              rowIndex={index}
+                              field="space"
+                              value={row?.space || ''}
+                              isEditing={editingCell?.rowIndex === index && editingCell?.field === 'space'}
+                              onEdit={handleCellEdit}
+                              onCancel={handleCellCancel}
+                              onKeyPress={handleKeyPress}
+                              options={spaceOptions}
+                            />
                           )}
                         </TableCell>
                       )}
@@ -7904,7 +8119,15 @@ const OrderManagement: React.FC = () => {
                           fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
                           color: row && row.type === 'option' ? '#4caf50' : 'inherit'
                         }}>
-                          {row?.productCode}
+                          <EditableCell
+                            rowIndex={index}
+                            field="productCode"
+                            value={row?.productCode || ''}
+                            isEditing={editingCell?.rowIndex === index && editingCell?.field === 'productCode'}
+                            onEdit={handleCellEdit}
+                            onCancel={handleCellCancel}
+                            onKeyPress={handleKeyPress}
+                          />
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.productType : columnVisibility.productType) && (
