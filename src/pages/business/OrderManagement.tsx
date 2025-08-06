@@ -3988,6 +3988,37 @@ const OrderManagement: React.FC = () => {
     }
   };
 
+  // 주문서 변경사항 감지 함수
+  const hasOrderChanges = (currentOrder: any, savedOrder: any) => {
+    if (!savedOrder) return true; // 저장된 주문서가 없으면 변경사항 있음
+    
+    // 주요 필드들 비교
+    const fieldsToCompare = [
+      'customerName', 'customerPhone', 'customerAddress', 'estimateNo',
+      'rows', 'totalPrice', 'discountAmount', 'discountRate', 'discountedAmount',
+      'productStatus', 'vendorPurchaseOrders'
+    ];
+    
+    for (const field of fieldsToCompare) {
+      if (field === 'rows') {
+        // 제품 목록 비교
+        const currentRows = JSON.stringify(currentOrder[field] || []);
+        const savedRows = JSON.stringify(savedOrder[field] || []);
+        if (currentRows !== savedRows) return true;
+      } else if (field === 'vendorPurchaseOrders') {
+        // 발주서 정보 비교
+        const currentVendorOrders = JSON.stringify(vendorPurchaseOrders[currentOrder.id] || []);
+        const savedVendorOrders = JSON.stringify(savedOrder[field] || []);
+        if (currentVendorOrders !== savedVendorOrders) return true;
+      } else {
+        // 일반 필드 비교
+        if (currentOrder[field] !== savedOrder[field]) return true;
+      }
+    }
+    
+    return false;
+  };
+
   // 저장하기 핸들러
   const handleSaveOrder = () => {
     try {
@@ -4017,7 +4048,7 @@ const OrderManagement: React.FC = () => {
         discountedTotalInput: discountedTotalInput,
         // 할인후금액 계산하여 저장
         discountedAmount: discountAmountNumber > 0 ? discountedTotal : sumTotalPrice,
-                // 발주서 저장
+        // 발주서 저장
         vendorPurchaseOrders: vendorPurchaseOrders[currentOrder.id] || [],
         // 제품준비 상태 저장 (기존 상태 유지 또는 기본값 설정)
         productStatus: currentOrder.productStatus || '제품준비'
@@ -4030,8 +4061,23 @@ const OrderManagement: React.FC = () => {
       const existingIndex = existingSavedOrders.findIndex((order: any) => order.id === orderToSave.id);
       
       if (existingIndex !== -1) {
-        // 기존 주문서 업데이트
-        existingSavedOrders[existingIndex] = orderToSave;
+        // 기존 주문서가 있는 경우 변경사항 확인
+        const existingOrder = existingSavedOrders[existingIndex];
+        if (hasOrderChanges(currentOrder, existingOrder)) {
+          // 변경사항이 있으면 확인 메시지 표시
+          if (window.confirm('주문서 내용이 변경되었습니다. 기존 데이터를 덮어씌워서 저장하시겠습니까?')) {
+            // 사용자가 확인하면 저장 진행
+            existingSavedOrders[existingIndex] = orderToSave;
+            localStorage.setItem('saved_orders', JSON.stringify(existingSavedOrders));
+            setSavedOrders(existingSavedOrders);
+            setSnackbarMessage('주문서가 저장되었습니다.');
+            setSnackbarOpen(true);
+          }
+          return;
+        } else {
+          // 변경사항이 없으면 바로 저장
+          existingSavedOrders[existingIndex] = orderToSave;
+        }
       } else {
         // 새 주문서 추가
         existingSavedOrders.push(orderToSave);
@@ -9545,7 +9591,7 @@ const OrderManagement: React.FC = () => {
                             fontWeight: '600',
                             minWidth: '60px'
                           }}>
-                            납품일자:
+                            {(getCurrentVendorPurchaseOrderInfo(order.vendor)?.deliveryMethod || '직접배송') === '택배배송' ? '발송일자:' : '납품일자:'}
                           </Typography>
                           <TextField
                             type="date"
@@ -15192,7 +15238,7 @@ const OrderManagement: React.FC = () => {
                               mr: 1,
                               minWidth: '55px'
                             }}>
-                              납품일자:
+                              {(getCurrentVendorPurchaseOrderInfo(selectedVendorForPrint)?.deliveryMethod || '직접배송') === '택배배송' ? '발송일자:' : '납품일자:'}
                             </Typography>
                             <Typography sx={{ 
                               fontSize: '10pt',
@@ -15290,22 +15336,17 @@ const OrderManagement: React.FC = () => {
               {getCurrentVendorPurchaseOrderInfo(selectedVendorForPrint)?.additionalNotes && getCurrentVendorPurchaseOrderInfo(selectedVendorForPrint)?.additionalNotes.trim() && (
               <Box>
                 <Typography sx={{ 
-                  fontWeight: 'bold', 
-                  fontSize: '15pt',
-                  mb: 3,
+                  fontWeight: 600,
+                  mb: '1.2mm',
                   color: '#2c3e50',
-                  borderBottom: '2px solid #9b59b6',
-                  pb: 1,
-                  display: 'flex',
-                  alignItems: 'center'
+                  borderBottom: '0.5mm solid #2c3e50',
+                  pb: '0.5mm',
+                  display: 'inline-block',
+                  fontSize: '3.5mm',
+                  '@media print': { fontSize: '3.2mm', mb: '1mm' },
+                  '@media (max-width: 768px)': { fontSize: '3.2mm', mb: '1mm' },
+                  '@media (max-width: 480px)': { fontSize: '3mm', mb: '0.8mm' }
                 }}>
-                  <Box sx={{ 
-                    width: 4, 
-                    height: 20, 
-                    backgroundColor: '#9b59b6', 
-                    mr: 2,
-                    borderRadius: 1
-                  }} />
                   추가전달사항
                 </Typography>
                 <Box sx={{ 
@@ -15902,7 +15943,7 @@ const OrderManagement: React.FC = () => {
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography sx={{ color: '#2c3e50', fontSize: '0.875rem', fontWeight: '500' }}>
-                  납품일자:
+                  {deliveryMethod === '택배' ? '발송일자:' : '납품일자:'}
                 </Typography>
                 <Select
                   value={deliveryDate}
