@@ -1319,6 +1319,13 @@ const EstimateManagement: React.FC = () => {
   // 제품 순번 관리 상태
   const [productOrder, setProductOrder] = useState<number[]>([]);
 
+  // 인라인 편집 상태
+  const [editingCell, setEditingCell] = useState<{
+    rowIndex: number;
+    field: string;
+  } | null>(null);
+  const [editingValue, setEditingValue] = useState<string>('');
+
 
 
   // 공간명의 기본 부분 추출 (예: "거실2" -> "거실", "중간방1" -> "중간방")
@@ -1397,201 +1404,369 @@ const EstimateManagement: React.FC = () => {
     return { start, end };
   }, [estimates, activeTab, productOrder, getBaseSpaceName]);
 
-  // 제품 순번 위로 이동 (그룹 이동)
-  const moveProductUp = useCallback((productIndex: number) => {
-    if (productIndex > 0) {
-      setProductOrder(prev => {
-        const newOrder = [...prev];
-        
-        // 안전장치: 유효한 인덱스인지 확인
-        if (productIndex >= newOrder.length) {
-          return newOrder;
-        }
-        
-        const { start, end } = findSpaceGroupRange(productIndex);
-        
-        // 안전장치: 유효한 그룹 범위인지 확인
-        if (start < 0 || end < 0 || start > end || end >= newOrder.length) {
-          return newOrder;
-        }
-        
-        // 그룹이 맨 위에 있으면 이동 불가
-        if (start === 0) return newOrder;
-        
-        // 그룹 전체를 위로 이동
-        const groupSize = end - start + 1;
-        const groupIndices = newOrder.slice(start, end + 1);
-        
-        // 안전장치: 그룹 인덱스가 유효한지 확인
-        if (groupIndices.length !== groupSize) {
-          return newOrder;
-        }
-        
-        console.log('=== 제품 위로 이동 디버깅 ===');
-        console.log('이동 전 productOrder:', prev);
-        console.log('이동할 그룹:', { start, end, groupSize, groupIndices });
-        
-        // 그룹을 제거하고 위쪽에 삽입
-        newOrder.splice(start, groupSize);
-        newOrder.splice(start - 1, 0, ...groupIndices);
-        
-        console.log('이동 후 productOrder:', newOrder);
-        
-        return newOrder;
-      });
-    }
-  }, [findSpaceGroupRange]);
-
-  // 제품 순번 아래로 이동 (그룹 이동)
-  const moveProductDown = useCallback((productIndex: number) => {
-    if (productIndex < productOrder.length - 1) {
-      setProductOrder(prev => {
-        const newOrder = [...prev];
-        
-        // 안전장치: 유효한 인덱스인지 확인
-        if (productIndex >= newOrder.length) {
-          return newOrder;
-        }
-        
-        const { start, end } = findSpaceGroupRange(productIndex);
-        
-        // 안전장치: 유효한 그룹 범위인지 확인
-        if (start < 0 || end < 0 || start > end || end >= newOrder.length) {
-          return newOrder;
-        }
-        
-        // 그룹이 맨 아래에 있으면 이동 불가
-        if (end === newOrder.length - 1) return newOrder;
-        
-        // 그룹 전체를 아래로 이동
-        const groupSize = end - start + 1;
-        const groupIndices = newOrder.slice(start, end + 1);
-        
-        // 안전장치: 그룹 인덱스가 유효한지 확인
-        if (groupIndices.length !== groupSize) {
-          return newOrder;
-        }
-        
-        console.log('=== 제품 아래로 이동 디버깅 ===');
-        console.log('이동 전 productOrder:', prev);
-        console.log('이동할 그룹:', { start, end, groupSize, groupIndices });
-        
-        // 그룹을 제거하고 아래쪽에 삽입
-        newOrder.splice(start, groupSize);
-        newOrder.splice(start + 1, 0, ...groupIndices);
-        
-        console.log('이동 후 productOrder:', newOrder);
-        
-        return newOrder;
-      });
-    }
-  }, [productOrder.length, findSpaceGroupRange]);
-
-
-
-  // 제품 순번에 따른 정렬된 행들 계산
-  const getSortedRows = useMemo(() => {
-    console.log('=== getSortedRows 호출 ===');
-    console.log('현재 productOrder:', productOrder);
+  // 제품 그룹을 찾는 함수 (제품 + 연결된 옵션들) - 주문관리와 동일한 방식
+  const getProductGroups = (rows: any[]) => {
+    const groups: Array<{ product: any; options: any[]; startIndex: number; endIndex: number }> = [];
+    let currentGroup: { product: any; options: any[]; startIndex: number; endIndex: number } | null = null;
     
+    rows.forEach((row, index) => {
+      if (row && row.type === 'product') {
+        // 이전 그룹이 있으면 저장
+        if (currentGroup) {
+          (currentGroup as any).endIndex = index - 1;
+          groups.push(currentGroup);
+        }
+        
+        // 새 그룹 시작
+        currentGroup = {
+          product: row,
+          options: [],
+          startIndex: index,
+          endIndex: index
+        };
+      } else if (row && row.type === 'option' && currentGroup) {
+        // 현재 제품에 연결된 옵션인지 확인
+        if (row.productId === (currentGroup as any).product.id) {
+          (currentGroup as any).options.push(row);
+          (currentGroup as any).endIndex = index;
+        }
+      }
+    });
+    
+    // 마지막 그룹 저장
+    if (currentGroup) {
+      (currentGroup as any).endIndex = rows.length - 1;
+      groups.push(currentGroup);
+    }
+    
+    return groups;
+  };
+
+  // 제품 번호 가져오기 함수 - 주문관리와 동일한 방식
+  const getProductNumber = (row: any) => {
+    const currentRows = estimates[activeTab]?.rows || [];
+    const productRows = currentRows.filter(r => r && r.type === 'product');
+    const productIndex = productRows.findIndex(r => r && r.id === row.id);
+    return productIndex >= 0 ? productIndex + 1 : null;
+  };
+
+  // 제품 순번 위로 이동 (주문관리와 동일한 방식)
+  const moveProductUp = useCallback((productIndex: number) => {
+    const currentRows = estimates[activeTab]?.rows || [];
+    const productGroups = getProductGroups(currentRows);
+    
+    if (productIndex <= 0 || productIndex >= productGroups.length) return;
+    
+    // 현재 제품 그룹과 이전 제품 그룹의 위치를 바꾸기
+    const newRows = [...currentRows];
+    
+    // 현재 그룹과 이전 그룹의 범위
+    const currentGroup = productGroups[productIndex] as { product: any; options: any[]; startIndex: number; endIndex: number };
+    const prevGroup = productGroups[productIndex - 1] as { product: any; options: any[]; startIndex: number; endIndex: number };
+    
+    // 현재 그룹의 모든 항목들을 제거
+    const currentGroupItems = newRows.slice(currentGroup.startIndex, currentGroup.endIndex + 1);
+    newRows.splice(currentGroup.startIndex, currentGroup.endIndex - currentGroup.startIndex + 1);
+    
+    // 이전 그룹 앞에 현재 그룹 삽입
+    newRows.splice(prevGroup.startIndex, 0, ...currentGroupItems);
+    
+    // 견적서 업데이트
+    const updatedEstimates = [...estimates];
+    if (updatedEstimates[activeTab]) {
+      updatedEstimates[activeTab] = {
+        ...updatedEstimates[activeTab],
+        rows: newRows
+      };
+      setEstimates(updatedEstimates);
+    }
+  }, [estimates, activeTab]);
+
+  // 제품 순번 아래로 이동 (주문관리와 동일한 방식)
+  const moveProductDown = useCallback((productIndex: number) => {
+    const currentRows = estimates[activeTab]?.rows || [];
+    const productGroups = getProductGroups(currentRows);
+    
+    if (productIndex < 0 || productIndex >= productGroups.length - 1) return;
+    
+    // 현재 제품 그룹과 다음 제품 그룹의 위치를 바꾸기
+    const newRows = [...currentRows];
+    
+    // 현재 그룹과 다음 그룹의 범위
+    const currentGroup = productGroups[productIndex] as { product: any; options: any[]; startIndex: number; endIndex: number };
+    const nextGroup = productGroups[productIndex + 1] as { product: any; options: any[]; startIndex: number; endIndex: number };
+    
+    // 현재 그룹의 모든 항목들을 제거
+    const currentGroupItems = newRows.slice(currentGroup.startIndex, currentGroup.endIndex + 1);
+    newRows.splice(currentGroup.startIndex, currentGroup.endIndex - currentGroup.startIndex + 1);
+    
+    // 다음 그룹 뒤에 현재 그룹 삽입
+    newRows.splice(nextGroup.endIndex + 1, 0, ...currentGroupItems);
+    
+    // 견적서 업데이트
+    const updatedEstimates = [...estimates];
+    if (updatedEstimates[activeTab]) {
+      updatedEstimates[activeTab] = {
+        ...updatedEstimates[activeTab],
+        rows: newRows
+      };
+      setEstimates(updatedEstimates);
+    }
+  }, [estimates, activeTab]);
+
+  // 인라인 편집 핸들러들
+  const handleCellClick = (rowIndex: number, field: string, value: string) => {
+    // 편집 가능한 필드만 처리
+    const editableFields = ['space', 'productCode', 'details', 'widthMM', 'heightMM', 'lineDirection', 'lineLength', 'widthCount'];
+    if (!editableFields.includes(field)) return;
+    
+    setEditingCell({ rowIndex, field });
+    setEditingValue(value || '');
+  };
+
+  const handleCellEdit = (rowIndex: number, field: string, value: string) => {
+    const currentRows = estimates[activeTab]?.rows || [];
+    const updatedRows = [...currentRows];
+    
+    if (updatedRows[rowIndex]) {
+      updatedRows[rowIndex] = { ...updatedRows[rowIndex], [field]: value };
+      
+      // 줄길이 직접입력 처리
+      if (field === 'lineLength' && value === '직접입력') {
+        // 직접입력 모드로 설정
+        updatedRows[rowIndex].customLineLength = updatedRows[rowIndex].customLineLength || '';
+      }
+      
+      // 가로/세로 변경 시 면적 재계산
+      if (field === 'widthMM' || field === 'heightMM') {
+        const width = Number(updatedRows[rowIndex].widthMM) || 0;
+        const height = Number(updatedRows[rowIndex].heightMM) || 0;
+        if (width > 0 && height > 0) {
+          const area = (width * height) / 1000000; // mm² to m²
+          updatedRows[rowIndex].area = Number(area.toFixed(1));
+        }
+      }
+      
+      // 견적서 업데이트
+      updateEstimateRows(activeTab, updatedRows);
+    }
+    
+    setEditingCell(null);
+    setEditingValue('');
+  };
+
+  const handleCellCancel = () => {
+    setEditingCell(null);
+    setEditingValue('');
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent, rowIndex: number, field: string) => {
+    if (e.key === 'Enter') {
+      handleCellEdit(rowIndex, field, editingValue);
+    } else if (e.key === 'Escape') {
+      handleCellCancel();
+    }
+  };
+
+  // 간단한 인라인 편집 셀 컴포넌트
+  const EditableCell = ({ 
+    rowIndex, 
+    field, 
+    value, 
+    isEditing, 
+    onEdit, 
+    onCancel, 
+    onKeyPress
+  }: {
+    rowIndex: number;
+    field: string;
+    value: string;
+    isEditing: boolean;
+    onEdit: (rowIndex: number, field: string, value: string) => void;
+    onCancel: () => void;
+    onKeyPress: (e: React.KeyboardEvent, rowIndex: number, field: string) => void;
+  }) => {
+    if (isEditing) {
+      // 공간 필드의 경우 직접입력 옵션 제공
+      if (field === 'space') {
+        return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Select
+              value={editingValue}
+              onChange={(e) => setEditingValue(e.target.value)}
+              onBlur={() => onEdit(rowIndex, field, editingValue)}
+              size="small"
+              autoFocus
+              sx={{ minWidth: 120, fontSize: 'inherit' }}
+            >
+              <MenuItem value="거실">거실</MenuItem>
+              <MenuItem value="안방">안방</MenuItem>
+              <MenuItem value="중간방">중간방</MenuItem>
+              <MenuItem value="중간방2">중간방2</MenuItem>
+              <MenuItem value="끝방">끝방</MenuItem>
+              <MenuItem value="주방">주방</MenuItem>
+              <MenuItem value="드레스룸">드레스룸</MenuItem>
+              <MenuItem value="직접입력">직접입력</MenuItem>
+            </Select>
+            {editingValue === '직접입력' && (
+              <TextField
+                placeholder="직접 입력"
+                size="small"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const currentRows = estimates[activeTab]?.rows || [];
+                    const updatedRows = [...currentRows];
+                    if (updatedRows[rowIndex]) {
+                      updatedRows[rowIndex] = { 
+                        ...updatedRows[rowIndex], 
+                        space: '직접입력',
+                        spaceCustom: editingValue 
+                      };
+                      updateEstimateRows(activeTab, updatedRows);
+                    }
+                    setEditingCell(null);
+                    setEditingValue('');
+                  }
+                  if (e.key === 'Escape') {
+                    setEditingCell(null);
+                    setEditingValue('');
+                  }
+                }}
+                sx={{ minWidth: 120, fontSize: 'inherit' }}
+              />
+            )}
+          </Box>
+        );
+      }
+
+      // 줄방향 필드의 경우 옵션 제공
+      if (field === 'lineDirection') {
+        return (
+          <Select
+            value={editingValue}
+            onChange={(e) => setEditingValue(e.target.value)}
+            onBlur={() => onEdit(rowIndex, field, editingValue)}
+            size="small"
+            autoFocus
+            sx={{ minWidth: 80, fontSize: 'inherit' }}
+          >
+            <MenuItem value="좌">좌</MenuItem>
+            <MenuItem value="우">우</MenuItem>
+            <MenuItem value="없음">없음</MenuItem>
+          </Select>
+        );
+      }
+
+      // 줄길이 필드의 경우 직접입력 옵션 제공
+      if (field === 'lineLength') {
+        return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Select
+              value={editingValue}
+              onChange={(e) => setEditingValue(e.target.value)}
+              onBlur={() => onEdit(rowIndex, field, editingValue)}
+              size="small"
+              autoFocus
+              sx={{ minWidth: 120, fontSize: 'inherit' }}
+            >
+              <MenuItem value="90cm">90cm</MenuItem>
+              <MenuItem value="120cm">120cm</MenuItem>
+              <MenuItem value="150cm">150cm</MenuItem>
+              <MenuItem value="180cm">180cm</MenuItem>
+              <MenuItem value="210cm">210cm</MenuItem>
+              <MenuItem value="직접입력">직접입력</MenuItem>
+            </Select>
+            {editingValue === '직접입력' && (
+              <TextField
+                placeholder="직접 입력"
+                size="small"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const currentRows = estimates[activeTab]?.rows || [];
+                    const updatedRows = [...currentRows];
+                    if (updatedRows[rowIndex]) {
+                      updatedRows[rowIndex] = { 
+                        ...updatedRows[rowIndex], 
+                        lineLength: '직접입력',
+                        customLineLength: editingValue 
+                      };
+                      updateEstimateRows(activeTab, updatedRows);
+                    }
+                    setEditingCell(null);
+                    setEditingValue('');
+                  }
+                  if (e.key === 'Escape') {
+                    setEditingCell(null);
+                    setEditingValue('');
+                  }
+                }}
+                sx={{ minWidth: 120, fontSize: 'inherit' }}
+              />
+            )}
+          </Box>
+        );
+      }
+
+              // 숫자 필드의 경우 숫자만 입력 가능
+        const isNumericField = ['widthMM', 'heightMM', 'widthCount'].includes(field);
+        
+        return (
+          <TextField
+            value={editingValue}
+            onChange={(e) => {
+              if (isNumericField) {
+                // 숫자만 입력 가능
+                const value = e.target.value.replace(/[^0-9]/g, '');
+                setEditingValue(value);
+              } else {
+                setEditingValue(e.target.value);
+              }
+            }}
+            onBlur={() => onEdit(rowIndex, field, editingValue)}
+            onKeyDown={(e) => onKeyPress(e, rowIndex, field)}
+            size="small"
+            type={isNumericField ? 'number' : 'text'}
+            sx={{
+              '& .MuiInputBase-root': {
+                fontSize: 'inherit',
+                padding: '4px 8px'
+              }
+            }}
+            autoFocus
+          />
+        );
+    }
+
+    // 일반 표시 모드
+    return (
+      <Box
+        onClick={() => handleCellClick(rowIndex, field, value)}
+        sx={{
+          cursor: 'pointer',
+          padding: '4px 8px',
+          borderRadius: '4px',
+          '&:hover': {
+            backgroundColor: 'rgba(0, 0, 0, 0.04)',
+            border: '1px solid rgba(0, 0, 0, 0.1)'
+          }
+        }}
+      >
+        {value || ''}
+      </Box>
+    );
+  };
+
+  // 제품 순번에 따른 정렬된 행들 계산 - 주문관리와 동일한 방식
+  const getSortedRows = useMemo(() => {
     if (!estimates[activeTab]?.rows) {
-      console.log('estimates[activeTab]?.rows 없음');
       return [];
     }
     
-    const rows = estimates[activeTab].rows;
-    const productRows = rows.filter(row => row.type === 'product');
-    const optionRows = rows.filter(row => row.type === 'option');
-    
-    console.log('전체 rows:', rows.length);
-    console.log('productRows:', productRows.length);
-    console.log('optionRows:', optionRows.length);
-    
-    // 제품 순번이 초기화되지 않았다면 초기화
-    if (productOrder.length === 0 || productOrder.length !== productRows.length) {
-      console.log('productOrder 초기화 필요');
-      // 초기화는 한 번만 수행
-      if (productRows.length > 0) {
-        const order = productRows.map((_, index) => index);
-        setProductOrder(order);
-        console.log('productOrder 초기화됨:', order);
-      }
-      return rows; // 초기화 중에는 원래 순서 반환
-    }
-    
-    // 제품 순번에 따라 제품 행들을 정렬
-    const sortedProductRows = productOrder.map(index => {
-      // 안전장치: 유효한 인덱스인지 확인
-      if (index < 0 || index >= productRows.length) {
-        return null;
-      }
-      return productRows[index];
-    }).filter(Boolean); // null 값 제거
-    
-    console.log('sortedProductRows:', sortedProductRows.length);
-    
-    // 안전장치: 정렬된 제품이 원본과 개수가 다르면 원본 반환
-    if (sortedProductRows.length !== productRows.length) {
-      console.log('정렬된 제품 개수가 다름 - 원본 반환');
-      return rows;
-    }
-    
-    // 각 제품의 옵션들을 해당 제품 뒤에 배치 (레일 옵션 제외)
-    const sortedRows: any[] = [];
-    const railOptions: any[] = [];
-    
-    sortedProductRows.forEach((productRow, productIndex) => {
-      if (!productRow) return; // null 체크
-      
-      sortedRows.push(productRow);
-      
-      // 해당 제품의 옵션들 찾기 (productId 기반)
-      const productOptions = optionRows.filter((optionRow) => {
-        return optionRow.productId === productRow.id;
-      });
-      
-      console.log(`제품 ${productRow.productName}의 옵션 수:`, productOptions.length);
-      
-      // 레일 옵션과 일반 옵션 분리
-      productOptions.forEach(option => {
-        // 레일 옵션은 optionLabel이 "레일"이거나 details에 "레일"이 포함되어 있거나 특정 패턴을 가짐
-        if (option.optionLabel === '레일' || (option.details && (option.details.includes('레일') || option.details.includes('🚇')))) {
-          railOptions.push(option);
-        } else {
-          sortedRows.push(option);
-        }
-      });
-    });
-    
-    // 레일 옵션들을 마지막에 추가
-    sortedRows.push(...railOptions);
-    
-    console.log('최종 sortedRows:', sortedRows.length);
-    console.log('railOptions:', railOptions.length);
-    
-    // 안전장치: 최종 행 개수가 원본과 다르면 원본 반환
-    if (sortedRows.length !== rows.length) {
-      console.log('최종 행 개수가 다름 - 원본 반환');
-      return rows;
-    }
-    
-    console.log('정렬된 행들 반환');
-    return sortedRows;
-  }, [estimates, activeTab, productOrder]);
+    // 주문관리와 동일하게 직접 rows 반환 (순번 이동은 직접 rows 배열을 수정)
+    return estimates[activeTab].rows;
+  }, [estimates, activeTab]);
 
-  // 제품의 순번을 가져오는 함수
-  const getProductNumber = useCallback((row: any) => {
-    if (row.type !== 'product') return null;
-    
-    const productRows = estimates[activeTab]?.rows?.filter(r => r.type === 'product') || [];
-    const productIndex = productRows.findIndex(r => r.id === row.id);
-    
-    if (productIndex === -1) return null;
-    
-    // productOrder에서 해당 제품의 현재 순번 찾기
-    const currentOrderIndex = productOrder.indexOf(productIndex);
-    return currentOrderIndex !== -1 ? currentOrderIndex + 1 : productIndex + 1;
-  }, [estimates, activeTab, productOrder]);
+
 
   // 견적서 스토어 상태 변화 추적 (개발 환경에서만)
   // 주석 처리하여 반복 로그 방지
@@ -11899,7 +12074,20 @@ const EstimateManagement: React.FC = () => {
                                           whiteSpace: 'nowrap'
                                         }}
                                       >
-                                        {getRowValue(row, field.key)}
+                                        {/* 편집 가능한 필드만 인라인 편집 적용 */}
+                                        {['space', 'productCode', 'details', 'widthMM', 'heightMM', 'lineDirection', 'lineLength', 'widthCount'].includes(field.key) ? (
+                                          <EditableCell
+                                            rowIndex={idx}
+                                            field={field.key}
+                                            value={getRowValue(row, field.key)}
+                                            isEditing={editingCell?.rowIndex === idx && editingCell?.field === field.key}
+                                            onEdit={handleCellEdit}
+                                            onCancel={handleCellCancel}
+                                            onKeyPress={handleKeyPress}
+                                          />
+                                        ) : (
+                                          getRowValue(row, field.key)
+                                        )}
                                       </TableCell>
                                     )
                                   )

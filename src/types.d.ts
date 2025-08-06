@@ -180,6 +180,7 @@ export interface Estimate {
   name: string;
   estimateNo: string;
   estimateDate: string;
+  orderNo?: string; // 주문번호 추가
   customerName: string;
   contact: string;
   emergencyContact: string;

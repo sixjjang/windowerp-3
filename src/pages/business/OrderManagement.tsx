@@ -634,6 +634,7 @@ const useOrderStore = create<OrderStore>(set => ({
             id: newId,
             name: `주문서-${orderNo}`,
             estimateNo: orderNo,
+            orderNo: `O${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(state.orders.length + 1).padStart(3, '0')}`,
             estimateDate: getLocalDate(), // 로컬 시간 기준으로 오늘 날짜 설정
             customerName: '',
             contact: '',
@@ -663,6 +664,7 @@ const useOrderStore = create<OrderStore>(set => ({
             id: 1, // 고정된 ID 사용으로 안정성 확보
             name: `주문서-${orderNo}`,
             estimateNo: orderNo,
+            orderNo: `O${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-001`,
             estimateDate: getLocalDate(),
             customerName: '',
             contact: '',
@@ -1312,31 +1314,37 @@ const OrderManagement: React.FC = () => {
   const handleSelectContract = (contract: Contract) => {
     setSelectedContract(contract);
     
+    console.log('=== 계약 선택 디버깅 ===');
+    console.log('선택된 계약:', contract);
+    console.log('계약의 estimateNo:', contract.estimateNo);
+    
     // 계약과 연결된 견적서 찾기
     const savedEstimates = JSON.parse(localStorage.getItem('saved_estimates') || '[]');
     const linkedEstimate = savedEstimates.find((est: any) => est.estimateNo === contract.estimateNo);
     
+    console.log('저장된 견적서 목록:', savedEstimates);
     console.log('계약과 연결된 견적서:', linkedEstimate);
     
-    // 주문서 정보 업데이트
-    const currentOrder = orders[activeTab];
-    if (currentOrder) {
-      let updatedOrder = {
-        ...currentOrder,
-        customerName: contract.customerName || '',
-        contact: contract.customerContact || '',
-        address: contract.customerAddress || '',
-        projectName: contract.projectName || '',
-        type: contract.projectType || '',
-        // 계약 정보 추가
-        contractNo: contract.contractNo,
-        estimateDate: getLocalDate(),
-        // 주문관리 추가 필드들 초기화
-        measurementDate: '',
-        installationDate: '',
-        installerId: '',
-        installerName: '',
-      };
+          // 주문서 정보 업데이트
+      const currentOrder = orders[activeTab];
+      if (currentOrder) {
+        let updatedOrder = {
+          ...currentOrder,
+          customerName: contract.customerName || '',
+          contact: contract.customerContact || '',
+          address: contract.customerAddress || '',
+          projectName: contract.projectName || '',
+          type: contract.projectType || '',
+          // 계약 정보 추가
+          contractNo: contract.contractNo,
+          estimateNo: contract.estimateNo, // 견적서 번호 추가
+          estimateDate: getLocalDate(),
+          // 주문관리 추가 필드들 초기화
+          measurementDate: '',
+          installationDate: '',
+          installerId: '',
+          installerName: '',
+        };
       
       // 연결된 견적서가 있으면 견적서의 내용을 우선 사용
       if (linkedEstimate) {
@@ -1454,6 +1462,10 @@ const OrderManagement: React.FC = () => {
       setOrders(updatedOrders);
       setIsOrderEditMode(true);
       
+      console.log('=== 주문서 업데이트 완료 ===');
+      console.log('업데이트된 주문서:', updatedOrder);
+      console.log('주문서에 설정된 estimateNo:', updatedOrder.estimateNo);
+      
       // 계약 목록 모달 닫기
       setContractListModalOpen(false);
       
@@ -1470,10 +1482,10 @@ const OrderManagement: React.FC = () => {
       
       // 성공 메시지 표시
       if (linkedEstimate) {
-        setSnackbarMessage(`계약과 연결된 견적서(${contract.estimateNo})의 내용이 주문서에 불러와졌습니다.`);
+        setSnackbarMessage(`계약과 연결된 견적서(${contract.estimateNo})의 내용이 주문서에 불러와졌습니다. 최종견적서 정보를 확인할 수 있습니다.`);
         setSnackbarOpen(true);
       } else {
-        setSnackbarMessage(`계약 내용이 주문서에 불러와졌습니다.`);
+        setSnackbarMessage(`계약 내용이 주문서에 불러와졌습니다. (견적번호: ${contract.estimateNo})`);
         setSnackbarOpen(true);
       }
     }
@@ -1800,6 +1812,17 @@ const OrderManagement: React.FC = () => {
       [vendor: string]: 'pending' | 'completed'
     }
   }>({});
+  
+  // 견적서 출력 관련 상태
+  const [showEstimateTemplate, setShowEstimateTemplate] = useState(false);
+  const [selectedEstimateForPrint, setSelectedEstimateForPrint] = useState<any>(null);
+  
+  // 견적서 출력 핸들러
+  const handleEstimatePrint = (estimate: any) => {
+    setSelectedEstimateForPrint(estimate);
+    setShowEstimateTemplate(true);
+  };
+  
   // 발주서 납품정보 추가 필드
   const [modalDeliveryCompany, setModalDeliveryCompany] = useState<string>('');
   
@@ -7554,8 +7577,8 @@ const OrderManagement: React.FC = () => {
             }}>
               <TextField
                 label="주문번호*"
-                value={orders[activeTab].estimateNo}
-                onChange={(e) => handleCustomerInfoChange('estimateNo', e.target.value)}
+                value={orders[activeTab].orderNo || `O${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(activeTab + 1).padStart(3, '0')}`}
+                onChange={(e) => handleCustomerInfoChange('orderNo', e.target.value)}
                 size="small"
                 sx={{ 
                   minWidth: 140,
@@ -7805,6 +7828,31 @@ const OrderManagement: React.FC = () => {
                   }}
                 />
               )}
+              <TextField
+                label="견적번호"
+                value={orders[activeTab].estimateNo || ''}
+                onChange={(e) => handleCustomerInfoChange('estimateNo', e.target.value)}
+                size="small"
+                sx={{ 
+                  minWidth: 140,
+                  '& .MuiInputBase-root': {
+                    backgroundColor: 'var(--background-color)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-color)',
+                    '&:hover': {
+                      backgroundColor: 'var(--hover-color)',
+                      borderColor: 'var(--primary-color)',
+                    },
+                    '&:focus-within': {
+                      borderColor: 'var(--primary-color)',
+                      boxShadow: '0 0 0 2px var(--border-color)',
+                    },
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: 'var(--text-secondary-color)',
+                  },
+                }}
+              />
             </Box>
             
             {/* 실측일자, 시공일자, 시공기사 섹션 */}
@@ -9208,6 +9256,90 @@ const OrderManagement: React.FC = () => {
                           </Typography>
                         )}
                       </>
+                    );
+                  })()}
+                </Box>
+
+                {/* 최종견적서 정보 */}
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#000', mb: 1 }}>
+                    최종견적서:
+                  </Typography>
+                  {(() => {
+                    const currentOrder = orders[activeTab];
+                    console.log('=== 최종견적서 표시 디버깅 ===');
+                    console.log('현재 주문서:', currentOrder);
+                    console.log('주문서 estimateNo:', currentOrder?.estimateNo);
+                    
+                    if (!currentOrder || !currentOrder.estimateNo) {
+                      console.log('견적서 연결 실패: 주문서 또는 estimateNo 없음');
+                      return (
+                        <Typography variant="body2" sx={{ color: '#666', fontStyle: 'italic', pl: 2 }}>
+                          연결된 견적서가 없습니다.
+                        </Typography>
+                      );
+                    }
+
+                    // 저장된 견적서에서 해당 견적서 찾기
+                    const savedEstimates = JSON.parse(localStorage.getItem('saved_estimates') || '[]');
+                    const linkedEstimate = savedEstimates.find((est: any) => est.estimateNo === currentOrder.estimateNo);
+                    
+                    console.log('저장된 견적서 목록:', savedEstimates);
+                    console.log('찾으려는 estimateNo:', currentOrder.estimateNo);
+                    console.log('찾은 견적서:', linkedEstimate);
+                    
+                    if (!linkedEstimate) {
+                      console.log('견적서를 찾을 수 없음');
+                      return (
+                        <Typography variant="body2" sx={{ color: '#666', fontStyle: 'italic', pl: 2 }}>
+                          견적서 정보를 찾을 수 없습니다. (견적번호: {currentOrder.estimateNo})
+                        </Typography>
+                      );
+                    }
+
+                    // 견적서 총 금액 계산
+                    const totalAmount = linkedEstimate.rows?.reduce((sum: number, row: any) => {
+                      let rowTotal = row.totalPrice || 0;
+                      if (row.options && row.options.length > 0) {
+                        row.options.forEach((option: any) => {
+                          rowTotal += (option.salePrice || 0) * (option.quantity || 1);
+                        });
+                      }
+                      return sum + rowTotal;
+                    }, 0) || 0;
+
+                    const consumerPrice = Math.round(totalAmount);
+                    const discountedPrice = linkedEstimate.discountedAmount || consumerPrice;
+
+                    return (
+                      <Box sx={{ pl: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                          <Typography variant="body2" sx={{ color: '#333', flex: 1 }}>
+                            견적일자: {linkedEstimate.estimateDate || '미설정'}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEstimatePrint(linkedEstimate)}
+                            sx={{
+                              color: 'var(--primary-color)',
+                              '&:hover': {
+                                backgroundColor: 'rgba(76, 175, 80, 0.1)'
+                              }
+                            }}
+                          >
+                            <PrintIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                        <Typography variant="body2" sx={{ color: '#333', mb: 1 }}>
+                          견적번호: {linkedEstimate.estimateNo || '미설정'}
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: '#333', mb: 1 }}>
+                          소비자금액: {consumerPrice.toLocaleString()}원
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: '#333', mb: 1 }}>
+                          할인후금액: {discountedPrice.toLocaleString()}원
+                        </Typography>
+                      </Box>
                     );
                   })()}
                 </Box>
@@ -16344,6 +16476,19 @@ const OrderManagement: React.FC = () => {
       </Dialog>
 
       {/* 고객리스트 모달 */}
+
+      {/* 견적서 출력 템플릿 */}
+      {selectedEstimateForPrint && (
+        <EstimateTemplate
+          estimate={selectedEstimateForPrint}
+          onClose={() => {
+            setShowEstimateTemplate(false);
+            setSelectedEstimateForPrint(null);
+          }}
+          discountAmount={Number(selectedEstimateForPrint.discountAmount) || 0}
+          open={showEstimateTemplate}
+        />
+      )}
 
     </>
   );
