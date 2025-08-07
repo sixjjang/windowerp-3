@@ -528,7 +528,7 @@ const OptionManagement: React.FC = () => {
             const json: any[] = XLSX.utils.sheet_to_json(sheet, { 
               header: 1,
               defval: '', // 빈 셀을 빈 문자열로 처리
-              raw: false  // 모든 값을 문자열로 처리
+              raw: true   // 숫자는 숫자로, 문자열은 문자열로 처리
             });
             
             console.log(`시트 "${sheetName}" JSON 데이터:`, json);
@@ -558,8 +558,8 @@ const OptionManagement: React.FC = () => {
                 vendor: (row[0] || '').toString().trim(),
                 optionName: (row[1] || '').toString().trim(),
                 productCode: (row[2] || '').toString().trim(),
-                salePrice: Number(row[3]) || 0,
-                purchaseCost: Number(row[4]) || 0,
+                salePrice: typeof row[3] === 'number' ? row[3] : (row[3] ? parseFloat(row[3].toString().replace(/,/g, '')) || 0 : 0),
+                purchaseCost: typeof row[4] === 'number' ? row[4] : (row[4] ? parseFloat(row[4].toString().replace(/,/g, '')) || 0 : 0),
                 details: (row[5] || '').toString().trim(),
                 optionType: sheetName, // 시트명을 옵션 타입으로 강제 설정
                 calculationMethod: (row[6] || '고정가').toString().trim(),

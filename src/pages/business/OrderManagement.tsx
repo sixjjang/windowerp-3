@@ -1,4 +1,4 @@
-import React, { useState, ChangeEvent, useEffect, useContext, useMemo, useCallback } from 'react';
+import React, { useState, ChangeEvent, useEffect, useContext, useMemo, useCallback, useRef } from 'react';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import {
   Grid,
@@ -87,8 +87,9 @@ import { findLastIndex } from 'lodash';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '../../utils/notificationStore';
 import { UserContext } from '../../components/Layout';
-import { estimateService, customerService, optionService } from '../../utils/firebaseDataService';
+import { estimateService, customerService, optionService, orderService } from '../../utils/firebaseDataService';
 import { ensureFirebaseAuth, API_BASE } from '../../utils/auth';
+import { createKeyboardNavigationHandler, getNextFieldIndex, focusField } from '../../utils/keyboardNavigation';
 
 
 
@@ -910,6 +911,20 @@ const OrderManagement: React.FC = () => {
   // === UI 개선을 위한 선언 ===
   const isMobile = useMediaQuery('(max-width:600px)');
 
+  // 자동 크기 조절을 위한 ref
+  const hiddenInputRef = useRef<HTMLInputElement>(null);
+
+  // 텍스트 길이에 따른 자동 크기 계산 함수
+  const calculateInputWidth = (text: string, minWidth: number = 30, maxWidth: number = 300) => {
+    if (!hiddenInputRef.current) return minWidth;
+    
+    hiddenInputRef.current.value = text;
+    const scrollWidth = hiddenInputRef.current.scrollWidth;
+    const calculatedWidth = Math.max(minWidth, Math.min(maxWidth, scrollWidth + 20)); // 20px 여백 추가
+    
+    return calculatedWidth;
+  };
+
   // CSS 애니메이션 스타일 추가
   useEffect(() => {
     const style = document.createElement('style');
@@ -1032,6 +1047,194 @@ const OrderManagement: React.FC = () => {
   // 발주서 납품 관련 상태
   const [deliveryMethod, setDeliveryMethod] = useState<string>('직접배송');
   const [deliveryDate, setDeliveryDate] = useState<string>(getLocalDate());
+
+  // 키보드 네비게이션을 위한 ref들
+  const orderNoRef = useRef<HTMLInputElement>(null);
+  const orderDateRef = useRef<HTMLInputElement>(null);
+  const customerNameRef = useRef<HTMLInputElement>(null);
+  const contactRef = useRef<HTMLInputElement>(null);
+  const emergencyContactRef = useRef<HTMLInputElement>(null);
+  const projectNameRef = useRef<HTMLInputElement>(null);
+  const typeRef = useRef<HTMLInputElement>(null);
+  const addressRef = useRef<HTMLInputElement>(null);
+
+  // 필드 ref 배열
+  const fieldRefs = [
+    orderNoRef,
+    orderDateRef,
+    customerNameRef,
+    contactRef,
+    emergencyContactRef,
+    projectNameRef,
+    typeRef,
+    addressRef
+  ];
+
+  // 제품 정보 입력 필드를 위한 ref들
+  const orderProductSpaceRef = useRef<HTMLInputElement>(null);
+  const orderProductCodeRef = useRef<HTMLInputElement>(null);
+  const orderProductDetailsRef = useRef<HTMLInputElement>(null);
+  const orderProductWidthRef = useRef<HTMLInputElement>(null);
+  const orderProductHeightRef = useRef<HTMLInputElement>(null);
+  const orderProductAreaRef = useRef<HTMLInputElement>(null);
+  const orderProductLineDirRef = useRef<HTMLInputElement>(null);
+  const orderProductLineLenRef = useRef<HTMLInputElement>(null);
+  const orderProductWidthCountRef = useRef<HTMLInputElement>(null);
+  const orderProductQuantityRef = useRef<HTMLInputElement>(null);
+
+  // 제품 정보 필드 ref 배열
+  const orderProductFieldRefs = [
+    orderProductSpaceRef,
+    orderProductCodeRef,
+    orderProductDetailsRef,
+    orderProductWidthRef,
+    orderProductHeightRef,
+    orderProductAreaRef,
+    orderProductLineDirRef,
+    orderProductLineLenRef,
+    orderProductWidthCountRef,
+    orderProductQuantityRef
+  ];
+
+  // 주문서 전용 키보드 네비게이션 핸들러
+  const handleOrderKeyboardNavigation = (currentIndex: number, direction: 'next' | 'prev' | 'up' | 'down') => {
+    try {
+      let nextIndex: number;
+      
+      switch (direction) {
+        case 'next':
+          nextIndex = (currentIndex + 1) % fieldRefs.length;
+          break;
+        case 'prev':
+          nextIndex = currentIndex === 0 ? fieldRefs.length - 1 : currentIndex - 1;
+          break;
+        case 'down':
+          nextIndex = (currentIndex + 1) % fieldRefs.length;
+          break;
+        case 'up':
+          nextIndex = currentIndex === 0 ? fieldRefs.length - 1 : currentIndex - 1;
+          break;
+        default:
+          return;
+      }
+      
+      const nextRef = fieldRefs[nextIndex];
+      if (nextRef.current) {
+        const inputElement = nextRef.current.querySelector('input') || nextRef.current;
+        if (inputElement) {
+          inputElement.focus();
+          if ('select' in inputElement && inputElement.select) {
+            inputElement.select();
+          }
+        }
+      }
+    } catch (error) {
+      console.error('주문서 키보드 네비게이션 에러:', error);
+    }
+  };
+
+  // 주문서 제품 정보 키보드 네비게이션 핸들러
+  const handleOrderProductKeyboardNavigation = (currentIndex: number, direction: 'next' | 'prev' | 'up' | 'down') => {
+    try {
+      let nextIndex: number;
+      
+      switch (direction) {
+        case 'next':
+          nextIndex = (currentIndex + 1) % orderProductFieldRefs.length;
+          break;
+        case 'prev':
+          nextIndex = currentIndex === 0 ? orderProductFieldRefs.length - 1 : currentIndex - 1;
+          break;
+        case 'down':
+          nextIndex = (currentIndex + 1) % orderProductFieldRefs.length;
+          break;
+        case 'up':
+          nextIndex = currentIndex === 0 ? orderProductFieldRefs.length - 1 : currentIndex - 1;
+          break;
+        default:
+          return;
+      }
+      
+      const nextRef = orderProductFieldRefs[nextIndex];
+      if (nextRef.current) {
+        const inputElement = nextRef.current.querySelector('input') || nextRef.current;
+        if (inputElement) {
+          inputElement.focus();
+          if ('select' in inputElement && inputElement.select) {
+            inputElement.select();
+          }
+        }
+      }
+    } catch (error) {
+      console.error('주문서 제품 정보 키보드 네비게이션 에러:', error);
+    }
+  };
+
+  // 주문서 테이블 셀 키보드 네비게이션 핸들러
+  const handleOrderTableCellKeyboardNavigation = (currentRowIndex: number, currentField: string, direction: 'next' | 'prev' | 'up' | 'down') => {
+    try {
+      const editableFields = ['space', 'productCode', 'details', 'widthMM', 'heightMM', 'lineDirection', 'lineLength', 'widthCount', 'quantity'];
+      const currentFieldIndex = editableFields.indexOf(currentField);
+      
+      if (currentFieldIndex === -1) return;
+
+      let nextRowIndex = currentRowIndex;
+      let nextFieldIndex = currentFieldIndex;
+      let nextField = currentField;
+
+      switch (direction) {
+        case 'next':
+          if (currentFieldIndex < editableFields.length - 1) {
+            nextFieldIndex = currentFieldIndex + 1;
+            nextField = editableFields[nextFieldIndex];
+          } else {
+            // 다음 행의 첫 번째 필드로 이동
+            nextRowIndex = currentRowIndex + 1;
+            nextFieldIndex = 0;
+            nextField = editableFields[nextFieldIndex];
+          }
+          break;
+        case 'prev':
+          if (currentFieldIndex > 0) {
+            nextFieldIndex = currentFieldIndex - 1;
+            nextField = editableFields[nextFieldIndex];
+          } else {
+            // 이전 행의 마지막 필드로 이동
+            nextRowIndex = currentRowIndex - 1;
+            nextFieldIndex = editableFields.length - 1;
+            nextField = editableFields[nextFieldIndex];
+          }
+          break;
+        case 'down':
+          nextRowIndex = currentRowIndex + 1;
+          break;
+        case 'up':
+          nextRowIndex = currentRowIndex - 1;
+          break;
+      }
+
+      // 행 범위 체크
+      const currentRows = orders[activeTab]?.rows || [];
+      if (nextRowIndex >= 0 && nextRowIndex < currentRows.length) {
+        // 현재 편집 완료
+        if (editingCell) {
+          handleCellEdit(editingCell.rowIndex, editingCell.field, editingValue);
+        }
+        
+        // 다음 셀을 편집 모드로 설정
+        const nextRow = currentRows[nextRowIndex];
+        const nextValue = (nextRow as any)[nextField] || '';
+        
+        // 약간의 지연을 두어 현재 편집이 완료된 후 다음 편집 모드 진입
+        setTimeout(() => {
+          setEditingCell({ rowIndex: nextRowIndex, field: nextField });
+          setEditingValue(nextValue);
+        }, 10);
+      }
+    } catch (error) {
+      console.error('주문서 테이블 셀 키보드 네비게이션 에러:', error);
+    }
+  };
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
   
   // 발주서 기본 정보 상태
@@ -1991,6 +2194,177 @@ const OrderManagement: React.FC = () => {
   // 줄길이 옵션
   const lineLengthOptions = ['90cm', '120cm', '150cm', '180cm', '210cm', '직접입력'];
 
+  // 제품 검색에서 제품 선택 시 해당 셀에 제품을 등록하는 핸들러
+  const handleProductSelectForCell = (product: any) => {
+    if (selectedRowIndex === null) return;
+
+    const currentRows = [...orders[activeTab].rows];
+    const targetRow = currentRows[selectedRowIndex];
+    
+    if (!targetRow || targetRow.type !== 'product') return;
+
+    // 선택된 제품 정보로 해당 행 업데이트
+    const updatedRow = {
+      ...targetRow,
+      vendor: product.vendorName || '',
+      brand: product.brand || '',
+      productCode: product.productCode || '',
+      productName: product.productName || '',
+      productType: product.category || '',
+      salePrice: product.salePrice || 0,
+      purchaseCost: product.purchaseCost || 0,
+      largePlainPrice: product.largePlainPrice ?? 0,
+      largePlainCost: product.largePlainCost ?? 0,
+      width: product.width || '',
+      details: product.details || '',
+    };
+
+    // 속커튼 초기값 설정
+    if (product.category === '커튼') {
+      if (product.insideOutside === '속') {
+        updatedRow.curtainType = '속커튼';
+        updatedRow.pleatType = '나비';
+        updatedRow.pleatAmount = '1.8~2';
+      } else {
+        updatedRow.curtainType = '겉커튼';
+        updatedRow.pleatType = '민자';
+      }
+    }
+
+    // 가로/세로 값이 있으면 계산 실행
+    const widthMM = Number(updatedRow.widthMM) || 0;
+    const heightMM = Number(updatedRow.heightMM) || 0;
+    const pleatTypeVal = updatedRow.pleatType;
+    const curtainTypeVal = updatedRow.curtainType;
+    const productWidth = product ? Number(product.width) || 0 : 0;
+
+    // 속커튼 나비주름일 때 주름양을 1.8~2로 설정
+    if (curtainTypeVal === '속커튼' && pleatTypeVal === '나비') {
+      updatedRow.pleatAmount = '1.8~2';
+      // 폭수/pleatCount를 0으로 명확히 세팅 (Infinity 방지)
+      updatedRow.widthCount = 0;
+      updatedRow.pleatCount = 0;
+      // 단가/원가도 할당
+      if (updatedRow.salePrice === targetRow.salePrice) {
+        updatedRow.salePrice = product.salePrice ?? updatedRow.salePrice;
+      }
+      updatedRow.purchaseCost = product.purchaseCost ?? updatedRow.purchaseCost;
+    } else if (curtainTypeVal === '속커튼' && pleatTypeVal === '민자') {
+      // 속커튼 민자는 면적 기반 주름양 계산
+      if (widthMM > 0 && heightMM > 0) {
+        const area = (widthMM * heightMM) / 1000000; // m²
+        updatedRow.area = area;
+        updatedRow.pleatAmount = area.toFixed(2);
+      }
+    } else if (curtainTypeVal === '겉커튼' && widthMM > 0) {
+        let pleatCount: number | '' = '';
+        if (pleatTypeVal === '민자') {
+          const safeProductWidth = productWidth || 1370;
+          const formulaKey =
+            safeProductWidth > 2000 ? '겉커튼-민자-2000이상' : '겉커튼-민자-2000이하';
+
+          if (formulaKey && formulas[formulaKey]) {
+            try {
+              const rawResult = evaluate(formulas[formulaKey].widthCount, {
+                widthMM,
+                productWidth: safeProductWidth,
+              });
+              
+              // Infinity나 NaN 체크
+              if (!isFinite(rawResult) || isNaN(rawResult)) {
+                pleatCount = '';
+              } else {
+                const decimal = rawResult - Math.floor(rawResult);
+                pleatCount =
+                  decimal <= 0.1 ? Math.floor(rawResult) : Math.ceil(rawResult);
+              }
+            } catch {
+              pleatCount = '';
+            }
+          }
+        } else if (pleatTypeVal === '나비') {
+          const safeProductWidth = productWidth || 1370;
+          const formulaKey =
+            safeProductWidth > 2000 ? '겉커튼-나비-2000이상' : '겉커튼-나비-2000이하';
+
+          if (formulaKey && formulas[formulaKey]) {
+            try {
+              const rawResult = evaluate(formulas[formulaKey].widthCount, {
+                widthMM,
+                productWidth: safeProductWidth,
+              });
+              
+              // Infinity나 NaN 체크
+              if (!isFinite(rawResult) || isNaN(rawResult)) {
+                pleatCount = '';
+              } else {
+                const decimal = rawResult - Math.floor(rawResult);
+                pleatCount =
+                  decimal <= 0.1 ? Math.floor(rawResult) : Math.ceil(rawResult);
+              }
+            } catch {
+              pleatCount = '';
+            }
+          }
+        }
+
+        updatedRow.widthCount = typeof pleatCount === 'number' ? pleatCount : 0;
+        updatedRow.pleatCount = typeof pleatCount === 'number' ? pleatCount : 0;
+    }
+
+    // 행 업데이트
+    currentRows[selectedRowIndex] = updatedRow;
+    updateOrderRows(activeTab, currentRows);
+    
+    // 제품검색 모달 닫기
+    setProductDialogOpen(false);
+    setSelectedRowIndex(null);
+  };
+
+  // 빈 제품 행 추가 함수
+  const handleAddEmptyProductRow = () => {
+    const emptyProduct: EstimateRow = {
+      id: Date.now(),
+      type: 'product',
+      vendor: '',
+      brand: '',
+      space: '',
+      productType: '',
+      curtainType: '',
+      pleatType: '',
+      productName: '',
+      width: '',
+      details: '',
+      widthMM: 0,
+      heightMM: 0,
+      area: 0,
+      lineDir: '',
+      lineLen: '',
+      pleatAmount: '',
+      widthCount: 0,
+      quantity: 0,
+      totalPrice: 0,
+      salePrice: 0,
+      cost: 0,
+      purchaseCost: 0,
+      margin: 0,
+      note: '',
+      productCode: ''
+    };
+    
+    const currentRows = orders[activeTab]?.rows || [];
+    const updatedRows = [...currentRows, emptyProduct];
+    updateOrderRows(activeTab, updatedRows);
+    
+    // 새 행으로 스크롤
+    setTimeout(() => {
+      const tableContainer = document.querySelector('.MuiTableContainer-root');
+      if (tableContainer) {
+        tableContainer.scrollTop = tableContainer.scrollHeight;
+      }
+    }, 100);
+  };
+
   // 인라인 편집 핸들러들
   const handleCellClick = (rowIndex: number, field: string, value: string) => {
     // 편집 가능한 필드만 처리
@@ -2006,7 +2380,8 @@ const OrderManagement: React.FC = () => {
     const updatedRows = [...currentRows];
     
     if (updatedRows[rowIndex]) {
-      updatedRows[rowIndex] = { ...updatedRows[rowIndex], [field]: value };
+      const row = updatedRows[rowIndex];
+      updatedRows[rowIndex] = { ...row, [field]: value };
       
       // 줄길이 직접입력 처리
       if (field === 'lineLength' && value === '직접입력') {
@@ -2014,15 +2389,126 @@ const OrderManagement: React.FC = () => {
         updatedRows[rowIndex].customLineLength = updatedRows[rowIndex].customLineLength || '';
       }
       
-              // 가로/세로 변경 시 면적 재계산
-        if (field === 'widthMM' || field === 'heightMM') {
-          const width = Number(updatedRows[rowIndex].widthMM) || 0;
-          const height = Number(updatedRows[rowIndex].heightMM) || 0;
-          if (width > 0 && height > 0) {
-            const area = (width * height) / 1000000; // mm² to m²
-            updatedRows[rowIndex].area = Number(area.toFixed(1));
+      // 가로/세로 변경 시 면적 재계산
+      if (field === 'widthMM' || field === 'heightMM') {
+        const width = Number(updatedRows[rowIndex].widthMM) || 0;
+        const height = Number(updatedRows[rowIndex].heightMM) || 0;
+        if (width > 0 && height > 0) {
+          const area = (width * height) / 1000000; // mm² to m²
+          updatedRows[rowIndex].area = Number(area.toFixed(1));
+          
+          // 커튼 제품의 경우 주름 관련 계산
+          const updatedRow = updatedRows[rowIndex];
+          if (updatedRow.productType === '커튼' && updatedRow.curtainType && updatedRow.pleatType) {
+            // 겉커튼인 경우 면적을 0으로 설정
+            if (updatedRow.curtainType === '겉커튼') {
+              updatedRow.area = 0;
+            }
+            // 속커튼 민자인 경우 주름양 계산
+            else if (updatedRow.curtainType === '속커튼' && updatedRow.pleatType === '민자') {
+              let pleatMultiplier = 1.4; // 기본값
+              if (typeof updatedRow.pleatAmount === 'string') {
+                if (updatedRow.pleatAmount.endsWith('배')) {
+                  pleatMultiplier = Number(updatedRow.pleatAmount.replace('배', '')) || 1.4;
+                } else {
+                  pleatMultiplier = Number(updatedRow.pleatAmount) || 1.4;
+                }
+              } else if (typeof updatedRow.pleatAmount === 'number') {
+                pleatMultiplier = updatedRow.pleatAmount;
+              }
+              const calculatedArea = (width / 1000) * pleatMultiplier;
+              updatedRow.area = Number(calculatedArea.toFixed(1));
+            }
+          }
+          
+          // 면적이 변경되었으므로 금액도 재계산
+          const quantity = Number(updatedRow.quantity) || 1;
+          const areaNum = Number(updatedRow.area) || 0;
+          
+          // 판매가 계산
+          let basePrice = 0;
+          if (updatedRow.salePrice && areaNum) {
+            basePrice = Math.round(updatedRow.salePrice * areaNum);
+          } else if (updatedRow.salePrice) {
+            basePrice = updatedRow.salePrice;
+          }
+          updatedRow.totalPrice = basePrice * quantity;
+          
+          // 원가 계산
+          let baseCost = 0;
+          if (updatedRow.purchaseCost && areaNum) {
+            baseCost = Math.round(updatedRow.purchaseCost * areaNum);
+          } else if (updatedRow.purchaseCost) {
+            baseCost = updatedRow.purchaseCost;
+          }
+          updatedRow.cost = baseCost * quantity;
+          
+          // 마진 계산
+          updatedRow.margin = Math.round(updatedRow.totalPrice / 1.1 - updatedRow.cost);
+        }
+      }
+      
+      // 면적, 폭수, 수량 변경 시 금액 재계산
+      if (field === 'area' || field === 'widthCount' || field === 'quantity') {
+        const updatedRow = updatedRows[rowIndex];
+        const quantity = Number(updatedRow.quantity) || 1;
+        const areaNum = Number(updatedRow.area) || 0;
+        
+        // 판매가 계산
+        let basePrice = 0;
+        if (updatedRow.salePrice && areaNum) {
+          basePrice = Math.round(updatedRow.salePrice * areaNum);
+        } else if (updatedRow.salePrice) {
+          basePrice = updatedRow.salePrice;
+        }
+        updatedRow.totalPrice = basePrice * quantity;
+        
+        // 원가 계산
+        let baseCost = 0;
+        if (updatedRow.purchaseCost && areaNum) {
+          baseCost = Math.round(updatedRow.purchaseCost * areaNum);
+        } else if (updatedRow.purchaseCost) {
+          baseCost = updatedRow.purchaseCost;
+        }
+        updatedRow.cost = baseCost * quantity;
+        
+        // 마진 계산
+        updatedRow.margin = Math.round(updatedRow.totalPrice / 1.1 - updatedRow.cost);
+      }
+      
+      // 가로/세로/면적 변경 시 세부내용 자동 업데이트 (블라인드 제품 제외)
+      if (field === 'widthMM' || field === 'heightMM' || field === 'area') {
+        const updatedRow = updatedRows[rowIndex];
+        
+        // 블라인드 제품의 경우 자동입력 비활성화
+        if (updatedRow.productType === '블라인드') {
+          // 블라인드 제품에서는 가로, 세로, 면적 정보를 세부내용에 자동으로 입력하지 않음
+          // 사용자가 필요시 직접 입력할 수 있도록 함
+        } else {
+          const width = Number(updatedRow.widthMM) || 0;
+          const height = Number(updatedRow.heightMM) || 0;
+          const area = Number(updatedRow.area) || 0;
+          
+          if (width > 0 && height > 0 && area > 0) {
+            // 기존 세부내용에서 크기 정보만 업데이트
+            let details = updatedRow.details || '';
+            
+            // 크기 정보 패턴 찾기 및 업데이트 (가로×세로×면적)
+            const sizePattern = /(\d+(?:,\d+)?)\s*×\s*(\d+(?:,\d+)?)\s*×\s*(\d+(?:\.\d+)?)/;
+            const newSizeInfo = `${width.toLocaleString()} × ${height.toLocaleString()} × ${area.toFixed(1)}`;
+            
+            if (sizePattern.test(details)) {
+              // 기존 크기 정보가 있으면 교체
+              details = details.replace(sizePattern, newSizeInfo);
+            } else {
+              // 기존 크기 정보가 없으면 추가
+              details = details ? `${details} ${newSizeInfo}` : newSizeInfo;
+            }
+            
+            updatedRow.details = details;
           }
         }
+      }
       
       // 주문서 업데이트
       const updatedOrder = { ...orders[activeTab], rows: updatedRows };
@@ -2111,19 +2597,31 @@ const OrderManagement: React.FC = () => {
     
     if (productIndex <= 0 || productIndex >= productGroups.length) return;
     
-    // 현재 제품 그룹과 이전 제품 그룹의 위치를 바꾸기
-    const newRows = [...currentRows];
+    const newRows: any[] = [];
     
-    // 현재 그룹과 이전 그룹의 범위
-    const currentGroup = productGroups[productIndex] as { product: any; options: any[]; startIndex: number; endIndex: number };
-    const prevGroup = productGroups[productIndex - 1] as { product: any; options: any[]; startIndex: number; endIndex: number };
+    // 1. 현재 그룹 이전의 모든 그룹들을 먼저 추가
+    for (let i = 0; i < productIndex - 1; i++) {
+      const group = productGroups[i];
+      const groupItems = currentRows.slice(group.startIndex, group.endIndex + 1);
+      newRows.push(...groupItems);
+    }
     
-    // 현재 그룹의 모든 항목들을 제거
-    const currentGroupItems = newRows.slice(currentGroup.startIndex, currentGroup.endIndex + 1);
-    newRows.splice(currentGroup.startIndex, currentGroup.endIndex - currentGroup.startIndex + 1);
+    // 2. 현재 그룹을 추가
+    const currentGroup = productGroups[productIndex];
+    const currentGroupItems = currentRows.slice(currentGroup.startIndex, currentGroup.endIndex + 1);
+    newRows.push(...currentGroupItems);
     
-    // 이전 그룹 앞에 현재 그룹 삽입
-    newRows.splice(prevGroup.startIndex, 0, ...currentGroupItems);
+    // 3. 이전 그룹을 추가
+    const prevGroup = productGroups[productIndex - 1];
+    const prevGroupItems = currentRows.slice(prevGroup.startIndex, prevGroup.endIndex + 1);
+    newRows.push(...prevGroupItems);
+    
+    // 4. 나머지 그룹들을 추가
+    for (let i = productIndex + 1; i < productGroups.length; i++) {
+      const group = productGroups[i];
+      const groupItems = currentRows.slice(group.startIndex, group.endIndex + 1);
+      newRows.push(...groupItems);
+    }
     
     const updatedOrders = [...orders];
     updatedOrders[activeTab].rows = newRows;
@@ -2136,19 +2634,31 @@ const OrderManagement: React.FC = () => {
     
     if (productIndex < 0 || productIndex >= productGroups.length - 1) return;
     
-    // 현재 제품 그룹과 다음 제품 그룹의 위치를 바꾸기
-    const newRows = [...currentRows];
+    const newRows: any[] = [];
     
-    // 현재 그룹과 다음 그룹의 범위
-    const currentGroup = productGroups[productIndex] as { product: any; options: any[]; startIndex: number; endIndex: number };
-    const nextGroup = productGroups[productIndex + 1] as { product: any; options: any[]; startIndex: number; endIndex: number };
+    // 1. 현재 그룹 이전의 모든 그룹들을 먼저 추가
+    for (let i = 0; i < productIndex; i++) {
+      const group = productGroups[i];
+      const groupItems = currentRows.slice(group.startIndex, group.endIndex + 1);
+      newRows.push(...groupItems);
+    }
     
-    // 현재 그룹의 모든 항목들을 제거
-    const currentGroupItems = newRows.slice(currentGroup.startIndex, currentGroup.endIndex + 1);
-    newRows.splice(currentGroup.startIndex, currentGroup.endIndex - currentGroup.startIndex + 1);
+    // 2. 다음 그룹을 추가
+    const nextGroup = productGroups[productIndex + 1];
+    const nextGroupItems = currentRows.slice(nextGroup.startIndex, nextGroup.endIndex + 1);
+    newRows.push(...nextGroupItems);
     
-    // 다음 그룹 뒤에 현재 그룹 삽입
-    newRows.splice(nextGroup.endIndex + 1, 0, ...currentGroupItems);
+    // 3. 현재 그룹을 추가
+    const currentGroup = productGroups[productIndex];
+    const currentGroupItems = currentRows.slice(currentGroup.startIndex, currentGroup.endIndex + 1);
+    newRows.push(...currentGroupItems);
+    
+    // 4. 나머지 그룹들을 추가
+    for (let i = productIndex + 2; i < productGroups.length; i++) {
+      const group = productGroups[i];
+      const groupItems = currentRows.slice(group.startIndex, group.endIndex + 1);
+      newRows.push(...groupItems);
+    }
     
     const updatedOrders = [...orders];
     updatedOrders[activeTab].rows = newRows;
@@ -2184,9 +2694,9 @@ const OrderManagement: React.FC = () => {
       }
     });
     
-    // 마지막 그룹 저장
+    // 마지막 그룹 저장 - 실제 마지막 인덱스로 설정
     if (currentGroup) {
-      (currentGroup as any).endIndex = rows.length - 1;
+      // 마지막 그룹의 endIndex는 이미 올바르게 설정되어 있음 (옵션이 있으면 마지막 옵션의 인덱스, 없으면 제품의 인덱스)
       groups.push(currentGroup);
     }
     
@@ -2399,8 +2909,8 @@ const OrderManagement: React.FC = () => {
 
   // 할인 관련 계산
   const sumTotalPrice = orders[activeTab]?.rows?.reduce((sum, row) => sum + (Number(row?.totalPrice) || 0), 0) || 0;
-  const discountAmountNumber = Number(discountAmount.replace(/,/g, '')) || 0;
-  const discountedTotal = sumTotalPrice - discountAmountNumber;
+  const discountAmountNumber = Number(discountAmount) || 0;
+  const discountedTotal = discountAmountNumber > 0 ? sumTotalPrice - discountAmountNumber : sumTotalPrice;
   
   // 마진 합계 계산 - 할인설정이 적용되면 할인후금액 기준으로 비례 계산
   const originalSumMargin = orders[activeTab]?.rows?.reduce((sum, row) => sum + (Number(row?.margin) || 0), 0) || 0;
@@ -2410,7 +2920,7 @@ const OrderManagement: React.FC = () => {
 
 
 
-  // 마진 합계 토글 핸들러
+  // WINDOWSTORY 버튼 토글 핸들러 - 입고금액, 입고원가, 마진 항목 표시/숨김
   const handleToggleMarginSum = () => {
     setShowMarginSum(!showMarginSum);
     
@@ -2423,52 +2933,54 @@ const OrderManagement: React.FC = () => {
     }));
   };
 
-  // 할인 금액 변경 핸들러
+  // 할인금액 입력 시 할인율, 할인후금액 자동 계산
   const handleDiscountAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^0-9]/g, '');
+    const value = e.target.value.replace(/[^\d]/g, '');
     setDiscountAmount(value);
-    if (value && sumTotalPrice) {
-      const rate = ((Number(value) / sumTotalPrice) * 100).toFixed(2);
-      setDiscountRate(rate);
-      setDiscountedTotalInput((sumTotalPrice - Number(value)).toString());
+    // 0으로 나누기 방지
+    if (sumTotalPrice > 0 && Number(value) > 0) {
+      setDiscountRate(((Number(value) / sumTotalPrice) * 100).toFixed(2));
+    } else {
+      setDiscountRate('');
     }
   };
 
-  // 할인율 변경 핸들러
+  // 할인율 입력 시 할인금액, 할인후금액 자동 계산
   const handleDiscountRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rate = Number(e.target.value);
-    setDiscountRate(e.target.value);
-    // 할인율이 변경되면 useEffect에서 자동으로 계산됨
+    const value = e.target.value.replace(/[^\d.]/g, '');
+    setDiscountRate(value);
+    // 0으로 나누기 방지
+    if (sumTotalPrice > 0 && Number(value) > 0) {
+      setDiscountAmount(
+        Math.round((Number(value) / 100) * sumTotalPrice).toString()
+      );
+    } else {
+      setDiscountAmount('');
+    }
   };
 
-  // 할인 후 금액 변경 핸들러
+  // 할인후금액 입력 시 할인금액, 할인율 자동 계산
   const handleDiscountedTotalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^0-9]/g, '');
+    const value = e.target.value.replace(/[^\d]/g, '');
     setDiscountedTotalInput(value);
-    if (value && sumTotalPrice) {
-      const amount = sumTotalPrice - Number(value);
-      setDiscountAmount(amount.toString());
-      const rate = ((amount / sumTotalPrice) * 100).toFixed(2);
-      setDiscountRate(rate);
+    if (!value) return;
+    const discounted = Number(value);
+    if (!sumTotalPrice || discounted < 0) {
+      setDiscountAmount('');
+      setDiscountRate('');
+      return;
     }
+    const discountAmt = sumTotalPrice - discounted;
+    setDiscountAmount(discountAmt.toString());
+    // 0으로 나누기 방지
+    setDiscountRate(
+      sumTotalPrice > 0
+        ? ((discountAmt / sumTotalPrice) * 100).toFixed(2)
+        : '0.00'
+    );
   };
 
-  // 할인율 기준으로 할인금액과 할인후금액 자동 계산
-  const calculateDiscountFromRate = () => {
-    if (discountRate && sumTotalPrice) {
-      const rate = Number(discountRate);
-      const amount = Math.round((sumTotalPrice * rate) / 100);
-      setDiscountAmount(amount.toString());
-      setDiscountedTotalInput((sumTotalPrice - amount).toString());
-    }
-  };
 
-  // 소비자금액이 변경될 때 할인율 기준으로 자동 계산
-  useEffect(() => {
-    if (discountRate) {
-      calculateDiscountFromRate();
-    }
-  }, [sumTotalPrice, discountRate]);
 
   // 저장된 주문서 목록 표시항목 토글 핸들러
   const handleSavedOrderColumnToggle = (field: string) => {
@@ -3222,6 +3734,7 @@ const OrderManagement: React.FC = () => {
       largePlainCost: 0,
     };
 
+    // 레일 옵션을 최하단에 추가
     const updatedRows = [...rows, newOptionRow];
     const updatedOrders = [...orders];
     updatedOrders[activeTab].rows = updatedRows;
@@ -4043,7 +4556,7 @@ const OrderManagement: React.FC = () => {
   };
 
   // 저장하기 핸들러
-  const handleSaveOrder = () => {
+  const handleSaveOrder = async () => {
     try {
       const currentOrder = orders[activeTab];
       if (!currentOrder) {
@@ -4093,7 +4606,17 @@ const OrderManagement: React.FC = () => {
             existingSavedOrders[existingIndex] = orderToSave;
             localStorage.setItem('saved_orders', JSON.stringify(existingSavedOrders));
             setSavedOrders(existingSavedOrders);
-            setSnackbarMessage('주문서가 저장되었습니다.');
+            
+            // Firebase Cloud Functions를 통한 저장
+            try {
+              console.log('Firebase Cloud Functions를 통한 주문서 저장 시작');
+              await orderService.saveOrder(orderToSave);
+              console.log('Firebase Cloud Functions를 통한 주문서 저장 성공');
+              setSnackbarMessage('주문서가 Firebase에 저장되었습니다.');
+            } catch (firebaseError) {
+              console.error('Firebase 저장 실패, localStorage만 사용:', firebaseError);
+              setSnackbarMessage('주문서가 로컬에만 저장되었습니다. (Firebase 동기화 실패)');
+            }
             setSnackbarOpen(true);
           }
           return;
@@ -4112,7 +4635,16 @@ const OrderManagement: React.FC = () => {
       // 상태 업데이트
       setSavedOrders(existingSavedOrders);
       
-      setSnackbarMessage('주문서가 저장되었습니다.');
+      // Firebase Cloud Functions를 통한 저장
+      try {
+        console.log('Firebase Cloud Functions를 통한 주문서 저장 시작');
+        await orderService.saveOrder(orderToSave);
+        console.log('Firebase Cloud Functions를 통한 주문서 저장 성공');
+        setSnackbarMessage('주문서가 Firebase에 저장되었습니다.');
+      } catch (firebaseError) {
+        console.error('Firebase 저장 실패, localStorage만 사용:', firebaseError);
+        setSnackbarMessage('주문서가 로컬에만 저장되었습니다. (Firebase 동기화 실패)');
+      }
       setSnackbarOpen(true);
     } catch (error) {
       console.error('주문서 저장 실패:', error);
@@ -4122,7 +4654,7 @@ const OrderManagement: React.FC = () => {
   };
 
   // 새 주문서 저장 핸들러
-  const handleSaveAsNewOrder = () => {
+  const handleSaveAsNewOrder = async () => {
     try {
       const currentOrder = orders[activeTab];
       if (!currentOrder) {
@@ -4170,7 +4702,16 @@ const OrderManagement: React.FC = () => {
       // 상태 업데이트
       setSavedOrders(existingSavedOrders);
       
-      setSnackbarMessage('새 주문서로 저장되었습니다.');
+      // Firebase Cloud Functions를 통한 저장
+      try {
+        console.log('Firebase Cloud Functions를 통한 새 주문서 저장 시작');
+        await orderService.saveOrder(orderToSave);
+        console.log('Firebase Cloud Functions를 통한 새 주문서 저장 성공');
+        setSnackbarMessage('새 주문서가 Firebase에 저장되었습니다.');
+      } catch (firebaseError) {
+        console.error('Firebase 저장 실패, localStorage만 사용:', firebaseError);
+        setSnackbarMessage('새 주문서가 로컬에만 저장되었습니다. (Firebase 동기화 실패)');
+      }
       setSnackbarOpen(true);
     } catch (error) {
       console.error('새 주문서 저장 실패:', error);
@@ -6393,6 +6934,13 @@ const OrderManagement: React.FC = () => {
           handleEditRow(rowIndex);
         }
         break;
+      case 'productSearch':
+        // 제품검색 모달 열기 (제품인 경우에만)
+        if (row.type === 'product') {
+          setSelectedRowIndex(rowIndex);
+          setProductDialogOpen(true);
+        }
+        break;
       case 'addOption':
         handleAddOption(rowIndex);
         break;
@@ -6596,12 +7144,104 @@ const OrderManagement: React.FC = () => {
         
         // 면적 재계산
         const heightMM = Number(originalRow.heightMM) || 0;
-        newProduct.area = (dividedWidth * heightMM) / 1000000;
+        let calculatedArea = (dividedWidth * heightMM) / 1000000;
+        
+        // 블라인드일 때 최소주문수량 적용
+        if (newProduct.productType === '블라인드') {
+          const product = productOptions.find(
+            (p: any) => p.productCode === newProduct.productCode || p.productName === newProduct.productName
+          );
+          if (product && product.minOrderQty) {
+            const minOrderQty = Number(product.minOrderQty) || 0;
+            if (minOrderQty > 0 && calculatedArea < minOrderQty) {
+              calculatedArea = minOrderQty;
+            }
+          }
+        }
+        newProduct.area = calculatedArea;
+        
+        // 판매가와 원가를 새로운 면적에 맞게 재계산
+        const originalArea = Number(originalRow.area) || 0;
+        const newArea = Number(newProduct.area) || 0;
+        
+        if (originalArea > 0 && newArea > 0) {
+          const areaRatio = newArea / originalArea;
+          
+          // 판매가 재계산
+          const originalSalePrice = Number(originalRow.salePrice) || 0;
+          newProduct.salePrice = Math.round(originalSalePrice * areaRatio);
+          
+          // 원가 재계산
+          const originalPurchaseCost = Number(originalRow.purchaseCost) || 0;
+          newProduct.purchaseCost = Math.round(originalPurchaseCost * areaRatio);
+          
+          // 대형평면 판매가/원가 재계산 (있는 경우)
+          if (originalRow.largePlainPrice) {
+            const originalLargePlainPrice = Number(originalRow.largePlainPrice) || 0;
+            newProduct.largePlainPrice = Math.round(originalLargePlainPrice * areaRatio);
+          }
+          if (originalRow.largePlainCost) {
+            const originalLargePlainCost = Number(originalRow.largePlainCost) || 0;
+            newProduct.largePlainCost = Math.round(originalLargePlainCost * areaRatio);
+          }
+        }
         
         // 세부내용 업데이트
         newProduct.details = updateDetailsInRealTime(newProduct);
+        
+        // 총 금액, 원가, 마진 재계산
+        const quantity = Number(newProduct.quantity) || 1;
+        const areaNum = Number(newProduct.area) || 0;
+        
+        // 총 판매가 계산
+        let basePrice = 0;
+        if (newProduct.salePrice && areaNum) {
+          basePrice = Math.round(newProduct.salePrice * areaNum);
+        } else if (newProduct.salePrice) {
+          basePrice = newProduct.salePrice;
+        }
+        newProduct.totalPrice = basePrice * quantity;
+        
+        // 총 원가 계산
+        let baseCost = 0;
+        if (newProduct.purchaseCost && areaNum) {
+          baseCost = Math.round(newProduct.purchaseCost * areaNum);
+        } else if (newProduct.purchaseCost) {
+          baseCost = newProduct.purchaseCost;
+        }
+        newProduct.cost = baseCost * quantity;
+        
+        // 마진 계산
+        newProduct.margin = Math.round(newProduct.totalPrice / 1.1 - newProduct.cost);
       }
       // copy 타입은 가로 사이즈 변경 없음
+      
+      // copy 타입의 경우에도 금액 재계산 (새로운 제품이므로)
+      if (divideType === 'copy') {
+        const quantity = Number(newProduct.quantity) || 1;
+        const areaNum = Number(newProduct.area) || 0;
+        
+        // 총 판매가 계산
+        let basePrice = 0;
+        if (newProduct.salePrice && areaNum) {
+          basePrice = Math.round(newProduct.salePrice * areaNum);
+        } else if (newProduct.salePrice) {
+          basePrice = newProduct.salePrice;
+        }
+        newProduct.totalPrice = basePrice * quantity;
+        
+        // 총 원가 계산
+        let baseCost = 0;
+        if (newProduct.purchaseCost && areaNum) {
+          baseCost = Math.round(newProduct.purchaseCost * areaNum);
+        } else if (newProduct.purchaseCost) {
+          baseCost = newProduct.purchaseCost;
+        }
+        newProduct.cost = baseCost * quantity;
+        
+        // 마진 계산
+        newProduct.margin = Math.round(newProduct.totalPrice / 1.1 - newProduct.cost);
+      }
       
       dividedProducts.push(newProduct);
     }
@@ -6829,7 +7469,8 @@ const OrderManagement: React.FC = () => {
       const widthMM = Number(newEditRow.widthMM) || 0;
       const area = (widthMM / 1000) * pleatMultiplier; // m² 단위 (견적서와 동일한 계산식)
       newEditRow.area = area;
-      newEditRow.pleatAmount = newEditRow.pleatMultiplier || '1.4배';
+      // 주름양에 숫자 값으로 저장 (예: 1.4배 → 1.4)
+      newEditRow.pleatAmount = pleatMultiplier;
     }
 
     // 폭수 변경 시 주름양 재계산
@@ -6913,8 +7554,8 @@ const OrderManagement: React.FC = () => {
           const pleatMultiplier = Number(newEditRow.pleatMultiplier?.replace('배', '')) || 1.4;
           const area = (widthMM / 1000) * pleatMultiplier; // m²
           newEditRow.area = area;
-          // 주름양은 선택된 배수값을 그대로 사용
-          newEditRow.pleatAmount = newEditRow.pleatMultiplier || '1.4배';
+          // 주름양에 숫자 값으로 저장 (예: 1.4배 → 1.4)
+          newEditRow.pleatAmount = pleatMultiplier;
         }
       }
       // 겉커튼일 때
@@ -7110,28 +7751,11 @@ const OrderManagement: React.FC = () => {
       newEditRow.details = updatedDetails;
     }
     
-    // 블라인드 제품의 경우 가로, 세로 사이즈 변경 시 면적 정보를 세부내용에 반영
+    // 블라인드 제품의 경우 가로, 세로 사이즈 변경 시 면적 정보를 세부내용에 반영하지 않음
+    // (사용자가 직접 입력할 수 있도록 자동입력 비활성화)
     if (['widthMM', 'heightMM'].includes(field) && newEditRow.productType === '블라인드') {
-      const widthMM = Number(newEditRow.widthMM) || 0;
-      const heightMM = Number(newEditRow.heightMM) || 0;
-      if (widthMM > 0 && heightMM > 0) {
-        const area = (widthMM * heightMM) / 1000000; // m²
-        let currentDetails = newEditRow.details || '';
-        
-        // 기존 면적 정보 제거
-        currentDetails = currentDetails.replace(/면적:\s*[0-9.]+㎡/g, '');
-        currentDetails = currentDetails.replace(/,\s*,/g, ',');
-        currentDetails = currentDetails.replace(/^,\s*/, '');
-        currentDetails = currentDetails.replace(/,\s*$/, '');
-        
-        // 새로운 면적 정보 추가
-        const areaInfo = `면적: ${area.toFixed(2)}㎡`;
-        if (currentDetails) {
-          newEditRow.details = `${areaInfo}, ${currentDetails}`;
-        } else {
-          newEditRow.details = areaInfo;
-        }
-      }
+      // 블라인드 제품에서는 면적 자동입력을 하지 않음
+      // 사용자가 필요시 직접 세부내용에 입력할 수 있도록 함
     }
 
 
@@ -7448,6 +8072,24 @@ const OrderManagement: React.FC = () => {
   }, [editRow, editOpen, productOptions, userModifiedWidthCount]);
   return (
     <>
+      {/* 자동 크기 계산을 위한 숨겨진 input */}
+      <input
+        ref={hiddenInputRef}
+        type="text"
+        style={{
+          position: 'absolute',
+          left: '-9999px',
+          top: '-9999px',
+          visibility: 'hidden',
+          whiteSpace: 'pre',
+          fontSize: 'inherit',
+          fontFamily: 'inherit',
+          padding: '2px 4px',
+          border: 'none',
+          outline: 'none'
+        }}
+      />
+      
       <Box sx={{ p: isMobile ? 1 : 3 }}>
         {/* 주문서 관리 버튼 */}
         <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -7579,6 +8221,26 @@ const OrderManagement: React.FC = () => {
                 label="주문번호*"
                 value={orders[activeTab].orderNo || `O${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(activeTab + 1).padStart(3, '0')}`}
                 onChange={(e) => handleCustomerInfoChange('orderNo', e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Tab') {
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                      handleOrderKeyboardNavigation(0, 'prev');
+                    } else {
+                      handleOrderKeyboardNavigation(0, 'next');
+                    }
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(0, 'down');
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(0, 'up');
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(0, 'next');
+                  }
+                }}
+                inputRef={orderNoRef}
                 size="small"
                 sx={{ 
                   minWidth: 140,
@@ -7605,6 +8267,26 @@ const OrderManagement: React.FC = () => {
                 label="주문일자*"
                 value={orders[activeTab].estimateDate}
                 onChange={(e) => handleCustomerInfoChange('estimateDate', e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Tab') {
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                      handleOrderKeyboardNavigation(1, 'prev');
+                    } else {
+                      handleOrderKeyboardNavigation(1, 'next');
+                    }
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(1, 'down');
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(1, 'up');
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(1, 'next');
+                  }
+                }}
+                inputRef={orderDateRef}
                 size="small"
                 sx={{ 
                   minWidth: 140,
@@ -7631,6 +8313,26 @@ const OrderManagement: React.FC = () => {
                 label="고객명"
                 value={orders[activeTab].customerName}
                 onChange={(e) => handleCustomerInfoChange('customerName', e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Tab') {
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                      handleOrderKeyboardNavigation(2, 'prev');
+                    } else {
+                      handleOrderKeyboardNavigation(2, 'next');
+                    }
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(2, 'down');
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(2, 'up');
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(2, 'next');
+                  }
+                }}
+                inputRef={customerNameRef}
                 size="small"
                 sx={{ 
                   minWidth: 200,
@@ -7656,6 +8358,26 @@ const OrderManagement: React.FC = () => {
                 label="연락처*"
                 value={orders[activeTab].contact}
                 onChange={(e) => handleCustomerInfoChange('contact', e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Tab') {
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                      handleOrderKeyboardNavigation(3, 'prev');
+                    } else {
+                      handleOrderKeyboardNavigation(3, 'next');
+                    }
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(3, 'down');
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(3, 'up');
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(3, 'next');
+                  }
+                }}
+                inputRef={contactRef}
                 size="small"
                 sx={{ 
                   minWidth: 180,
@@ -7682,6 +8404,26 @@ const OrderManagement: React.FC = () => {
                 label="비상연락처"
                 value={orders[activeTab].emergencyContact || ''}
                 onChange={(e) => handleCustomerInfoChange('emergencyContact', e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Tab') {
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                      handleOrderKeyboardNavigation(4, 'prev');
+                    } else {
+                      handleOrderKeyboardNavigation(4, 'next');
+                    }
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(4, 'down');
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(4, 'up');
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(4, 'next');
+                  }
+                }}
+                inputRef={emergencyContactRef}
                 size="small"
                 sx={{ 
                   minWidth: 160,
@@ -7700,13 +8442,33 @@ const OrderManagement: React.FC = () => {
                   },
                   '& .MuiInputLabel-root': {
                     color: 'var(--text-secondary-color)',
-                  },
+                    },
                 }}
               />
               <TextField
                 label="프로젝트명"
                 value={orders[activeTab].projectName}
                 onChange={(e) => handleCustomerInfoChange('projectName', e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Tab') {
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                      handleOrderKeyboardNavigation(5, 'prev');
+                    } else {
+                      handleOrderKeyboardNavigation(5, 'next');
+                    }
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(5, 'down');
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(5, 'up');
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(5, 'next');
+                  }
+                }}
+                inputRef={projectNameRef}
                 size="small"
                 sx={{ 
                   minWidth: 140,
@@ -7732,6 +8494,26 @@ const OrderManagement: React.FC = () => {
                 label="타입"
                 value={orders[activeTab].type}
                 onChange={(e) => handleCustomerInfoChange('type', e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Tab') {
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                      handleOrderKeyboardNavigation(6, 'prev');
+                    } else {
+                      handleOrderKeyboardNavigation(6, 'next');
+                    }
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(6, 'down');
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(6, 'up');
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(6, 'next');
+                  }
+                }}
+                inputRef={typeRef}
                 size="small"
                 sx={{ 
                   minWidth: 100,
@@ -7757,6 +8539,26 @@ const OrderManagement: React.FC = () => {
                 label="주소"
                 value={orders[activeTab].address}
                 onChange={(e) => handleCustomerInfoChange('address', e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Tab') {
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                      handleOrderKeyboardNavigation(7, 'prev');
+                    } else {
+                      handleOrderKeyboardNavigation(7, 'next');
+                    }
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(7, 'down');
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(7, 'up');
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleOrderKeyboardNavigation(7, 'next');
+                  }
+                }}
+                inputRef={addressRef}
                 size="small"
                 sx={{ 
                   minWidth: 350, 
@@ -8118,6 +8920,20 @@ const OrderManagement: React.FC = () => {
               )}
 
               <Box sx={{ display: 'flex', gap: 1, flex: 1 }}>
+                <Tooltip title="빈 제품 행 추가">
+                  <IconButton
+                    size="medium"
+                    color="primary"
+                    onClick={handleAddEmptyProductRow}
+                    sx={{
+                      '&:hover': {
+                        backgroundColor: 'rgba(25, 118, 210, 0.1)',
+                      }
+                    }}
+                  >
+                    <AddIcon fontSize="medium" />
+                  </IconButton>
+                </Tooltip>
                 <Button
                   variant="contained"
                   size="small"
@@ -8305,11 +9121,11 @@ const OrderManagement: React.FC = () => {
                     )}
                     <TableCell>순번</TableCell>
                     {(isMobile ? mobileProductColumnVisibility.vendor : columnVisibility.vendor) && <TableCell>거래처</TableCell>}
+                    {(isMobile ? mobileProductColumnVisibility.productName : columnVisibility.productName) && <TableCell>제품명</TableCell>}
                     {(isMobile ? mobileProductColumnVisibility.brand : columnVisibility.brand) && <TableCell>브랜드</TableCell>}
                     {(isMobile ? mobileProductColumnVisibility.space : columnVisibility.space) && <TableCell>공간</TableCell>}
                     {(isMobile ? mobileProductColumnVisibility.productCode : columnVisibility.productCode) && <TableCell>제품코드</TableCell>}
                     {(isMobile ? mobileProductColumnVisibility.productType : columnVisibility.productType) && <TableCell>제품종류</TableCell>}
-                    {(isMobile ? mobileProductColumnVisibility.productName : columnVisibility.productName) && <TableCell>제품명</TableCell>}
                     {(isMobile ? mobileProductColumnVisibility.width : columnVisibility.width) && <TableCell>폭</TableCell>}
                     {(isMobile ? mobileProductColumnVisibility.details : columnVisibility.details) && <TableCell>세부내용</TableCell>}
                     
@@ -8338,7 +9154,7 @@ const OrderManagement: React.FC = () => {
                           ? (selectedOrderRows.has(index) ? 'rgba(255, 193, 7, 0.3)' : 'inherit')
                           : (selectedRowIndex === index ? 'rgba(25, 118, 210, 0.25)' : 'inherit'),
                         cursor: 'pointer',
-                        fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)', // 제품행만 0.3px 작게
+                        fontSize: 'calc(1em - 0.3px)', // 모든 행 동일한 크기
                         // 줄간격 줄이기 위한 padding 설정
                         '& .MuiTableCell-root': {
                           padding: '4px 8px', // 기존 기본값보다 줄임
@@ -8351,10 +9167,9 @@ const OrderManagement: React.FC = () => {
                         },
                         // 옵션 행 스타일링
                         ...(row && row.type === 'option' && {
-                          backgroundColor: 'rgba(76, 175, 80, 0.05)',
-                          borderLeft: '4px solid #4caf50',
+                          backgroundColor: 'rgba(76, 175, 80, 0.08)', // 견적서작성과 동일한 배경색
                           '&:hover': {
-                            backgroundColor: 'rgba(76, 175, 80, 0.1)'
+                            backgroundColor: 'rgba(76, 175, 80, 0.15)'
                           }
                         })
                       }}
@@ -8373,11 +9188,11 @@ const OrderManagement: React.FC = () => {
                           />
                         </TableCell>
                       )}
-                      <TableCell sx={{ 
-                        fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                        color: row && row.type === 'option' ? '#4caf50' : 'inherit',
-                        textAlign: 'center'
-                      }}>
+                                              <TableCell sx={{ 
+                          fontSize: 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#1976d2' : 'inherit',
+                          textAlign: 'center'
+                        }}>
                         {row && row.type === 'option' ? (
                           // 옵션 행은 순번 표시하지 않음
                           ''
@@ -8476,23 +9291,39 @@ const OrderManagement: React.FC = () => {
                       </TableCell>
                       {(isMobile ? mobileProductColumnVisibility.vendor : columnVisibility.vendor) && (
                         <TableCell sx={{ 
-                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#1976d2' : 'inherit'
                         }}>
                           {row?.vendor}
                         </TableCell>
                       )}
+                      {(isMobile ? mobileProductColumnVisibility.productName : columnVisibility.productName) && (
+                        <TableCell sx={{ 
+                          fontSize: 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#1976d2' : 'inherit'
+                        }}>
+                          {row && row.type === 'option' ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="body2" sx={{ color: '#1976d2', fontWeight: 'bold', fontSize: 'calc(1em - 0.3px)' }}>
+                                {row?.productName}
+                              </Typography>
+                            </Box>
+                          ) : (
+                            row?.productName
+                          )}
+                        </TableCell>
+                      )}
                       {(isMobile ? mobileProductColumnVisibility.brand : columnVisibility.brand) && (
                         <TableCell sx={{ 
-                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#1976d2' : 'inherit'
                         }}>
                           {row?.brand}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.space : columnVisibility.space) && (
                         <TableCell
-                          sx={{ fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)', color: row && row.type === 'option' ? '#4caf50' : 'inherit' }}
+                          sx={{ fontSize: 'calc(1em - 0.3px)', color: row && row.type === 'option' ? '#1976d2' : 'inherit' }}
                           onClick={() => {
                             if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'space')) {
                               setEditingCell({ rowIndex: index, field: 'space' });
@@ -8506,23 +9337,64 @@ const OrderManagement: React.FC = () => {
                               onChange={e => setEditingValue(e.target.value)}
                               onBlur={() => handleCellEdit(index, 'space', editingValue)}
                               onKeyDown={e => {
-                                if (e.key === 'Enter') handleCellEdit(index, 'space', editingValue);
-                                if (e.key === 'Escape') handleCellCancel();
+                                if (e.key === 'Tab') {
+                                  e.preventDefault();
+                                  if (e.shiftKey) {
+                                    handleOrderTableCellKeyboardNavigation(index, 'space', 'prev');
+                                  } else {
+                                    handleOrderTableCellKeyboardNavigation(index, 'space', 'next');
+                                  }
+                                } else if (e.key === 'ArrowDown') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'space', 'down');
+                                } else if (e.key === 'ArrowUp') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'space', 'up');
+                                } else if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'space', 'next');
+                                } else if (e.key === 'Escape') {
+                                  handleCellCancel();
+                                }
                               }}
                               size="small"
                               autoFocus
-                              sx={{ minWidth: 80, fontSize: 'inherit' }}
+                              inputProps={{
+                                style: {
+                                  width: `${calculateInputWidth(editingValue, 50, 120)}px`,
+                                  minWidth: '50px',
+                                  maxWidth: '120px',
+                                  padding: '2px 4px',
+                                  fontSize: 'inherit'
+                                }
+                              }}
+                              sx={{ 
+                                minWidth: '50px !important', 
+                                maxWidth: '120px !important',
+                                width: `${calculateInputWidth(editingValue, 50, 120)}px !important`,
+                                fontSize: 'inherit',
+                                '& .MuiInputBase-input': {
+                                  color: '#000000 !important',
+                                  padding: '2px 4px !important',
+                                  width: `${calculateInputWidth(editingValue, 50, 120)}px !important`
+                                },
+                                '& .MuiOutlinedInput-root': {
+                                  minWidth: '50px !important',
+                                  maxWidth: '120px !important',
+                                  width: `${calculateInputWidth(editingValue, 50, 120)}px !important`
+                                }
+                              }}
                             />
                           ) : (
-                            row?.space || ''
+                            row && row.type === 'option' ? 'ㄴ옵션' : (row?.space || '')
                           )}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.productCode : columnVisibility.productCode) && (
                         <TableCell
                           sx={{ 
-                            fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                            color: row && row.type === 'option' ? '#4caf50' : 'inherit'
+                            fontSize: 'calc(1em - 0.3px)',
+                            color: row && row.type === 'option' ? '#1976d2' : 'inherit'
                           }}
                           onClick={() => {
                             if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'productCode')) {
@@ -8537,12 +9409,53 @@ const OrderManagement: React.FC = () => {
                               onChange={e => setEditingValue(e.target.value)}
                               onBlur={() => handleCellEdit(index, 'productCode', editingValue)}
                               onKeyDown={e => {
-                                if (e.key === 'Enter') handleCellEdit(index, 'productCode', editingValue);
-                                if (e.key === 'Escape') handleCellCancel();
+                                if (e.key === 'Tab') {
+                                  e.preventDefault();
+                                  if (e.shiftKey) {
+                                    handleOrderTableCellKeyboardNavigation(index, 'productCode', 'prev');
+                                  } else {
+                                    handleOrderTableCellKeyboardNavigation(index, 'productCode', 'next');
+                                  }
+                                } else if (e.key === 'ArrowDown') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'productCode', 'down');
+                                } else if (e.key === 'ArrowUp') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'productCode', 'up');
+                                } else if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'productCode', 'next');
+                                } else if (e.key === 'Escape') {
+                                  handleCellCancel();
+                                }
                               }}
                               size="small"
                               autoFocus
-                              sx={{ minWidth: 80, fontSize: 'inherit' }}
+                              inputProps={{
+                                style: {
+                                  width: `${calculateInputWidth(editingValue, 50, 120)}px`,
+                                  minWidth: '50px',
+                                  maxWidth: '120px',
+                                  padding: '2px 4px',
+                                  fontSize: 'inherit'
+                                }
+                              }}
+                              sx={{ 
+                                minWidth: '50px !important', 
+                                maxWidth: '120px !important',
+                                width: `${calculateInputWidth(editingValue, 50, 120)}px !important`,
+                                fontSize: 'inherit',
+                                '& .MuiInputBase-input': {
+                                  color: '#000000 !important',
+                                  padding: '2px 4px !important',
+                                  width: `${calculateInputWidth(editingValue, 50, 120)}px !important`
+                                },
+                                '& .MuiOutlinedInput-root': {
+                                  minWidth: '50px !important',
+                                  maxWidth: '120px !important',
+                                  width: `${calculateInputWidth(editingValue, 50, 120)}px !important`
+                                }
+                              }}
                             />
                           ) : (
                             row?.productCode || ''
@@ -8551,32 +9464,16 @@ const OrderManagement: React.FC = () => {
                       )}
                       {(isMobile ? mobileProductColumnVisibility.productType : columnVisibility.productType) && (
                         <TableCell sx={{ 
-                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#1976d2' : 'inherit'
                         }}>
                           {row?.productType}
                         </TableCell>
                       )}
-                      {(isMobile ? mobileProductColumnVisibility.productName : columnVisibility.productName) && (
-                        <TableCell sx={{ 
-                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
-                        }}>
-                          {row && row.type === 'option' ? (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Typography variant="body2" sx={{ color: '#4caf50', fontWeight: 'bold' }}>
-                                {row?.productName}
-                              </Typography>
-                            </Box>
-                          ) : (
-                            row?.productName
-                          )}
-                        </TableCell>
-                      )}
                       {(isMobile ? mobileProductColumnVisibility.width : columnVisibility.width) && (
                         <TableCell sx={{ 
-                          fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row && row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: 'calc(1em - 0.3px)',
+                          color: row && row.type === 'option' ? '#1976d2' : 'inherit'
                         }}>
                           {row?.width}
                         </TableCell>
@@ -8584,8 +9481,8 @@ const OrderManagement: React.FC = () => {
                       {(isMobile ? mobileProductColumnVisibility.details : columnVisibility.details) && (
                         <TableCell
                           sx={{ 
-                            fontSize: row && row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                            color: row && row.type === 'option' ? '#4caf50' : 'inherit'
+                            fontSize: 'calc(1em - 0.3px)',
+                            color: row && row.type === 'option' ? '#1976d2' : 'inherit'
                           }}
                           onClick={() => {
                             if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'details')) {
@@ -8600,12 +9497,53 @@ const OrderManagement: React.FC = () => {
                               onChange={e => setEditingValue(e.target.value)}
                               onBlur={() => handleCellEdit(index, 'details', editingValue)}
                               onKeyDown={e => {
-                                if (e.key === 'Enter') handleCellEdit(index, 'details', editingValue);
-                                if (e.key === 'Escape') handleCellCancel();
+                                if (e.key === 'Tab') {
+                                  e.preventDefault();
+                                  if (e.shiftKey) {
+                                    handleOrderTableCellKeyboardNavigation(index, 'details', 'prev');
+                                  } else {
+                                    handleOrderTableCellKeyboardNavigation(index, 'details', 'next');
+                                  }
+                                } else if (e.key === 'ArrowDown') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'details', 'down');
+                                } else if (e.key === 'ArrowUp') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'details', 'up');
+                                } else if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'details', 'next');
+                                } else if (e.key === 'Escape') {
+                                  handleCellCancel();
+                                }
                               }}
                               size="small"
                               autoFocus
-                              sx={{ minWidth: 80, fontSize: 'inherit' }}
+                              inputProps={{
+                                style: {
+                                  width: `${calculateInputWidth(editingValue, 150, 400)}px`,
+                                  minWidth: '150px',
+                                  maxWidth: '400px',
+                                  padding: '2px 4px',
+                                  fontSize: 'inherit'
+                                }
+                              }}
+                              sx={{ 
+                                minWidth: '150px !important', 
+                                maxWidth: '400px !important',
+                                width: `${calculateInputWidth(editingValue, 150, 400)}px !important`,
+                                fontSize: 'inherit',
+                                '& .MuiInputBase-input': {
+                                  color: '#000000 !important',
+                                  padding: '2px 4px !important',
+                                  width: `${calculateInputWidth(editingValue, 150, 400)}px !important`
+                                },
+                                '& .MuiOutlinedInput-root': {
+                                  minWidth: '150px !important',
+                                  maxWidth: '400px !important',
+                                  width: `${calculateInputWidth(editingValue, 150, 400)}px !important`
+                                }
+                              }}
                             />
                           ) : (
                             row?.details || ''
@@ -8632,12 +9570,53 @@ const OrderManagement: React.FC = () => {
                               onChange={e => setEditingValue(e.target.value)}
                               onBlur={() => handleCellEdit(index, 'widthMM', editingValue)}
                               onKeyDown={e => {
-                                if (e.key === 'Enter') handleCellEdit(index, 'widthMM', editingValue);
-                                if (e.key === 'Escape') handleCellCancel();
+                                if (e.key === 'Tab') {
+                                  e.preventDefault();
+                                  if (e.shiftKey) {
+                                    handleOrderTableCellKeyboardNavigation(index, 'widthMM', 'prev');
+                                  } else {
+                                    handleOrderTableCellKeyboardNavigation(index, 'widthMM', 'next');
+                                  }
+                                } else if (e.key === 'ArrowDown') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'widthMM', 'down');
+                                } else if (e.key === 'ArrowUp') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'widthMM', 'up');
+                                } else if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'widthMM', 'next');
+                                } else if (e.key === 'Escape') {
+                                  handleCellCancel();
+                                }
                               }}
                               size="small"
                               autoFocus
-                              sx={{ minWidth: 80, fontSize: 'inherit' }}
+                              inputProps={{
+                                style: {
+                                  width: `${calculateInputWidth(editingValue, 40, 80)}px`,
+                                  minWidth: '40px',
+                                  maxWidth: '80px',
+                                  padding: '2px 4px',
+                                  fontSize: 'inherit'
+                                }
+                              }}
+                              sx={{ 
+                                minWidth: '40px !important', 
+                                maxWidth: '80px !important',
+                                width: `${calculateInputWidth(editingValue, 40, 80)}px !important`,
+                                fontSize: 'inherit',
+                                '& .MuiInputBase-input': {
+                                  color: '#000000 !important',
+                                  padding: '2px 4px !important',
+                                  width: `${calculateInputWidth(editingValue, 40, 80)}px !important`
+                                },
+                                '& .MuiOutlinedInput-root': {
+                                  minWidth: '40px !important',
+                                  maxWidth: '80px !important',
+                                  width: `${calculateInputWidth(editingValue, 40, 80)}px !important`
+                                }
+                              }}
                             />
                           ) : (
                             row?.widthMM ? Number(row.widthMM).toLocaleString() : ''
@@ -8647,8 +9626,8 @@ const OrderManagement: React.FC = () => {
                       {(isMobile ? mobileProductColumnVisibility.heightMM : columnVisibility.heightMM) && (
                         <TableCell
                           sx={{ 
-                            fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                            color: row.type === 'option' ? '#4caf50' : 'inherit'
+                            fontSize: 'calc(1em - 0.3px)',
+                            color: row.type === 'option' ? '#1976d2' : 'inherit'
                           }}
                           onClick={() => {
                             if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'heightMM')) {
@@ -8663,12 +9642,53 @@ const OrderManagement: React.FC = () => {
                               onChange={e => setEditingValue(e.target.value)}
                               onBlur={() => handleCellEdit(index, 'heightMM', editingValue)}
                               onKeyDown={e => {
-                                if (e.key === 'Enter') handleCellEdit(index, 'heightMM', editingValue);
-                                if (e.key === 'Escape') handleCellCancel();
+                                if (e.key === 'Tab') {
+                                  e.preventDefault();
+                                  if (e.shiftKey) {
+                                    handleOrderTableCellKeyboardNavigation(index, 'heightMM', 'prev');
+                                  } else {
+                                    handleOrderTableCellKeyboardNavigation(index, 'heightMM', 'next');
+                                  }
+                                } else if (e.key === 'ArrowDown') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'heightMM', 'down');
+                                } else if (e.key === 'ArrowUp') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'heightMM', 'up');
+                                } else if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'heightMM', 'next');
+                                } else if (e.key === 'Escape') {
+                                  handleCellCancel();
+                                }
                               }}
                               size="small"
                               autoFocus
-                              sx={{ minWidth: 80, fontSize: 'inherit' }}
+                              inputProps={{
+                                style: {
+                                  width: `${calculateInputWidth(editingValue, 40, 80)}px`,
+                                  minWidth: '40px',
+                                  maxWidth: '80px',
+                                  padding: '2px 4px',
+                                  fontSize: 'inherit'
+                                }
+                              }}
+                              sx={{ 
+                                minWidth: '40px !important', 
+                                maxWidth: '80px !important',
+                                width: `${calculateInputWidth(editingValue, 40, 80)}px !important`,
+                                fontSize: 'inherit',
+                                '& .MuiInputBase-input': {
+                                  color: '#000000 !important',
+                                  padding: '2px 4px !important',
+                                  width: `${calculateInputWidth(editingValue, 40, 80)}px !important`
+                                },
+                                '& .MuiOutlinedInput-root': {
+                                  minWidth: '40px !important',
+                                  maxWidth: '80px !important',
+                                  width: `${calculateInputWidth(editingValue, 40, 80)}px !important`
+                                }
+                              }}
                             />
                           ) : (
                             row.heightMM ? Number(row.heightMM).toLocaleString() : ''
@@ -8676,18 +9696,65 @@ const OrderManagement: React.FC = () => {
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.area : columnVisibility.area) && (
-                        <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
-                        }}>
-                          {row.curtainType === '겉커튼' ? '' : row.area}
+                        <TableCell
+                          sx={{ 
+                            fontSize: 'calc(1em - 0.3px)',
+                            color: row.type === 'option' ? '#1976d2' : 'inherit'
+                          }}
+                          onClick={() => {
+                            if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'area')) {
+                              setEditingCell({ rowIndex: index, field: 'area' });
+                              setEditingValue(row?.area ? row.area.toString() : '');
+                            }
+                          }}
+                        >
+                          {editingCell?.rowIndex === index && editingCell?.field === 'area' ? (
+                            <TextField
+                              value={editingValue}
+                              onChange={e => setEditingValue(e.target.value)}
+                              onBlur={() => handleCellEdit(index, 'area', editingValue)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleCellEdit(index, 'area', editingValue);
+                                if (e.key === 'Escape') handleCellCancel();
+                              }}
+                              size="small"
+                              autoFocus
+                              inputProps={{
+                                style: {
+                                  width: `${calculateInputWidth(editingValue, 25, 60)}px`,
+                                  minWidth: '25px',
+                                  maxWidth: '60px',
+                                  padding: '2px 4px',
+                                  fontSize: 'inherit'
+                                }
+                              }}
+                              sx={{ 
+                                minWidth: '25px !important', 
+                                maxWidth: '60px !important',
+                                width: `${calculateInputWidth(editingValue, 25, 60)}px !important`,
+                                fontSize: 'inherit',
+                                '& .MuiInputBase-input': {
+                                  color: '#000000 !important',
+                                  padding: '2px 4px !important',
+                                  width: `${calculateInputWidth(editingValue, 25, 60)}px !important`
+                                },
+                                '& .MuiOutlinedInput-root': {
+                                  minWidth: '25px !important',
+                                  maxWidth: '60px !important',
+                                  width: `${calculateInputWidth(editingValue, 25, 60)}px !important`
+                                }
+                              }}
+                            />
+                          ) : (
+                            row.curtainType === '겉커튼' ? '' : (row.area && row.area !== 0 ? row.area : '')
+                          )}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.lineDir : columnVisibility.lineDir) && (
                         <TableCell
                           sx={{ 
-                            fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                            color: row.type === 'option' ? '#4caf50' : 'inherit'
+                            fontSize: 'calc(1em - 0.3px)',
+                            color: row.type === 'option' ? '#1976d2' : 'inherit'
                           }}
                           onClick={() => {
                             if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'lineDirection')) {
@@ -8703,23 +9770,62 @@ const OrderManagement: React.FC = () => {
                                 onChange={e => setEditingValue(e.target.value)}
                                 onBlur={() => handleCellEdit(index, 'lineDirection', editingValue)}
                                 onKeyDown={e => {
-                                  if (e.key === 'Enter') handleCellEdit(index, 'lineDirection', editingValue);
-                                  if (e.key === 'Escape') handleCellCancel();
+                                  if (e.key === 'Tab') {
+                                    e.preventDefault();
+                                    if (e.shiftKey) {
+                                      handleOrderTableCellKeyboardNavigation(index, 'lineDirection', 'prev');
+                                    } else {
+                                      handleOrderTableCellKeyboardNavigation(index, 'lineDirection', 'next');
+                                    }
+                                  } else if (e.key === 'ArrowDown') {
+                                    e.preventDefault();
+                                    handleOrderTableCellKeyboardNavigation(index, 'lineDirection', 'down');
+                                  } else if (e.key === 'ArrowUp') {
+                                    e.preventDefault();
+                                    handleOrderTableCellKeyboardNavigation(index, 'lineDirection', 'up');
+                                  } else if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleOrderTableCellKeyboardNavigation(index, 'lineDirection', 'next');
+                                  } else if (e.key === 'Escape') {
+                                    handleCellCancel();
+                                  }
                                 }}
                                 size="small"
                                 autoFocus
+                                inputProps={{
+                                  style: {
+                                    width: `${calculateInputWidth(editingValue, 30, 60)}px`,
+                                    minWidth: '30px',
+                                    maxWidth: '60px',
+                                    padding: '2px 4px',
+                                    fontSize: 'inherit'
+                                  }
+                                }}
                                 sx={{ 
-                                  minWidth: 80, 
+                                  minWidth: '30px !important', 
+                                  maxWidth: '60px !important',
+                                  width: `${calculateInputWidth(editingValue, 30, 60)}px !important`,
                                   fontSize: 'inherit',
                                   '& .MuiSelect-select': {
-                                    color: '#000000 !important'
+                                    color: '#000000 !important',
+                                    padding: '2px 4px !important',
+                                    width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
                                   },
                                   '& .MuiInputBase-input': {
-                                    color: '#000000 !important'
+                                    color: '#000000 !important',
+                                    padding: '2px 4px !important',
+                                    width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
+                                  },
+                                  '& .MuiOutlinedInput-root': {
+                                    minWidth: '30px !important',
+                                    maxWidth: '60px !important',
+                                    width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
                                   },
                                   '& .MuiMenu-paper': {
                                     backgroundColor: '#ffffff !important',
                                     color: '#000000 !important',
+                                    minWidth: '30px !important',
+                                    maxWidth: '60px !important',
                                   },
                                   '& .MuiMenuItem-root': {
                                     color: '#000000 !important',
@@ -8754,8 +9860,8 @@ const OrderManagement: React.FC = () => {
                       {(isMobile ? mobileProductColumnVisibility.lineLen : columnVisibility.lineLen) && (
                         <TableCell
                           sx={{ 
-                            fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                            color: row.type === 'option' ? '#4caf50' : 'inherit'
+                            fontSize: 'calc(1em - 0.3px)',
+                            color: row.type === 'option' ? '#1976d2' : 'inherit'
                           }}
                           onClick={() => {
                             if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'lineLength')) {
@@ -8778,18 +9884,40 @@ const OrderManagement: React.FC = () => {
                                  }}
                                  size="small"
                                  autoFocus
+                                 inputProps={{
+                                   style: {
+                                     width: `${calculateInputWidth(editingValue, 30, 60)}px`,
+                                     minWidth: '30px',
+                                     maxWidth: '60px',
+                                     padding: '2px 4px',
+                                     fontSize: 'inherit'
+                                   }
+                                 }}
                                  sx={{ 
-                                   minWidth: 80, 
+                                   minWidth: '30px !important', 
+                                   maxWidth: '60px !important',
+                                   width: `${calculateInputWidth(editingValue, 30, 60)}px !important`,
                                    fontSize: 'inherit',
                                    '& .MuiSelect-select': {
-                                     color: '#000000 !important'
+                                     color: '#000000 !important',
+                                     padding: '2px 4px !important',
+                                     width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
                                    },
                                    '& .MuiInputBase-input': {
-                                     color: '#000000 !important'
+                                     color: '#000000 !important',
+                                     padding: '2px 4px !important',
+                                     width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
+                                   },
+                                   '& .MuiOutlinedInput-root': {
+                                     minWidth: '30px !important',
+                                     maxWidth: '60px !important',
+                                     width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
                                    },
                                    '& .MuiMenu-paper': {
                                      backgroundColor: '#ffffff !important',
                                      color: '#000000 !important',
+                                     minWidth: '30px !important',
+                                     maxWidth: '60px !important',
                                    },
                                    '& .MuiMenuItem-root': {
                                      color: '#000000 !important',
@@ -8865,11 +9993,29 @@ const OrderManagement: React.FC = () => {
                                   }}
                                   size="small"
                                   placeholder="직접 입력"
+                                  inputProps={{
+                                    style: {
+                                      width: `${calculateInputWidth(editingCustomValue, 30, 60)}px`,
+                                      minWidth: '30px',
+                                      maxWidth: '60px',
+                                      padding: '2px 4px',
+                                      fontSize: 'inherit'
+                                    }
+                                  }}
                                   sx={{ 
-                                    minWidth: 80, 
+                                    minWidth: '30px !important', 
+                                    maxWidth: '60px !important',
+                                    width: `${calculateInputWidth(editingCustomValue, 30, 60)}px !important`,
                                     fontSize: 'inherit',
                                     '& .MuiInputBase-input': {
-                                      color: '#000000 !important'
+                                      color: '#000000 !important',
+                                      padding: '2px 4px !important',
+                                      width: `${calculateInputWidth(editingCustomValue, 30, 60)}px !important`
+                                    },
+                                    '& .MuiOutlinedInput-root': {
+                                      minWidth: '30px !important',
+                                      maxWidth: '60px !important',
+                                      width: `${calculateInputWidth(editingCustomValue, 30, 60)}px !important`
                                     }
                                   }}
                                 />
@@ -8882,64 +10028,192 @@ const OrderManagement: React.FC = () => {
                       )}
                       {(isMobile ? mobileProductColumnVisibility.pleatAmount : columnVisibility.pleatAmount) && (
                         <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#1976d2' : 'inherit'
                         }}>
-                          {row.pleatAmount ? Number(row.pleatAmount).toLocaleString() : ''}
+                          {row.pleatAmount ? (isNaN(Number(row.pleatAmount)) ? row.pleatAmount : Number(row.pleatAmount).toLocaleString()) : ''}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.widthCount : columnVisibility.widthCount) && (
-                        <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
-                        }}>
-                          {row.widthCount ? Number(row.widthCount).toLocaleString() : ''}
+                        <TableCell
+                          sx={{ 
+                            fontSize: 'calc(1em - 0.3px)',
+                            color: row.type === 'option' ? '#1976d2' : 'inherit'
+                          }}
+                          onClick={() => {
+                            if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'widthCount')) {
+                              setEditingCell({ rowIndex: index, field: 'widthCount' });
+                              setEditingValue(row?.widthCount ? row.widthCount.toString() : '');
+                            }
+                          }}
+                        >
+                          {editingCell?.rowIndex === index && editingCell?.field === 'widthCount' ? (
+                            <TextField
+                              value={editingValue}
+                              onChange={e => setEditingValue(e.target.value)}
+                              onBlur={() => handleCellEdit(index, 'widthCount', editingValue)}
+                              onKeyDown={e => {
+                                if (e.key === 'Tab') {
+                                  e.preventDefault();
+                                  if (e.shiftKey) {
+                                    handleOrderTableCellKeyboardNavigation(index, 'widthCount', 'prev');
+                                  } else {
+                                    handleOrderTableCellKeyboardNavigation(index, 'widthCount', 'next');
+                                  }
+                                } else if (e.key === 'ArrowDown') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'widthCount', 'down');
+                                } else if (e.key === 'ArrowUp') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'widthCount', 'up');
+                                } else if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'widthCount', 'next');
+                                } else if (e.key === 'Escape') {
+                                  handleCellCancel();
+                                }
+                              }}
+                              size="small"
+                              autoFocus
+                              inputProps={{
+                                style: {
+                                  width: `${calculateInputWidth(editingValue, 30, 60)}px`,
+                                  minWidth: '30px',
+                                  maxWidth: '60px',
+                                  padding: '2px 4px',
+                                  fontSize: 'inherit'
+                                }
+                              }}
+                              sx={{ 
+                                minWidth: '30px !important', 
+                                maxWidth: '60px !important',
+                                width: `${calculateInputWidth(editingValue, 30, 60)}px !important`,
+                                fontSize: 'inherit',
+                                '& .MuiInputBase-input': {
+                                  color: '#000000 !important',
+                                  padding: '2px 4px !important',
+                                  width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
+                                },
+                                '& .MuiOutlinedInput-root': {
+                                  minWidth: '30px !important',
+                                  maxWidth: '60px !important',
+                                  width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
+                                }
+                              }}
+                            />
+                          ) : (
+                            row.widthCount ? Number(row.widthCount).toLocaleString() : ''
+                          )}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.quantity : columnVisibility.quantity) && (
-                        <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
-                        }}>
-                          {row.quantity ? Number(row.quantity).toLocaleString() : ''}
+                        <TableCell
+                          sx={{ 
+                            fontSize: 'calc(1em - 0.3px)',
+                            color: row.type === 'option' ? '#1976d2' : 'inherit'
+                          }}
+                          onClick={() => {
+                            if (!(editingCell && editingCell.rowIndex === index && editingCell.field === 'quantity')) {
+                              setEditingCell({ rowIndex: index, field: 'quantity' });
+                              setEditingValue(row?.quantity ? row.quantity.toString() : '');
+                            }
+                          }}
+                        >
+                          {editingCell?.rowIndex === index && editingCell?.field === 'quantity' ? (
+                            <TextField
+                              value={editingValue}
+                              onChange={e => setEditingValue(e.target.value)}
+                              onBlur={() => handleCellEdit(index, 'quantity', editingValue)}
+                              onKeyDown={e => {
+                                if (e.key === 'Tab') {
+                                  e.preventDefault();
+                                  if (e.shiftKey) {
+                                    handleOrderTableCellKeyboardNavigation(index, 'quantity', 'prev');
+                                  } else {
+                                    handleOrderTableCellKeyboardNavigation(index, 'quantity', 'next');
+                                  }
+                                } else if (e.key === 'ArrowDown') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'quantity', 'down');
+                                } else if (e.key === 'ArrowUp') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'quantity', 'up');
+                                } else if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleOrderTableCellKeyboardNavigation(index, 'quantity', 'next');
+                                } else if (e.key === 'Escape') {
+                                  handleCellCancel();
+                                }
+                              }}
+                              size="small"
+                              autoFocus
+                              inputProps={{
+                                style: {
+                                  width: `${calculateInputWidth(editingValue, 30, 60)}px`,
+                                  minWidth: '30px',
+                                  maxWidth: '60px',
+                                  padding: '2px 4px',
+                                  fontSize: 'inherit'
+                                }
+                              }}
+                              sx={{ 
+                                minWidth: '30px !important', 
+                                maxWidth: '60px !important',
+                                width: `${calculateInputWidth(editingValue, 30, 60)}px !important`,
+                                fontSize: 'inherit',
+                                '& .MuiInputBase-input': {
+                                  color: '#000000 !important',
+                                  padding: '2px 4px !important',
+                                  width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
+                                },
+                                '& .MuiOutlinedInput-root': {
+                                  minWidth: '30px !important',
+                                  maxWidth: '60px !important',
+                                  width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
+                                }
+                              }}
+                            />
+                          ) : (
+                            row.quantity ? Number(row.quantity).toLocaleString() : ''
+                          )}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.totalPrice : columnVisibility.totalPrice) && (
                         <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#1976d2' : 'inherit'
                         }}>
                           {row.totalPrice?.toLocaleString()}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.salePrice : columnVisibility.salePrice) && (
                         <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#1976d2' : 'inherit'
                         }}>
                           {row.salePrice?.toLocaleString()}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.cost : columnVisibility.cost) && (
                         <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#1976d2' : 'inherit'
                         }}>
                           {row.cost?.toLocaleString()}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.purchaseCost : columnVisibility.purchaseCost) && (
                         <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#1976d2' : 'inherit'
                         }}>
                           {row.purchaseCost?.toLocaleString()}
                         </TableCell>
                       )}
                       {(isMobile ? mobileProductColumnVisibility.margin : columnVisibility.margin) && (
                         <TableCell sx={{ 
-                          fontSize: row.type === 'option' ? 'inherit' : 'calc(1em - 0.3px)',
-                          color: row.type === 'option' ? '#4caf50' : 'inherit'
+                          fontSize: 'calc(1em - 0.3px)',
+                          color: row.type === 'option' ? '#1976d2' : 'inherit'
                         }}>
                           {row.margin?.toLocaleString()}
                         </TableCell>
@@ -8988,7 +10262,7 @@ const OrderManagement: React.FC = () => {
                     </TableRow>
                   ))}
                   {/* 합계 행 */}
-                  <TableRow sx={{ backgroundColor: '#e3f2fd', fontWeight: 'bold' }}>
+                  <TableRow sx={{ backgroundColor: '#e3f2fd', fontWeight: 'bold', fontSize: 'calc(1em + 1px)' }}>
                     {isBulkEditMode && <TableCell></TableCell>}
                     <TableCell>합계</TableCell>
                     {(isMobile ? mobileProductColumnVisibility.vendor : columnVisibility.vendor) && <TableCell></TableCell>}
@@ -9885,6 +11159,7 @@ const OrderManagement: React.FC = () => {
                         onContextMenu={(e) => handleSavedOrderContextMenu(e, order)}
                         onTouchStart={() => handleSavedOrderTouchStart(order)}
                         onTouchEnd={handleTouchEnd}
+                        onDoubleClick={() => handleLoadSavedOrder(order)}
                         sx={{ 
                           cursor: 'pointer',
                           backgroundColor: isAllCompleted ? 'rgba(144, 238, 144, 0.3)' : 'inherit',
@@ -12088,7 +13363,15 @@ const OrderManagement: React.FC = () => {
                           backgroundColor: 'var(--hover-color)',
                         },
                       }}
-                      onClick={() => handleAddSingleProduct(product)}
+                      onClick={() => {
+                        if (selectedRowIndex !== null) {
+                          // 우클릭 메뉴에서 제품검색을 통해 선택된 경우
+                          handleProductSelectForCell(product);
+                        } else {
+                          // 일반적인 제품 추가
+                          handleAddSingleProduct(product);
+                        }
+                      }}
                     >
                       <TableCell>
                         <Checkbox
@@ -12734,6 +14017,18 @@ const OrderManagement: React.FC = () => {
         {rowContextMenu?.row.type === 'product' && (
           <>
             <MenuItem 
+              onClick={() => handleRowContextMenuAction('productSearch')} 
+              sx={{ 
+                color: 'var(--text-color)',
+                '&:hover': {
+                  backgroundColor: 'var(--hover-color)',
+                },
+              }}
+            >
+              <SearchIcon fontSize="small" sx={{ mr: 1 }} />
+              제품검색
+            </MenuItem>
+            <MenuItem 
               onClick={() => handleRowContextMenuAction('addOption')} 
               sx={{ 
                 color: 'var(--text-color)',
@@ -12839,19 +14134,20 @@ const OrderManagement: React.FC = () => {
                       variant="outlined"
                       size="small"
                       onClick={() => setProductDialogOpen(true)}
-                      startIcon={<SearchIcon />}
                       sx={{
-                        minWidth: 100,
-                        color: 'var(--primary-color)',
-                        borderColor: 'var(--primary-color)',
+                        minWidth: 40,
+                        height: 32,
+                        border: '1px solid var(--border-color)',
+                        color: 'var(--text-color)',
+                        padding: '4px',
                         '&:hover': {
-                          backgroundColor: 'var(--primary-color)',
-                          color: 'var(--on-primary-color)',
+                          backgroundColor: 'var(--hover-color)',
                           borderColor: 'var(--primary-color)',
                         }
                       }}
+                      title="제품검색"
                     >
-                      제품검색
+                      <SearchIcon fontSize="small" />
                     </Button>
                   </Box>
                 </Grid>
@@ -12862,6 +14158,26 @@ const OrderManagement: React.FC = () => {
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                       handleEditChange('productCode', e.target.value)
                     }
+                    onKeyDown={(e) => {
+                      if (e.key === 'Tab') {
+                        e.preventDefault();
+                        if (e.shiftKey) {
+                          handleOrderProductKeyboardNavigation(1, 'prev');
+                        } else {
+                          handleOrderProductKeyboardNavigation(1, 'next');
+                        }
+                      } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(1, 'down');
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(1, 'up');
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(1, 'next');
+                      }
+                    }}
+                    inputRef={orderProductCodeRef}
                     fullWidth
                     size="small"
                     sx={{
@@ -12922,6 +14238,26 @@ const OrderManagement: React.FC = () => {
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                         handleEditChange('spaceCustom', e.target.value)
                       }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Tab') {
+                          e.preventDefault();
+                          if (e.shiftKey) {
+                            handleOrderProductKeyboardNavigation(0, 'prev');
+                          } else {
+                            handleOrderProductKeyboardNavigation(0, 'next');
+                          }
+                        } else if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          handleOrderProductKeyboardNavigation(0, 'down');
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          handleOrderProductKeyboardNavigation(0, 'up');
+                        } else if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleOrderProductKeyboardNavigation(0, 'next');
+                        }
+                      }}
+                      inputRef={orderProductSpaceRef}
                       fullWidth
                       size="small"
                       sx={{
@@ -12943,6 +14279,26 @@ const OrderManagement: React.FC = () => {
                       const value = e.target.value.replace(/[^0-9]/g, '');
                       handleEditChange('widthMM', value);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Tab') {
+                        e.preventDefault();
+                        if (e.shiftKey) {
+                          handleOrderProductKeyboardNavigation(3, 'prev');
+                        } else {
+                          handleOrderProductKeyboardNavigation(3, 'next');
+                        }
+                      } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(3, 'down');
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(3, 'up');
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(3, 'next');
+                      }
+                    }}
+                    inputRef={orderProductWidthRef}
                     fullWidth
                     size="small"
                     sx={{
@@ -12963,6 +14319,26 @@ const OrderManagement: React.FC = () => {
                       const value = e.target.value.replace(/[^0-9]/g, '');
                       handleEditChange('heightMM', value);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Tab') {
+                        e.preventDefault();
+                        if (e.shiftKey) {
+                          handleOrderProductKeyboardNavigation(4, 'prev');
+                        } else {
+                          handleOrderProductKeyboardNavigation(4, 'next');
+                        }
+                      } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(4, 'down');
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(4, 'up');
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(4, 'next');
+                      }
+                    }}
+                    inputRef={orderProductHeightRef}
                     fullWidth
                     size="small"
                     sx={{
@@ -12983,6 +14359,26 @@ const OrderManagement: React.FC = () => {
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                       handleEditChange('quantity', e.target.value)
                     }
+                    onKeyDown={(e) => {
+                      if (e.key === 'Tab') {
+                        e.preventDefault();
+                        if (e.shiftKey) {
+                          handleOrderProductKeyboardNavigation(9, 'prev');
+                        } else {
+                          handleOrderProductKeyboardNavigation(9, 'next');
+                        }
+                      } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(9, 'down');
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(9, 'up');
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(9, 'next');
+                      }
+                    }}
+                    inputRef={orderProductQuantityRef}
                     fullWidth
                     size="small"
                     sx={{
@@ -13097,6 +14493,26 @@ const OrderManagement: React.FC = () => {
                           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                             handleEditChange('widthCount', e.target.value)
                           }
+                          onKeyDown={(e) => {
+                            if (e.key === 'Tab') {
+                              e.preventDefault();
+                              if (e.shiftKey) {
+                                handleOrderProductKeyboardNavigation(8, 'prev');
+                              } else {
+                                handleOrderProductKeyboardNavigation(8, 'next');
+                              }
+                            } else if (e.key === 'ArrowDown') {
+                              e.preventDefault();
+                              handleOrderProductKeyboardNavigation(8, 'down');
+                            } else if (e.key === 'ArrowUp') {
+                              e.preventDefault();
+                              handleOrderProductKeyboardNavigation(8, 'up');
+                            } else if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleOrderProductKeyboardNavigation(8, 'next');
+                            }
+                          }}
+                          inputRef={orderProductWidthCountRef}
                           fullWidth
                           size="small"
                           sx={{
@@ -13267,6 +14683,26 @@ const OrderManagement: React.FC = () => {
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                           handleEditChange('lineDirection', e.target.value)
                         }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Tab') {
+                            e.preventDefault();
+                            if (e.shiftKey) {
+                              handleOrderProductKeyboardNavigation(6, 'prev');
+                            } else {
+                              handleOrderProductKeyboardNavigation(6, 'next');
+                            }
+                          } else if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            handleOrderProductKeyboardNavigation(6, 'down');
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            handleOrderProductKeyboardNavigation(6, 'up');
+                          } else if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleOrderProductKeyboardNavigation(6, 'next');
+                          }
+                        }}
+                        inputRef={orderProductLineDirRef}
                         fullWidth
                         size="small"
                         sx={{
@@ -13327,6 +14763,26 @@ const OrderManagement: React.FC = () => {
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                           handleEditChange('lineLength', e.target.value)
                         }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Tab') {
+                            e.preventDefault();
+                            if (e.shiftKey) {
+                              handleOrderProductKeyboardNavigation(7, 'prev');
+                            } else {
+                              handleOrderProductKeyboardNavigation(7, 'next');
+                            }
+                          } else if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            handleOrderProductKeyboardNavigation(7, 'down');
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            handleOrderProductKeyboardNavigation(7, 'up');
+                          } else if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleOrderProductKeyboardNavigation(7, 'next');
+                          }
+                        }}
+                        inputRef={orderProductLineLenRef}
                         fullWidth
                         size="small"
                         sx={{
@@ -13415,6 +14871,26 @@ const OrderManagement: React.FC = () => {
                           onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                             setEditRow((prev: any) => ({ ...prev, customLineLength: e.target.value }));
                           }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Tab') {
+                              e.preventDefault();
+                              if (e.shiftKey) {
+                                handleOrderProductKeyboardNavigation(7, 'prev');
+                              } else {
+                                handleOrderProductKeyboardNavigation(7, 'next');
+                              }
+                            } else if (e.key === 'ArrowDown') {
+                              e.preventDefault();
+                              handleOrderProductKeyboardNavigation(7, 'down');
+                            } else if (e.key === 'ArrowUp') {
+                              e.preventDefault();
+                              handleOrderProductKeyboardNavigation(7, 'up');
+                            } else if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleOrderProductKeyboardNavigation(7, 'next');
+                            }
+                          }}
+                          inputRef={orderProductLineLenRef}
                           fullWidth
                           size="small"
                           sx={{
@@ -13440,6 +14916,26 @@ const OrderManagement: React.FC = () => {
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       handleDetailsChange(e.target.value);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Tab') {
+                        e.preventDefault();
+                        if (e.shiftKey) {
+                          handleOrderProductKeyboardNavigation(2, 'prev');
+                        } else {
+                          handleOrderProductKeyboardNavigation(2, 'next');
+                        }
+                      } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(2, 'down');
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(2, 'up');
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleOrderProductKeyboardNavigation(2, 'next');
+                      }
+                    }}
+                    inputRef={orderProductDetailsRef}
                     fullWidth
                     size="small"
                     multiline

@@ -3165,6 +3165,40 @@ exports.saveOrder = functions.https.onRequest(async (req, res) => {
   });
 });
 
+// 주문 업데이트 (HTTP Request) - /updateOrder
+exports.updateOrder = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    if (req.method !== 'PUT') return res.status(405).send('Method Not Allowed');
+    
+    try {
+      const { orderId, ...orderData } = req.body;
+      
+      if (!orderId) {
+        return res.status(400).json({ error: '주문 ID가 필요합니다.' });
+      }
+      
+      orderData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      
+      const docRef = db.collection('orders').doc(orderId);
+      const doc = await docRef.get();
+      
+      if (!doc.exists) {
+        return res.status(404).json({ error: '주문을 찾을 수 없습니다.' });
+      }
+      
+      await docRef.update(orderData);
+      
+      res.json({ 
+        message: '주문이 업데이트되었습니다.',
+        id: orderId 
+      });
+    } catch (error) {
+      console.error('주문 업데이트 오류:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
 // ===== 공급업체 관리 =====
 
 // 공급업체 목록 조회 (HTTP Request) - /vendors

@@ -76,7 +76,7 @@ export interface EstimateRow {
   heightMM: number;
   area: number;
   lineDir: string;
-  lineLen: number;
+  lineLen: string | number;
   pleatAmount: string | number;
   widthCount: number;
   quantity: number;
