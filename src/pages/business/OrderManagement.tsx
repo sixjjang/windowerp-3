@@ -114,6 +114,10 @@ export interface Order {
   vendorName?: string;
   deliveryDate?: string;
   deliveryAddress?: string;
+  // Firebase 동기화를 위한 추가 속성들
+  firebaseId?: string;
+  source?: 'firebase' | 'local';
+  needsSync?: boolean;
 }
 
 // OrderItem 타입 정의
@@ -729,25 +733,61 @@ const ContractListModal: React.FC<{
   const loadContracts = useCallback(async () => {
     setLoading(true);
     try {
-      // localStorage에서 계약 데이터 로드 (계약관리에서 사용하는 키)
-      const savedContracts = localStorage.getItem('contracts');
-      if (savedContracts) {
-        const parsedContracts = JSON.parse(savedContracts);
-        console.log('로드된 계약 데이터:', parsedContracts);
-        // 각 계약의 주소 필드 확인
-        parsedContracts.forEach((contract: any, index: number) => {
-          console.log(`계약 ${index + 1}:`, {
-            contractNo: contract.contractNo,
-            customerName: contract.customerName,
-            address: contract.address,
-            customerAddress: contract.customerAddress,
-            projectName: contract.projectName
-          });
-        });
-        setContracts(parsedContracts);
-      }
+      // 1. 모든 계약서 로드
+      const savedContracts = JSON.parse(localStorage.getItem('contracts') || '[]');
+      console.log('전체 계약서 개수:', savedContracts.length);
+      
+      // 2. 저장된 주문서 로드
+      const savedOrders = JSON.parse(localStorage.getItem('saved_orders') || '[]');
+      console.log('저장된 주문서 개수:', savedOrders.length);
+      
+      // 3. 견적서 목록 로드
+      const savedEstimates = JSON.parse(localStorage.getItem('saved_estimates') || '[]');
+      console.log('전체 견적서 개수:', savedEstimates.length);
+      
+      // 4. 이미 주문서가 생성된 계약번호 추출
+      const existingOrderContractIds = savedOrders.map((order: any) => order.contractId).filter(Boolean);
+      const existingOrderEstimateNos = savedOrders.map((order: any) => order.estimateNo).filter(Boolean);
+      
+      console.log('주문서에 포함된 계약ID:', existingOrderContractIds);
+      console.log('주문서에 포함된 견적번호:', existingOrderEstimateNos);
+      
+      // 5. 계약완료 견적서 필터링
+      const completedEstimates = savedEstimates.filter((estimate: any) => {
+        // 계약완료 상태 확인
+        const hasContract = savedContracts.some((contract: any) => 
+          contract.estimateNo === estimate.estimateNo
+        );
+        const isFinalEstimate = estimate.estimateNo.includes('-final');
+        const isCompletedStatus = estimate.status === '계약완료';
+        
+        return hasContract || isFinalEstimate || isCompletedStatus;
+      });
+      
+      console.log('계약완료 견적서 개수:', completedEstimates.length);
+      
+      // 6. 주문서가 없는 계약만 필터링
+      const availableContracts = savedContracts.filter((contract: any) => {
+        const hasOrder = existingOrderContractIds.includes(contract.id) || 
+                        existingOrderEstimateNos.includes(contract.estimateNo);
+        const isCompletedEstimate = completedEstimates.some((estimate: any) => 
+          estimate.estimateNo === contract.estimateNo
+        );
+        
+        return !hasOrder && isCompletedEstimate;
+      });
+      
+      console.log('사용 가능한 계약서 개수:', availableContracts.length);
+      console.log('사용 가능한 계약서:', availableContracts.map((c: any) => ({
+        contractNo: c.contractNo,
+        estimateNo: c.estimateNo,
+        customerName: c.customerName
+      })));
+      
+      setContracts(availableContracts);
     } catch (error) {
       console.error('계약 목록 로드 실패:', error);
+      setContracts([]);
     } finally {
       setLoading(false);
     }
@@ -805,7 +845,7 @@ const ContractListModal: React.FC<{
         )}
         <AssignmentIcon sx={{ mr: 1, color: 'var(--text-color)' }} />
         <Typography variant="h6" sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>
-          계약 목록에서 선택
+          주문서 미생성 계약 목록
         </Typography>
         <Typography variant="subtitle2" sx={{
           mt: isMobile ? 0.5 : 1,
@@ -813,7 +853,7 @@ const ContractListModal: React.FC<{
           fontWeight: 'normal',
           fontSize: isMobile ? '0.9rem' : '0.875rem'
         }}>
-          계약을 선택하여 주문서를 작성합니다.
+          계약완료되었으나 아직 주문서가 생성되지 않은 계약만 표시됩니다.
         </Typography>
       </DialogTitle>
       
@@ -883,8 +923,11 @@ const ContractListModal: React.FC<{
           </TableContainer>
         ) : (
           <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography sx={{ color: 'var(--text-secondary-color)' }}>
-              {searchTerm ? '검색 결과가 없습니다.' : '저장된 계약이 없습니다.'}
+            <Typography sx={{ color: 'var(--text-secondary-color)', mb: 1 }}>
+              {searchTerm ? '검색 결과가 없습니다.' : '주문서를 생성할 수 있는 계약이 없습니다.'}
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)', fontSize: '0.875rem' }}>
+              {searchTerm ? '' : '모든 계약이 이미 주문서로 생성되었거나, 아직 계약이 완료되지 않았습니다.'}
             </Typography>
           </Box>
         )}
@@ -1462,15 +1505,47 @@ const OrderManagement: React.FC = () => {
     }
   };
 
-  // 저장된 주문서 불러오기
+  // 저장된 주문서 불러오기 (Firebase + 로컬 동기화)
   useEffect(() => {
-    const loadSavedOrders = () => {
+    const loadSavedOrders = async () => {
       try {
-        const savedOrdersData = localStorage.getItem('saved_orders');
-        if (savedOrdersData) {
-          const parsedOrders = JSON.parse(savedOrdersData);
-          setSavedOrders(parsedOrders);
+        console.log('=== 저장된 주문서 로드 시작 ===');
+        
+        // 1. Firebase에서 주문서 로드
+        let firebaseOrders: any[] = [];
+        try {
+          console.log('Firebase에서 주문서 로드 중...');
+          firebaseOrders = await orderService.getOrders();
+          console.log('Firebase 주문서 로드 성공:', firebaseOrders.length, '개');
+        } catch (firebaseError) {
+          console.error('Firebase 주문서 로드 실패:', firebaseError);
+          firebaseOrders = [];
         }
+        
+        // 2. 로컬에서 주문서 로드
+        let localOrders: any[] = [];
+        try {
+          const savedOrdersData = localStorage.getItem('saved_orders');
+          if (savedOrdersData) {
+            localOrders = JSON.parse(savedOrdersData);
+            console.log('로컬 주문서 로드 성공:', localOrders.length, '개');
+          }
+        } catch (localError) {
+          console.error('로컬 주문서 로드 실패:', localError);
+          localOrders = [];
+        }
+        
+        // 3. 데이터 병합 (Firebase 우선, 로컬 보완)
+        const mergedOrders = mergeOrders(firebaseOrders, localOrders);
+        console.log('병합된 주문서:', mergedOrders.length, '개');
+        
+        // 4. 상태 업데이트
+        setSavedOrders(mergedOrders);
+        
+        // 5. 로컬 저장소 업데이트 (Firebase 데이터로 동기화)
+        localStorage.setItem('saved_orders', JSON.stringify(mergedOrders));
+        
+        console.log('=== 저장된 주문서 로드 완료 ===');
       } catch (error) {
         console.error('저장된 주문서 불러오기 실패:', error);
         setSavedOrders([]);
@@ -1479,6 +1554,25 @@ const OrderManagement: React.FC = () => {
 
     loadSavedOrders();
     loadCompanyInfo(); // 우리회사정보 로드
+    
+    // Firebase 실시간 동기화 구독
+    const unsubscribe = orderService.subscribeToOrders((firebaseOrders) => {
+      console.log('Firebase 실시간 주문서 업데이트:', firebaseOrders.length, '개');
+      
+      // 현재 로컬 주문서와 병합
+      const currentLocalOrders = JSON.parse(localStorage.getItem('saved_orders') || '[]');
+      const mergedOrders = mergeOrders(firebaseOrders, currentLocalOrders);
+      
+      setSavedOrders(mergedOrders);
+      localStorage.setItem('saved_orders', JSON.stringify(mergedOrders));
+    });
+    
+    // 컴포넌트 언마운트 시 구독 해제
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   // 주문서 검색 필터링
@@ -1552,6 +1646,14 @@ const OrderManagement: React.FC = () => {
       // 연결된 견적서가 있으면 견적서의 내용을 우선 사용
       if (linkedEstimate) {
         console.log('견적서 내용으로 주문서 업데이트:', linkedEstimate);
+        console.log('견적서 rows 개수:', linkedEstimate.rows?.length || 0);
+        console.log('견적서 rows 구조:', linkedEstimate.rows?.map((item: any) => ({
+          id: item.id,
+          type: item.type,
+          productName: item.productName,
+          productId: item.productId,
+          optionLabel: item.optionLabel
+        })));
         updatedOrder = {
           ...updatedOrder,
           customerName: linkedEstimate.customerName || contract.customerName || '',
@@ -1562,17 +1664,31 @@ const OrderManagement: React.FC = () => {
           emergencyContact: linkedEstimate.emergencyContact || '',
                     // 견적서의 rows를 주문서 rows로 변환
           rows: linkedEstimate.rows?.map((item: any, index: number) => {
-            // 옵션으로 분류할 제품들 (레일, 시공, 기타 액세서리 등)
-            const optionKeywords = ['레일', '시공', '액세서리', '부속', '부자재', '마감', '마감재', '마감재료'];
-            const isOption = optionKeywords.some(keyword => 
-              item.productName?.includes(keyword) || 
-              item.productType?.includes(keyword) ||
-              item.details?.includes(keyword)
-            );
+            // 옵션 분류 로직 개선: type 필드 우선 확인, 키워드 기반 보조 분류
+            const optionKeywords = ['레일', '시공', '액세서리', '부속', '부자재', '마감', '마감재', '마감재료', '형상가공', '반자동', '출장비', '커튼시공'];
+            
+            // 1. type 필드가 있으면 우선 사용
+            let isOption = item.type === 'option';
+            
+            // 2. type 필드가 없거나 'product'인 경우 키워드 기반 분류
+            if (!isOption && item.type !== 'product') {
+              isOption = optionKeywords.some(keyword => 
+                item.productName?.includes(keyword) || 
+                item.productType?.includes(keyword) ||
+                item.details?.includes(keyword) ||
+                item.optionLabel?.includes(keyword)
+              );
+            }
             
             const convertedRow = {
               id: index + 1,
               type: isOption ? 'option' as const : 'product' as const,
+              // 계층 구조 보존
+              productId: item.productId, // 제품-옵션 연결 정보 보존
+              parentProductId: item.productId, // 부모 제품 ID 추가
+              optionLabel: item.optionLabel || item.productName, // 옵션 라벨 보존
+              
+              // 기본 정보
               vendor: item.vendor || '',
               brand: item.brand || '',
               space: item.space || '',
@@ -1584,6 +1700,8 @@ const OrderManagement: React.FC = () => {
               productName: item.productName || '',
               width: item.width || '',
               details: item.details || '',
+              
+              // 치수 정보
               widthMM: item.widthMM || 0,
               heightMM: item.heightMM || 0,
               area: item.area || 0,
@@ -1592,20 +1710,45 @@ const OrderManagement: React.FC = () => {
               pleatAmount: item.pleatAmount || '',
               widthCount: item.widthCount || 0,
               quantity: item.quantity || 1,
-              totalPrice: item.totalPrice || 0,
-              salePrice: item.salePrice || 0,
-              cost: item.cost || 0,
-              purchaseCost: item.purchaseCost || 0,
-              margin: item.margin || 0,
+              
+              // 금액 정보 (견적서 → 주문서 필드 매핑)
+              totalPrice: item.totalPrice || 0, // 판매금액
+              salePrice: item.salePrice || 0, // 판매단가
+              cost: item.cost || 0, // 입고금액
+              purchaseCost: item.purchaseCost || 0, // 입고원가
+              margin: item.margin || 0, // 마진
+              
+              // 기타 정보
               note: item.note || '',
               productionWidth: item.productionWidth || 0,
               productionHeight: item.productionHeight || 0,
+              
+              // 옵션 관련 추가 정보
+              optionType: item.optionType || '',
+              isManualQuantity: item.isManualQuantity || false,
             };
             
             // 제품인 경우 세부내용 자동 계산 적용
             if (convertedRow.type === 'product') {
               convertedRow.details = updateDetailsInRealTime(convertedRow);
             }
+            
+            // 변환 결과 로깅
+            console.log(`행 ${index + 1} 변환:`, {
+              원본: {
+                id: item.id,
+                type: item.type,
+                productName: item.productName,
+                productId: item.productId
+              },
+              변환: {
+                id: convertedRow.id,
+                type: convertedRow.type,
+                productName: convertedRow.productName,
+                productId: convertedRow.productId,
+                parentProductId: convertedRow.parentProductId
+              }
+            });
             
             return convertedRow;
           }) || [],
@@ -1614,17 +1757,31 @@ const OrderManagement: React.FC = () => {
         // 연결된 견적서가 없으면 계약의 아이템들을 사용
         console.log('계약 아이템으로 주문서 업데이트');
         updatedOrder.rows = contract.items?.map((item: any, index: number) => {
-          // 옵션으로 분류할 제품들 (레일, 시공, 기타 액세서리 등)
-          const optionKeywords = ['레일', '시공', '액세서리', '부속', '부자재', '마감', '마감재', '마감재료'];
-          const isOption = optionKeywords.some(keyword => 
-            item.productName?.includes(keyword) || 
-            item.productType?.includes(keyword) ||
-            item.details?.includes(keyword)
-          );
+          // 옵션 분류 로직 개선: type 필드 우선 확인, 키워드 기반 보조 분류
+          const optionKeywords = ['레일', '시공', '액세서리', '부속', '부자재', '마감', '마감재', '마감재료', '형상가공', '반자동', '출장비', '커튼시공'];
+          
+          // 1. type 필드가 있으면 우선 사용
+          let isOption = item.type === 'option';
+          
+          // 2. type 필드가 없거나 'product'인 경우 키워드 기반 분류
+          if (!isOption && item.type !== 'product') {
+            isOption = optionKeywords.some(keyword => 
+              item.productName?.includes(keyword) || 
+              item.productType?.includes(keyword) ||
+              item.details?.includes(keyword) ||
+              item.optionLabel?.includes(keyword)
+            );
+          }
           
           const convertedRow = {
             id: index + 1,
             type: isOption ? 'option' as const : 'product' as const,
+            // 계층 구조 보존
+            productId: item.productId, // 제품-옵션 연결 정보 보존
+            parentProductId: item.productId, // 부모 제품 ID 추가
+            optionLabel: item.optionLabel || item.productName, // 옵션 라벨 보존
+            
+            // 기본 정보
             vendor: item.vendor || '',
             brand: item.brand || '',
             space: item.space || '',
@@ -1634,6 +1791,8 @@ const OrderManagement: React.FC = () => {
             productName: item.productName || '',
             width: item.width || '',
             details: item.details || '',
+            
+            // 치수 정보
             widthMM: item.widthMM || 0,
             heightMM: item.heightMM || 0,
             area: item.area || 0,
@@ -1642,12 +1801,20 @@ const OrderManagement: React.FC = () => {
             pleatAmount: item.pleatAmount || '',
             widthCount: item.widthCount || 0,
             quantity: item.quantity || 1,
-            totalPrice: item.totalPrice || 0,
-            salePrice: item.salePrice || 0,
-            cost: item.cost || 0,
-            purchaseCost: item.purchaseCost || 0,
-            margin: item.margin || 0,
+            
+            // 금액 정보 (견적서 → 주문서 필드 매핑)
+            totalPrice: item.totalPrice || 0, // 판매금액
+            salePrice: item.salePrice || 0, // 판매단가
+            cost: item.cost || 0, // 입고금액
+            purchaseCost: item.purchaseCost || 0, // 입고원가
+            margin: item.margin || 0, // 마진
+            
+            // 기타 정보
             note: item.note || '',
+            
+            // 옵션 관련 추가 정보
+            optionType: item.optionType || '',
+            isManualQuantity: item.isManualQuantity || false,
           };
           
           // 제품인 경우 세부내용 자동 계산 적용
@@ -2596,10 +2763,22 @@ const OrderManagement: React.FC = () => {
 
   // 제품 이동 함수들
   const moveProductUp = (productIndex: number) => {
+    console.log('=== 제품 위로 이동 시작 ===');
     const currentRows = orders[activeTab]?.rows || [];
+    console.log('이동 전 행 개수:', currentRows.length);
+    console.log('이동 전 행 구조:', currentRows.map((row, idx) => ({
+      인덱스: idx,
+      타입: row?.type,
+      제품명: row?.productName,
+      productId: row?.productId
+    })));
+    
     const productGroups = getProductGroups(currentRows);
     
-    if (productIndex <= 0 || productIndex >= productGroups.length) return;
+    if (productIndex <= 0 || productIndex >= productGroups.length) {
+      console.log('이동 불가: 인덱스 범위 초과');
+      return;
+    }
     
     const newRows: any[] = [];
     
@@ -2627,16 +2806,46 @@ const OrderManagement: React.FC = () => {
       newRows.push(...groupItems);
     }
     
+    console.log('이동 후 행 개수:', newRows.length);
+    console.log('이동 후 행 구조:', newRows.map((row, idx) => ({
+      인덱스: idx,
+      타입: row?.type,
+      제품명: row?.productName,
+      productId: row?.productId
+    })));
+    
+    // 옵션의 productId 연결 복구
+    const repairedRows = repairOptionProductIds(newRows);
+    console.log('productId 복구 후 행 구조:', repairedRows.map((row, idx) => ({
+      인덱스: idx,
+      타입: row?.type,
+      제품명: row?.productName,
+      productId: row?.productId
+    })));
+    
     const updatedOrders = [...orders];
-    updatedOrders[activeTab].rows = newRows;
+    updatedOrders[activeTab].rows = repairedRows;
     setOrders(updatedOrders);
+    console.log('=== 제품 위로 이동 완료 ===');
   };
 
   const moveProductDown = (productIndex: number) => {
+    console.log('=== 제품 아래로 이동 시작 ===');
     const currentRows = orders[activeTab]?.rows || [];
+    console.log('이동 전 행 개수:', currentRows.length);
+    console.log('이동 전 행 구조:', currentRows.map((row, idx) => ({
+      인덱스: idx,
+      타입: row?.type,
+      제품명: row?.productName,
+      productId: row?.productId
+    })));
+    
     const productGroups = getProductGroups(currentRows);
     
-    if (productIndex < 0 || productIndex >= productGroups.length - 1) return;
+    if (productIndex < 0 || productIndex >= productGroups.length - 1) {
+      console.log('이동 불가: 인덱스 범위 초과');
+      return;
+    }
     
     const newRows: any[] = [];
     
@@ -2664,18 +2873,38 @@ const OrderManagement: React.FC = () => {
       newRows.push(...groupItems);
     }
     
+    console.log('이동 후 행 개수:', newRows.length);
+    console.log('이동 후 행 구조:', newRows.map((row, idx) => ({
+      인덱스: idx,
+      타입: row?.type,
+      제품명: row?.productName,
+      productId: row?.productId
+    })));
+    
+    // 옵션의 productId 연결 복구
+    const repairedRows = repairOptionProductIds(newRows);
+    console.log('productId 복구 후 행 구조:', repairedRows.map((row, idx) => ({
+      인덱스: idx,
+      타입: row?.type,
+      제품명: row?.productName,
+      productId: row?.productId
+    })));
+    
     const updatedOrders = [...orders];
-    updatedOrders[activeTab].rows = newRows;
+    updatedOrders[activeTab].rows = repairedRows;
     setOrders(updatedOrders);
+    console.log('=== 제품 아래로 이동 완료 ===');
   };
 
-  // 제품 그룹을 찾는 함수 (제품 + 연결된 옵션들)
+  // 제품 그룹을 찾는 함수 (제품 + 연결된 옵션들) - 개선된 버전
   const getProductGroups = (rows: any[]) => {
     const groups: Array<{ product: any; options: any[]; startIndex: number; endIndex: number }> = [];
     let currentGroup: { product: any; options: any[]; startIndex: number; endIndex: number } | null = null;
     
     rows.forEach((row, index) => {
-      if (row && row.type === 'product') {
+      if (!row) return; // null/undefined 체크
+      
+      if (row.type === 'product') {
         // 이전 그룹이 있으면 저장
         if (currentGroup) {
           (currentGroup as any).endIndex = index - 1;
@@ -2689,20 +2918,36 @@ const OrderManagement: React.FC = () => {
           startIndex: index,
           endIndex: index
         };
-      } else if (row && row.type === 'option' && currentGroup) {
-        // 현재 제품에 연결된 옵션인지 확인
-        if (row.productId === (currentGroup as any).product.id) {
-          (currentGroup as any).options.push(row);
-          (currentGroup as any).endIndex = index;
+      } else if (row.type === 'option' && currentGroup) {
+        // 옵션을 현재 그룹에 추가 (productId 연결 여부와 관계없이)
+        (currentGroup as any).options.push(row);
+        (currentGroup as any).endIndex = index;
+        
+        // productId가 없으면 현재 제품의 ID로 설정 (연결 복구)
+        if (!row.productId) {
+          row.productId = (currentGroup as any).product.id;
         }
       }
     });
     
-    // 마지막 그룹 저장 - 실제 마지막 인덱스로 설정
+    // 마지막 그룹 저장
     if (currentGroup) {
-      // 마지막 그룹의 endIndex는 이미 올바르게 설정되어 있음 (옵션이 있으면 마지막 옵션의 인덱스, 없으면 제품의 인덱스)
       groups.push(currentGroup);
     }
+    
+    // 디버깅 로그
+    console.log('제품 그룹 분석 결과:', {
+      총행수: rows.length,
+      그룹수: groups.length,
+      그룹정보: groups.map((group, idx) => ({
+        그룹번호: idx + 1,
+        제품명: group.product.productName,
+        옵션수: group.options.length,
+        시작인덱스: group.startIndex,
+        끝인덱스: group.endIndex,
+        옵션목록: group.options.map(opt => opt.productName)
+      }))
+    });
     
     return groups;
   };
@@ -2713,6 +2958,27 @@ const OrderManagement: React.FC = () => {
     const productRows = currentRows.filter(r => r && r.type === 'product');
     const productIndex = productRows.findIndex(r => r && r.id === row.id);
     return productIndex >= 0 ? productIndex + 1 : null;
+  };
+
+  // 옵션의 productId 연결을 복구하는 함수
+  const repairOptionProductIds = (rows: any[]) => {
+    let currentProductId: number | null = null;
+    
+    rows.forEach((row, index) => {
+      if (!row) return;
+      
+      if (row.type === 'product') {
+        currentProductId = row.id;
+      } else if (row.type === 'option' && currentProductId !== null) {
+        // 옵션의 productId가 없거나 잘못된 경우 복구
+        if (!row.productId || row.productId !== currentProductId) {
+          console.log(`옵션 productId 복구: ${row.productName} (${row.productId} → ${currentProductId})`);
+          row.productId = currentProductId;
+        }
+      }
+    });
+    
+    return rows;
   };
 
   // 폭수 계산 함수
@@ -4528,6 +4794,49 @@ const OrderManagement: React.FC = () => {
     }
   };
 
+  // 주문서 데이터 병합 함수 (Firebase + 로컬)
+  const mergeOrders = (firebaseOrders: any[], localOrders: any[]) => {
+    console.log('=== 주문서 데이터 병합 시작 ===');
+    console.log('Firebase 주문서:', firebaseOrders.length, '개');
+    console.log('로컬 주문서:', localOrders.length, '개');
+    
+    const mergedMap = new Map();
+    
+    // 1. Firebase 주문서를 우선적으로 추가 (최신 데이터)
+    firebaseOrders.forEach(order => {
+      const key = order.id || order.orderNo || order.contractId;
+      if (key) {
+        mergedMap.set(key, {
+          ...order,
+          source: 'firebase',
+          firebaseId: order.id
+        });
+        console.log('Firebase 주문서 추가:', key);
+      }
+    });
+    
+    // 2. 로컬 주문서 추가 (Firebase에 없는 경우만)
+    localOrders.forEach(order => {
+      const key = order.id || order.orderNo || order.contractId;
+      if (key && !mergedMap.has(key)) {
+        mergedMap.set(key, {
+          ...order,
+          source: 'local',
+          needsSync: true // Firebase 동기화 필요 표시
+        });
+        console.log('로컬 주문서 추가 (동기화 필요):', key);
+      } else if (key && mergedMap.has(key)) {
+        console.log('로컬 주문서 스킵 (Firebase에 존재):', key);
+      }
+    });
+    
+    const mergedOrders = Array.from(mergedMap.values());
+    console.log('병합 완료:', mergedOrders.length, '개');
+    console.log('=== 주문서 데이터 병합 완료 ===');
+    
+    return mergedOrders;
+  };
+
   // 주문서 변경사항 감지 함수
   const hasOrderChanges = (currentOrder: any, savedOrder: any) => {
     if (!savedOrder) return true; // 저장된 주문서가 없으면 변경사항 있음
@@ -4611,17 +4920,36 @@ const OrderManagement: React.FC = () => {
             localStorage.setItem('saved_orders', JSON.stringify(existingSavedOrders));
             setSavedOrders(existingSavedOrders);
             
-            // Firebase Cloud Functions를 통한 저장
-            try {
-              console.log('Firebase Cloud Functions를 통한 주문서 저장 시작');
-              await orderService.saveOrder(orderToSave);
-              console.log('Firebase Cloud Functions를 통한 주문서 저장 성공');
-              setSnackbarMessage('주문서가 Firebase에 저장되었습니다.');
-            } catch (firebaseError) {
-              console.error('Firebase 저장 실패, localStorage만 사용:', firebaseError);
-              setSnackbarMessage('주문서가 로컬에만 저장되었습니다. (Firebase 동기화 실패)');
-            }
-            setSnackbarOpen(true);
+                  // Firebase Cloud Functions를 통한 저장
+      try {
+        console.log('Firebase Cloud Functions를 통한 주문서 저장 시작');
+        const firebaseResult = await orderService.saveOrder(orderToSave);
+        console.log('Firebase Cloud Functions를 통한 주문서 저장 성공:', firebaseResult);
+        
+        // Firebase ID 업데이트
+        if (firebaseResult) {
+          (orderToSave as any).firebaseId = firebaseResult;
+          (orderToSave as any).source = 'firebase';
+          (orderToSave as any).needsSync = false;
+          
+          // 로컬 저장소에도 Firebase ID 반영
+          const existingSavedOrders = JSON.parse(localStorage.getItem('saved_orders') || '[]');
+          const existingIndex = existingSavedOrders.findIndex((order: any) => order.id === orderToSave.id);
+          if (existingIndex !== -1) {
+            existingSavedOrders[existingIndex] = orderToSave;
+          } else {
+            existingSavedOrders.push(orderToSave);
+          }
+          localStorage.setItem('saved_orders', JSON.stringify(existingSavedOrders));
+          setSavedOrders(existingSavedOrders);
+        }
+        
+        setSnackbarMessage('주문서가 Firebase에 저장되었습니다.');
+      } catch (firebaseError) {
+        console.error('Firebase 저장 실패, localStorage만 사용:', firebaseError);
+        setSnackbarMessage('주문서가 로컬에만 저장되었습니다. (Firebase 동기화 실패)');
+      }
+      setSnackbarOpen(true);
           }
           return;
         } else {
@@ -4642,8 +4970,21 @@ const OrderManagement: React.FC = () => {
       // Firebase Cloud Functions를 통한 저장
       try {
         console.log('Firebase Cloud Functions를 통한 주문서 저장 시작');
-        await orderService.saveOrder(orderToSave);
-        console.log('Firebase Cloud Functions를 통한 주문서 저장 성공');
+        const firebaseResult = await orderService.saveOrder(orderToSave);
+        console.log('Firebase Cloud Functions를 통한 주문서 저장 성공:', firebaseResult);
+        
+        // Firebase ID 업데이트
+        if (firebaseResult) {
+          (orderToSave as any).firebaseId = firebaseResult;
+          (orderToSave as any).source = 'firebase';
+          (orderToSave as any).needsSync = false;
+          
+          // 로컬 저장소에도 Firebase ID 반영
+          existingSavedOrders[existingIndex] = orderToSave;
+          localStorage.setItem('saved_orders', JSON.stringify(existingSavedOrders));
+          setSavedOrders(existingSavedOrders);
+        }
+        
         setSnackbarMessage('주문서가 Firebase에 저장되었습니다.');
       } catch (firebaseError) {
         console.error('Firebase 저장 실패, localStorage만 사용:', firebaseError);
@@ -6568,7 +6909,7 @@ const OrderManagement: React.FC = () => {
   };
 
   // 우클릭 메뉴 액션 핸들러
-  const handleContextMenuAction = (action: string) => {
+  const handleContextMenuAction = async (action: string) => {
     if (!contextMenu) return;
 
     const { order } = contextMenu;
@@ -6635,18 +6976,64 @@ const OrderManagement: React.FC = () => {
           setAsRequests(copiedASRequests);
           localStorage.setItem('asRequests', JSON.stringify(copiedASRequests));
         }
+        // 로컬에 복사된 주문서 추가
         const updatedSavedOrders = [...savedOrders, copiedOrder];
         localStorage.setItem('saved_orders', JSON.stringify(updatedSavedOrders));
         setSavedOrders(updatedSavedOrders);
-        setSnackbarMessage('주문서가 복사되었습니다.');
+        
+        // Firebase에도 복사된 주문서 저장
+        try {
+          console.log('Firebase에 복사된 주문서 저장 시작');
+          const firebaseResult = await orderService.saveOrder(copiedOrder);
+          console.log('Firebase에 복사된 주문서 저장 성공:', firebaseResult);
+          
+          // Firebase ID 업데이트
+          if (firebaseResult) {
+            (copiedOrder as any).firebaseId = firebaseResult;
+            (copiedOrder as any).source = 'firebase';
+            (copiedOrder as any).needsSync = false;
+            
+            // 로컬 저장소에도 Firebase ID 반영
+            const finalUpdatedOrders = updatedSavedOrders.map(o => 
+              o.id === copiedOrder.id ? copiedOrder : o
+            );
+            localStorage.setItem('saved_orders', JSON.stringify(finalUpdatedOrders));
+            setSavedOrders(finalUpdatedOrders);
+          }
+          
+          setSnackbarMessage('주문서가 복사되어 Firebase에 저장되었습니다.');
+        } catch (firebaseError) {
+          console.error('Firebase 복사 저장 실패:', firebaseError);
+          setSnackbarMessage('주문서가 로컬에 복사되었습니다. (Firebase 동기화 실패)');
+        }
         setSnackbarOpen(true);
         break;
       case 'delete':
         if (window.confirm('정말로 이 주문서를 삭제하시겠습니까?')) {
-          const updatedSavedOrders = savedOrders.filter(o => o.id !== order.id);
-          localStorage.setItem('saved_orders', JSON.stringify(updatedSavedOrders));
-          setSavedOrders(updatedSavedOrders);
-          setSnackbarMessage('주문서가 삭제되었습니다.');
+          try {
+            // Firebase에서 삭제 시도
+            if ((order as any).firebaseId) {
+              console.log('Firebase에서 주문서 삭제 시작:', (order as any).firebaseId);
+              await orderService.deleteOrder((order as any).firebaseId);
+              console.log('Firebase에서 주문서 삭제 성공');
+            }
+            
+            // 로컬에서 삭제
+            const updatedSavedOrders = savedOrders.filter(o => o.id !== order.id);
+            localStorage.setItem('saved_orders', JSON.stringify(updatedSavedOrders));
+            setSavedOrders(updatedSavedOrders);
+            
+            setSnackbarMessage('주문서가 삭제되었습니다.');
+          } catch (firebaseError) {
+            console.error('Firebase 삭제 실패:', firebaseError);
+            
+            // Firebase 삭제 실패해도 로컬에서는 삭제
+            const updatedSavedOrders = savedOrders.filter(o => o.id !== order.id);
+            localStorage.setItem('saved_orders', JSON.stringify(updatedSavedOrders));
+            setSavedOrders(updatedSavedOrders);
+            
+            setSnackbarMessage('주문서가 로컬에서 삭제되었습니다. (Firebase 동기화 실패)');
+          }
           setSnackbarOpen(true);
         }
         break;

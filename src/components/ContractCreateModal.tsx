@@ -225,11 +225,21 @@ const ContractCreateModal: React.FC<ContractCreateModalProps> = ({
 
         {/* 견적 정보 요약 */}
         <Box sx={{ mb: 2, p: 2, backgroundColor: 'var(--background-color)', border: '1px solid var(--border-color)', borderRadius: 1 }}>
-          <Typography variant="body2">견적번호: {estimate.estimateNo}</Typography>
-          <Typography variant="body2">고객명: {estimate.customerName}</Typography>
-          <Typography variant="body2">프로젝트: {estimate.projectName}</Typography>
-          <Typography variant="body2">소비자금액: {totalAmount.toLocaleString()}원</Typography>
-          <Typography variant="body2">할인후금액: {(discountedAmount || totalAmount).toLocaleString()}원</Typography>
+          <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 500, mb: 0.5 }}>
+            견적번호: <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>{estimate.estimateNo}</span>
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 500, mb: 0.5 }}>
+            고객명: <span style={{ color: 'var(--text-color)', fontWeight: 'bold' }}>{estimate.customerName}</span>
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 500, mb: 0.5 }}>
+            프로젝트: <span style={{ color: 'var(--text-color)', fontWeight: 'bold' }}>{estimate.projectName}</span>
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 500, mb: 0.5 }}>
+            소비자금액: <span style={{ color: '#d32f2f', fontWeight: 'bold' }}>{totalAmount.toLocaleString()}원</span>
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 500, mb: 0.5 }}>
+            할인후금액: <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>{(discountedAmount || totalAmount).toLocaleString()}원</span>
+          </Typography>
         </Box>
 
         {currentStep === 1 && (
@@ -279,10 +289,18 @@ const ContractCreateModal: React.FC<ContractCreateModalProps> = ({
 
         {currentStep === 3 && (
           <Box sx={{ p: 2, border: '1px solid var(--border-color)', borderRadius: 1 }}>
-            <Typography variant="body1" sx={{ mb: 1 }}>계약이 완료될 준비가 되었습니다.</Typography>
-            <Typography variant="body2">할인후금액: {(paymentData?.discountedAmount ?? discountedAmount ?? totalAmount).toLocaleString()}원</Typography>
-            <Typography variant="body2">계약금: {(paymentData?.depositAmount ?? 0).toLocaleString()}원</Typography>
-            <Typography variant="body2">잔금: {(((paymentData?.discountedAmount ?? discountedAmount ?? totalAmount) - (paymentData?.depositAmount ?? 0)) || 0).toLocaleString()}원</Typography>
+            <Typography variant="body1" sx={{ mb: 1, color: 'var(--text-color)', fontWeight: 'bold' }}>
+              계약이 완료될 준비가 되었습니다.
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 500, mb: 0.5 }}>
+              할인후금액: <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>{(paymentData?.discountedAmount ?? discountedAmount ?? totalAmount).toLocaleString()}원</span>
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 500, mb: 0.5 }}>
+              계약금: <span style={{ color: '#1976d2', fontWeight: 'bold' }}>{(paymentData?.depositAmount ?? 0).toLocaleString()}원</span>
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 500, mb: 0.5 }}>
+              잔금: <span style={{ color: '#ed6c02', fontWeight: 'bold' }}>{(((paymentData?.discountedAmount ?? discountedAmount ?? totalAmount) - (paymentData?.depositAmount ?? 0)) || 0).toLocaleString()}원</span>
+            </Typography>
           </Box>
         )}
       </DialogContent>

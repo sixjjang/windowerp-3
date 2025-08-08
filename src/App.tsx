@@ -21,7 +21,7 @@ import CompanyInfoManagement from './pages/admin/CompanyInfoManagement';
 import Accounting from './pages/admin/Accounting';
 import Statistics from './pages/admin/Statistics';
 import TaxInvoice from './pages/admin/TaxInvoice';
-import ContractManagement from './pages/business/ContractManagement';
+
 import MeasurementData from './pages/business/MeasurementData';
 import HistoricalDataManagement from './pages/business/HistoricalDataManagement';
 import TimeTreeCallback from './pages/TimeTreeCallback';
@@ -125,7 +125,7 @@ function AppContent() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="estimate" element={<EstimateManagement />} />
-            <Route path="contract" element={<ContractManagement />} />
+
             <Route path="order" element={<OrderManagement />} />
 
             <Route path="schedule" element={<Schedule />} />
@@ -143,10 +143,7 @@ function AppContent() {
             <Route path="curtain-simulator" element={<CurtainSimulatorIframe />} />
 
             <Route path="admin/users" element={<AdminUserManagement />} />
-            <Route
-              path="business/contract-management"
-              element={<ContractManagement />}
-            />
+
             <Route path="business/estimate" element={<EstimateManagement />} />
           </Route>
         </Routes>

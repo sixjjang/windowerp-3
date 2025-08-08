@@ -228,4 +228,9 @@ export interface Estimate {
       address?: string;
     };
   };
+  // 할인 정보 및 확정금액 필드들
+  discountAmountInput?: string; // 할인금액 입력값
+  discountRateInput?: string; // 할인율 입력값
+  discountedTotalInput?: string; // 할인후금액 입력값
+  finalizedAmount?: string; // 확정금액
 }

@@ -233,12 +233,6 @@ const menuItems = [
         roles: ['admin', 'staff'],
       },
       {
-        text: '계약 관리',
-        icon: <DescriptionIcon />,
-        path: '/contract',
-        roles: ['admin', 'staff'],
-      },
-      {
         text: '주문 관리',
         icon: <BusinessIcon />,
         path: '/order',

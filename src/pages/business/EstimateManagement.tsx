@@ -41,6 +41,7 @@ import {
   Card,
   CardContent,
   Divider,
+  Collapse,
 } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material/Select';
 import {
@@ -72,6 +73,8 @@ import {
   FilterList as FilterListIcon,
   EditNote as EditNoteIcon,
   SaveAlt as SaveAltIcon,
+  ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { create } from 'zustand';
 import { evaluate } from 'mathjs';
@@ -84,6 +87,7 @@ import { EstimateTemplate as EstimateTemplateType, Estimate, EstimateRow, Option
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import ContractCreateModal from '../../components/ContractCreateModal';
+import ContractTemplate from '../../components/ContractTemplate';
 import { findLastIndex } from 'lodash';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '../../utils/notificationStore';
@@ -1452,25 +1456,48 @@ const ContractListModal: React.FC<{
   const loadContracts = useCallback(async () => {
     setLoading(true);
     try {
-      // localStorage에서 계약 데이터 로드 (계약관리에서 사용하는 키)
-      const savedContracts = localStorage.getItem('contracts');
-      if (savedContracts) {
-        const parsedContracts = JSON.parse(savedContracts);
-        console.log('로드된 계약 데이터:', parsedContracts);
-        // 각 계약의 주소 필드 확인
-        parsedContracts.forEach((contract: any, index: number) => {
-          console.log(`계약 ${index + 1}:`, {
-            contractNo: contract.contractNo,
-            customerName: contract.customerName,
-            address: contract.address,
-            customerAddress: contract.customerAddress,
-            projectName: contract.projectName
-          });
-        });
-        setContracts(parsedContracts);
-      }
+      // 1. 모든 계약서 로드
+      const savedContracts = JSON.parse(localStorage.getItem('contracts') || '[]');
+      console.log('전체 계약서 개수:', savedContracts.length);
+      
+      // 2. 견적서 목록 로드
+      const savedEstimates = JSON.parse(localStorage.getItem('saved_estimates') || '[]');
+      console.log('전체 견적서 개수:', savedEstimates.length);
+      
+      // 3. 계약완료 견적서 필터링 (견적관리에서는 계약완료된 견적서만 표시)
+      const completedEstimates = savedEstimates.filter((estimate: any) => {
+        // 계약완료 상태 확인
+        const hasContract = savedContracts.some((contract: any) => 
+          contract.estimateNo === estimate.estimateNo
+        );
+        const isFinalEstimate = estimate.estimateNo.includes('-final');
+        const isCompletedStatus = estimate.status === '계약완료';
+        
+        return hasContract || isFinalEstimate || isCompletedStatus;
+      });
+      
+      console.log('계약완료 견적서 개수:', completedEstimates.length);
+      
+      // 4. 계약완료된 견적서에 해당하는 계약만 필터링
+      const availableContracts = savedContracts.filter((contract: any) => {
+        const isCompletedEstimate = completedEstimates.some((estimate: any) => 
+          estimate.estimateNo === contract.estimateNo
+        );
+        
+        return isCompletedEstimate;
+      });
+      
+      console.log('사용 가능한 계약서 개수:', availableContracts.length);
+      console.log('사용 가능한 계약서:', availableContracts.map((c: any) => ({
+        contractNo: c.contractNo,
+        estimateNo: c.estimateNo,
+        customerName: c.customerName
+      })));
+      
+      setContracts(availableContracts);
     } catch (error) {
       console.error('계약 목록 로드 실패:', error);
+      setContracts([]);
     } finally {
       setLoading(false);
     }
@@ -1528,7 +1555,7 @@ const ContractListModal: React.FC<{
         )}
         <AssignmentIcon sx={{ mr: 1, color: 'var(--text-color)' }} />
         <Typography variant="h6" sx={{ color: 'var(--text-color)', fontWeight: 'bold' }}>
-          계약 목록에서 선택
+          계약완료 견적서 목록
         </Typography>
         <Typography variant="subtitle2" sx={{
           mt: isMobile ? 0.5 : 1,
@@ -1536,7 +1563,7 @@ const ContractListModal: React.FC<{
           fontWeight: 'normal',
           fontSize: isMobile ? '0.9rem' : '0.875rem'
         }}>
-          계약을 선택하여 견적서를 작성합니다.
+          계약이 완료된 견적서만 표시됩니다.
         </Typography>
       </DialogTitle>
       
@@ -1606,8 +1633,11 @@ const ContractListModal: React.FC<{
           </TableContainer>
         ) : (
           <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography sx={{ color: 'var(--text-secondary-color)' }}>
-              {searchTerm ? '검색 결과가 없습니다.' : '저장된 계약이 없습니다.'}
+            <Typography sx={{ color: 'var(--text-secondary-color)', mb: 1 }}>
+              {searchTerm ? '검색 결과가 없습니다.' : '계약완료된 견적서가 없습니다.'}
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)', fontSize: '0.875rem' }}>
+              {searchTerm ? '' : '아직 계약이 완료되지 않은 견적서만 있습니다.'}
             </Typography>
           </Box>
         )}
@@ -2337,6 +2367,14 @@ const EstimateManagement: React.FC = () => {
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [customerListDialogOpen, setCustomerListDialogOpen] = useState(false);
   
+  // 계약서 출력 관련 상태
+  const contractPrintRef = useRef<HTMLDivElement>(null);
+  const [contractTemplateOpen, setContractTemplateOpen] = useState(false);
+  const [selectedContractForPrint, setSelectedContractForPrint] = useState<any>(null);
+  const [contractPrintMenuAnchorEl, setContractPrintMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [contractPrintMenuOpen, setContractPrintMenuOpen] = useState(false);
+  const [selectedContractForPrintMenu, setSelectedContractForPrintMenu] = useState<any>(null);
+  
   // 인필드 편집을 위한 상태 변수들
   const [editingCell, setEditingCell] = useState<{ rowIndex: number; field: string } | null>(null);
   const [editingValue, setEditingValue] = useState('');
@@ -2418,12 +2456,16 @@ const EstimateManagement: React.FC = () => {
   const handleCellEdit = (rowIndex: number, field: string, value: string) => {
     const currentRows = [...estimates[activeTab].rows];
     if (currentRows[rowIndex]) {
-      const updatedRow = { ...currentRows[rowIndex], [field]: value };
-      
-      // 세부내용 자동 업데이트 (주름방식, 폭수 등이 변경될 때)
-      if (['curtainType', 'pleatType', 'widthCount', 'pleatAmount', 'pleatMultiplier'].includes(field)) {
-        updatedRow.details = generateAutoDetails(updatedRow);
+      // 가로/세로 필드에 대해 수식 계산 적용
+      if ((field === 'widthMM' || field === 'heightMM') && typeof value === 'string' && (value.includes('+') || value.includes('-') || value.includes('*') || value.includes('/'))) {
+        const calculatedValue = calculateExpression(value);
+        if (calculatedValue !== null) {
+          console.log(`테이블 편집 수식 계산: ${value} = ${calculatedValue}`);
+          value = calculatedValue.toString();
+        }
       }
+      
+      const updatedRow = { ...currentRows[rowIndex], [field]: value };
       
       // 겉커튼 폭수 변경 시 주름양 재계산
       if (field === 'widthCount' && updatedRow.productType === '커튼' && updatedRow.curtainType === '겉커튼') {
@@ -2445,6 +2487,11 @@ const EstimateManagement: React.FC = () => {
           
           updatedRow.pleatAmount = calculatedPleatAmount || '';
         }
+      }
+      
+      // 세부내용 자동 업데이트 (주름방식, 폭수 등이 변경될 때)
+      if (['curtainType', 'pleatType', 'widthCount', 'pleatAmount', 'pleatMultiplier'].includes(field)) {
+        updatedRow.details = generateAutoDetails(updatedRow);
       }
       
       // 면적 변경 시 금액 재계산
@@ -2792,13 +2839,21 @@ const EstimateManagement: React.FC = () => {
           emergencyContact: linkedEstimate.emergencyContact || '',
           // 견적서의 rows를 견적서 rows로 변환
           rows: linkedEstimate.rows?.map((item: any, index: number) => {
-            // 옵션으로 분류할 제품들 (레일, 시공, 기타 액세서리 등)
-            const optionKeywords = ['레일', '시공', '액세서리', '부속', '부자재', '마감', '마감재', '마감재료'];
-            const isOption = optionKeywords.some(keyword => 
-              item.productName?.includes(keyword) || 
-              item.productType?.includes(keyword) ||
-              item.details?.includes(keyword)
-            );
+            // 옵션 분류 로직 개선: type 필드 우선 확인, 키워드 기반 보조 분류
+            const optionKeywords = ['레일', '시공', '액세서리', '부속', '부자재', '마감', '마감재', '마감재료', '형상가공', '반자동', '출장비', '커튼시공'];
+            
+            // 1. type 필드가 있으면 우선 사용
+            let isOption = item.type === 'option';
+            
+            // 2. type 필드가 없거나 'product'인 경우 키워드 기반 분류
+            if (!isOption && item.type !== 'product') {
+              isOption = optionKeywords.some(keyword => 
+                item.productName?.includes(keyword) || 
+                item.productType?.includes(keyword) ||
+                item.details?.includes(keyword) ||
+                item.optionLabel?.includes(keyword)
+              );
+            }
             
             const convertedRow = {
               id: index + 1,
@@ -3345,10 +3400,26 @@ const EstimateManagement: React.FC = () => {
       const savedData = localStorage.getItem('saved_estimates');
       const localEstimates = savedData ? JSON.parse(savedData) : [];
       
+      // 삭제된 견적서 목록 로드
+      const deletedEstimatesData = localStorage.getItem('deleted_estimates');
+      const deletedEstimates = deletedEstimatesData ? JSON.parse(deletedEstimatesData) : [];
+      console.log('삭제된 견적서 목록:', deletedEstimates);
+      
+      // 삭제된 견적서를 제외한 Firebase 데이터 필터링
+      const filteredFirebaseEstimates = firebaseEstimates.filter((firebaseEst: any) => {
+        const isDeleted = deletedEstimates.includes(firebaseEst.estimateNo);
+        if (isDeleted) {
+          console.log('삭제된 견적서 제외:', firebaseEst.estimateNo);
+        }
+        return !isDeleted;
+      });
+      
+      console.log('삭제된 견적서 제외 후 Firebase 견적서 수:', filteredFirebaseEstimates.length, '개');
+      
       // 중복 제거 로직: estimateNo 기준으로 중복 제거
       const mergedEstimates = [...localEstimates];
       
-      firebaseEstimates.forEach((firebaseEst: any) => {
+      filteredFirebaseEstimates.forEach((firebaseEst: any) => {
         const existingIndex = mergedEstimates.findIndex(
           (localEst: any) => localEst.estimateNo === firebaseEst.estimateNo
         );
@@ -3594,17 +3665,13 @@ const EstimateManagement: React.FC = () => {
         rows: updatedRows, // 재계산된 제품/옵션 정보
       };
     } else {
-      // 일반 견적서인 경우 기존 로직 적용
-      const revisionNo = generateRevisionNo(
-        savedEstimate.estimateNo,
-        estimates
-      );
+      // 일반 견적서인 경우 동일한 번호로 불러오기
       newEstimate = {
         ...savedEstimate,
         id: Date.now(), // 새로운 ID 부여
-        estimateNo: revisionNo, // 수정번호로 변경
-        name: `${savedEstimate.name} (수정본)`,
-        estimateDate: getLocalDate(), // 로컬 시간 기준으로 오늘 날짜로 설정
+        estimateNo: savedEstimate.estimateNo, // 기존 견적번호 유지
+        name: savedEstimate.name, // 기존 이름 유지
+        estimateDate: savedEstimate.estimateDate, // 기존 견적일자 유지
         rows: [...savedEstimate.rows], // 제품/옵션 정보 복사
       };
     }
@@ -3650,6 +3717,25 @@ const EstimateManagement: React.FC = () => {
       setFinalizedAmount(''); // 확정금액이 없으면 빈 값으로 초기화
     }
 
+    // 할인 정보 불러오기
+    if (savedEstimate.discountAmountInput) {
+      setDiscountAmount(savedEstimate.discountAmountInput);
+    } else {
+      setDiscountAmount('');
+    }
+    
+    if (savedEstimate.discountRateInput) {
+      setDiscountRate(savedEstimate.discountRateInput);
+    } else {
+      setDiscountRate('');
+    }
+    
+    if (savedEstimate.discountedTotalInput) {
+      setDiscountedTotalInput(savedEstimate.discountedTotalInput);
+    } else {
+      setDiscountedTotalInput('');
+    }
+
     setEstimateDialogOpen(false);
 
     if (isFinalEstimate) {
@@ -3669,7 +3755,7 @@ const EstimateManagement: React.FC = () => {
         );
       } else {
         alert(
-          `저장된 견적서가 수정본으로 불러와졌습니다.\n견적번호: ${newEstimate.estimateNo}`
+          `저장된 견적서가 불러와졌습니다.\n견적번호: ${newEstimate.estimateNo}`
         );
       }
     }
@@ -4803,7 +4889,42 @@ const EstimateManagement: React.FC = () => {
     setEditRow((prev: any) => ({ ...prev, details: value }));
   };
 
+  // 수식 계산 함수
+  const calculateExpression = (expression: string): number | null => {
+    try {
+      // 수식에서 숫자, 연산자(+,-,*,/,), 괄호만 허용
+      const sanitizedExpression = expression.replace(/[^0-9+\-*/().]/g, '');
+      
+      // 빈 문자열이거나 숫자가 아닌 경우 null 반환
+      if (!sanitizedExpression || /^[+\-*/().]+$/.test(sanitizedExpression)) {
+        return null;
+      }
+      
+      // 수식 계산
+      const result = Function(`'use strict'; return (${sanitizedExpression})`)();
+      
+      // 숫자인지 확인하고 반환
+      if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
+        return Math.round(result); // 정수로 반올림
+      }
+      
+      return null;
+    } catch (error) {
+      console.log('수식 계산 실패:', expression, error);
+      return null;
+    }
+  };
+
   const handleEditChange = (field: string, value: any) => {
+    // 가로, 세로 필드에 대해 수식 계산 적용
+    if ((field === 'widthMM' || field === 'heightMM') && typeof value === 'string' && (value.includes('+') || value.includes('-') || value.includes('*') || value.includes('/'))) {
+      const calculatedValue = calculateExpression(value);
+      if (calculatedValue !== null) {
+        console.log(`수식 계산: ${value} = ${calculatedValue}`);
+        value = calculatedValue.toString();
+      }
+    }
+    
     const newEditRow = { ...editRow, [field]: value };
     let productDataChanged = false;
 
@@ -5608,6 +5729,10 @@ const EstimateManagement: React.FC = () => {
   const [contractModalOpen, setContractModalOpen] = useState(false);
   // 현재 견적의 계약 카드 리스트
   const [contractsForCurrentEstimate, setContractsForCurrentEstimate] = useState<any[]>([]);
+  // 계약서 저장 후 목록 갱신을 위한 트리거
+  const [contractRefreshTrigger, setContractRefreshTrigger] = useState(0);
+  // 계약서 카드 섹션 펼침/접힘 상태
+  const [contractSectionExpanded, setContractSectionExpanded] = useState(false);
 
   // 탭 변경/견적 변경 시 현재 견적에 연결된 계약 카드 목록 갱신
   useEffect(() => {
@@ -5621,8 +5746,41 @@ const EstimateManagement: React.FC = () => {
       const list = saved.filter(c => c.estimateNo === currentEstimateNo);
       list.sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
       setContractsForCurrentEstimate(list);
-    } catch {
+      console.log(`견적번호 ${currentEstimateNo}의 계약서 목록 갱신:`, list.length, '개');
+    } catch (error) {
+      console.error('계약서 목록 로드 실패:', error);
       setContractsForCurrentEstimate([]);
+    }
+  }, [activeTab, estimates, contractRefreshTrigger]);
+
+  // 견적서 데이터가 변경될 때마다 계약서 목록도 갱신
+  useEffect(() => {
+    if (estimates && estimates.length > 0 && activeTab >= 0) {
+      setContractRefreshTrigger(prev => prev + 1);
+    }
+  }, [estimates, activeTab]);
+
+  // 견적서 탭 변경 시 계약서 목록 강제 갱신
+  useEffect(() => {
+    if (estimates && estimates.length > 0 && activeTab >= 0) {
+      const currentEstimateNo = estimates[activeTab]?.estimateNo;
+      if (currentEstimateNo) {
+        try {
+          const saved: any[] = JSON.parse(localStorage.getItem('contracts') || '[]');
+          const list = saved.filter(c => c.estimateNo === currentEstimateNo);
+          list.sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
+          setContractsForCurrentEstimate(list);
+          console.log(`견적서 탭 변경 - 견적번호 ${currentEstimateNo}의 계약서 목록:`, list.length, '개');
+          
+          // 계약서가 있으면 자동으로 섹션 펼치기
+          if (list.length > 0) {
+            setContractSectionExpanded(true);
+          }
+        } catch (error) {
+          console.error('견적서 탭 변경 시 계약서 목록 로드 실패:', error);
+          setContractsForCurrentEstimate([]);
+        }
+      }
     }
   }, [activeTab, estimates]);
 
@@ -6461,9 +6619,107 @@ const EstimateManagement: React.FC = () => {
 
   // 계약서 관련 핸들러 함수들
   const handleContractPrint = (contract: any) => {
-    // 계약서 출력 로직 (향후 구현)
-    console.log('계약서 출력:', contract);
-    alert('계약서 출력 기능은 향후 구현 예정입니다.');
+    setSelectedContractForPrint(contract);
+    setContractTemplateOpen(true);
+  };
+
+  const handleContractPdfClick = async (contract: any) => {
+    if (contractPrintRef.current) {
+      try {
+        const canvas = await html2canvas(contractPrintRef.current, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+        });
+
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const imgWidth = 210;
+        const pageHeight = 295;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        let heightLeft = imgHeight;
+
+        let position = 0;
+
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+
+        while (heightLeft >= 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+        }
+
+        pdf.save(`${contract.contractNo}.pdf`);
+      } catch (error) {
+        console.error('PDF 생성 오류:', error);
+        alert('PDF 생성 중 오류가 발생했습니다.');
+      }
+    }
+  };
+
+  const handleContractJpgClick = async (contract: any) => {
+    if (contractPrintRef.current) {
+      try {
+        const canvas = await html2canvas(contractPrintRef.current, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+        });
+
+        const link = document.createElement('a');
+        link.download = `${contract.contractNo}.jpg`;
+        link.href = canvas.toDataURL('image/jpeg', 0.8);
+        link.click();
+      } catch (error) {
+        console.error('JPG 생성 오류:', error);
+        alert('JPG 생성 중 오류가 발생했습니다.');
+      }
+    }
+  };
+
+  const handleContractShareClick = (contract: any) => {
+    const shareData = {
+      title: `계약서 - ${contract.contractNo}`,
+      text: `${contract.customerName}님의 계약서입니다.`,
+      url: window.location.href,
+    };
+
+    if (navigator.share) {
+      navigator.share(shareData);
+    } else {
+      // 공유 API가 지원되지 않는 경우 클립보드에 복사
+      const contractInfo = `
+계약서 정보:
+계약번호: ${contract.contractNo}
+고객명: ${contract.customerName}
+계약일자: ${contract.contractDate}
+총금액: ${(contract.totalAmount || 0).toLocaleString()}원
+      `.trim();
+
+      navigator.clipboard
+        .writeText(contractInfo)
+        .then(() => {
+          alert('계약 정보가 클립보드에 복사되었습니다.');
+        })
+        .catch(() => {
+          alert('클립보드 복사에 실패했습니다.');
+        });
+    }
+  };
+
+  // 계약서 출력 메뉴 핸들러
+  const handleContractPrintMenuClick = (event: React.MouseEvent<HTMLElement>, contract: any) => {
+    setContractPrintMenuAnchorEl(event.currentTarget);
+    setSelectedContractForPrintMenu(contract);
+    setContractPrintMenuOpen(true);
+  };
+
+  const handleContractPrintMenuClose = () => {
+    setContractPrintMenuAnchorEl(null);
+    setContractPrintMenuOpen(false);
+    setSelectedContractForPrintMenu(null);
   };
 
   const handleContractEdit = (contract: any) => {
@@ -6483,6 +6739,9 @@ const EstimateManagement: React.FC = () => {
         setContractsForCurrentEstimate((prev: any[]) => 
           prev.filter((c: any) => c.id !== contract.id)
         );
+        
+        // 계약서 목록 갱신 트리거 업데이트
+        setContractRefreshTrigger(prev => prev + 1);
         
         alert('계약서가 삭제되었습니다.');
       } catch (error) {
@@ -6518,233 +6777,19 @@ const EstimateManagement: React.FC = () => {
     }
   };
 
-  // 저장하기 핸들러 함수
+  // 저장하기 핸들러 함수 - 현재 견적번호에 덮어씌워서 저장
   const handleSaveEstimate = async () => {
     try {
       const currentEstimate = estimates[activeTab];
       
-      console.log('현재 견적서:', currentEstimate);
-      console.log('Firebase에 견적서 저장 시작');
-
-      // Final 견적서인지 확인 (견적번호에 -final이 포함되어 있는지)
-      const isFinalEstimate =
-        currentEstimate.estimateNo &&
-        currentEstimate.estimateNo.includes('-final');
-
-      // 강화된 중복 체크: estimateNo와 id 모두 확인
-      const existingEstimateByNo = savedEstimates.find(
-        (est: any) => est.estimateNo === currentEstimate.estimateNo
-      );
-      const existingEstimateById = savedEstimates.find(
-        (est: any) => est.id === currentEstimate.id
-      );
-
-      let finalEstimateNo = currentEstimate.estimateNo;
-      let finalEstimateName = currentEstimate.name;
-      let isNewEstimate = false;
-
-      // Final 견적서인 경우 기존 견적번호 유지
-      if (isFinalEstimate) {
-        console.log('Final 견적서 저장 - 기존 견적번호 유지:', finalEstimateNo);
-
-        // 기존 Final 견적서가 있으면 업데이트, 없으면 새로 저장
-        const existingFinalIndex = savedEstimates.findIndex(
-          (est: any) => est.estimateNo === finalEstimateNo
-        );
-
-        if (existingFinalIndex >= 0) {
-          // 기존 Final 견적서 업데이트
-          savedEstimates[existingFinalIndex] = {
-            ...currentEstimate,
-            savedAt: new Date().toISOString(),
-            finalizedAmount: finalizedAmount, // 확정금액 저장
-            totalAmount: Math.round(
-              currentEstimate.rows.reduce(
-                (sum: number, row: any) => sum + (row.totalPrice || 0),
-                0
-              )
-            ),
-            discountAmount: Number(
-              String(discountAmount).replace(/[^\d]/g, '')
-            ),
-            discountedAmount:
-              Number(String(discountAmount).replace(/[^\d]/g, '')) > 0
-                ? Math.round(
-                  currentEstimate.rows.reduce(
-                    (sum: number, row: any) => sum + (row.totalPrice || 0),
-                    0
-                  )
-                ) - Number(String(discountAmount).replace(/[^\d]/g, ''))
-                : Math.round(
-                  currentEstimate.rows.reduce(
-                    (sum: number, row: any) => sum + (row.totalPrice || 0),
-                    0
-                  )
-                ),
-            margin: sumMargin,
-          };
-          console.log('기존 Final 견적서 업데이트:', finalEstimateName);
-        } else {
-          // 새로운 Final 견적서 저장 (중복 체크 후)
-          const estimateToSave = {
-            ...currentEstimate,
-            savedAt: new Date().toISOString(),
-            finalizedAmount: finalizedAmount, // 확정금액 저장
-            totalAmount: Math.round(
-              currentEstimate.rows.reduce(
-                (sum: number, row: any) => sum + (row.totalPrice || 0),
-                0
-              )
-            ),
-            discountAmount: Number(
-              String(discountAmount).replace(/[^\d]/g, '')
-            ),
-            discountedAmount:
-              Number(String(discountAmount).replace(/[^\d]/g, '')) > 0
-                ? Math.round(
-                  currentEstimate.rows.reduce(
-                    (sum: number, row: any) => sum + (row.totalPrice || 0),
-                    0
-                  )
-                ) - Number(String(discountAmount).replace(/[^\d]/g, ''))
-                : Math.round(
-                  currentEstimate.rows.reduce(
-                    (sum: number, row: any) => sum + (row.totalPrice || 0),
-                    0
-                  )
-                ),
-            margin: sumMargin,
-          };
-          
-          // 중복 체크 후 저장
-          const duplicateIndex = savedEstimates.findIndex(
-            (est: any) => est.estimateNo === estimateToSave.estimateNo
-          );
-          
-          if (duplicateIndex >= 0) {
-            // 중복 발견 시 업데이트
-            savedEstimates[duplicateIndex] = estimateToSave;
-            console.log('중복 Final 견적서 업데이트:', finalEstimateName);
-          } else {
-            // 새로 저장
-            savedEstimates.push(estimateToSave);
-            console.log('새로운 Final 견적서 저장:', finalEstimateName);
-          }
-        }
-
-        // Firebase에 Final 견적서 저장
-        try {
-          if (existingFinalIndex >= 0) {
-            // 기존 Final 견적서 업데이트
-            const estimateToUpdate = savedEstimates[existingFinalIndex];
-            console.log('Firebase에 기존 Final 견적서 업데이트 시작:', estimateToUpdate.id, estimateToUpdate.estimateNo);
-            
-            // ID가 Firebase 문서 ID인지 확인
-            if (estimateToUpdate.id && estimateToUpdate.id.length > 20) {
-              // Firebase 문서 ID로 업데이트
-              await estimateService.updateEstimate(estimateToUpdate.id, estimateToUpdate);
-              console.log('Firebase에 기존 Final 견적서 업데이트 완료 (문서 ID 사용)');
-            } else {
-              // 견적번호로 검색하여 업데이트
-              const existingEstimate = await estimateService.getEstimateByNumber(estimateToUpdate.estimateNo);
-              if (existingEstimate) {
-                await estimateService.updateEstimate(existingEstimate.id, estimateToUpdate);
-                console.log('Firebase에 기존 Final 견적서 업데이트 완료 (견적번호 검색)');
-              } else {
-                // 기존 견적서가 없으면 새로 저장
-                const savedEstimate = await estimateService.saveEstimate(estimateToUpdate);
-                console.log('Firebase에 새로운 Final 견적서 저장 완료:', savedEstimate);
-                
-                // 저장된 ID로 업데이트
-                if (savedEstimate) {
-                  estimateToUpdate.id = savedEstimate;
-                  savedEstimates[existingFinalIndex] = estimateToUpdate;
-                  localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
-                }
-              }
-            }
-          } else {
-            // 새로운 Final 견적서 저장
-            const estimateToSave = savedEstimates[savedEstimates.length - 1];
-            console.log('Firebase에 새로운 Final 견적서 저장 시작:', estimateToSave.estimateNo);
-            
-            const savedEstimate = await estimateService.saveEstimate(estimateToSave);
-            console.log('Firebase에 새로운 Final 견적서 저장 완료:', savedEstimate);
-            
-            // 저장된 ID로 업데이트
-            if (savedEstimate) {
-              estimateToSave.id = savedEstimate;
-              savedEstimates[savedEstimates.length - 1] = estimateToSave;
-              localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
-            }
-          }
-        } catch (firebaseError) {
-          console.error('Firebase 저장 실패, localStorage만 사용:', firebaseError);
-          // Firebase 실패 시 localStorage만 사용하고 사용자에게 알림
-          setSnackbar({
-            open: true,
-            message: `Final 견적서가 로컬에만 저장되었습니다. (${finalEstimateNo})`,
-            severity: 'warning',
-          });
-        }
-
-        // Final 견적서 저장 후에는 새로운 견적서로 초기화하지 않음
+      if (!currentEstimate || !currentEstimate.estimateNo) {
+        alert('저장할 견적서가 없거나 견적번호가 없습니다.');
         return;
       }
 
-      // 일반 견적서 저장 로직 (기존 코드)
-      if (existingEstimateByNo) {
-        // 고객명, 연락처, 프로젝트명이 모두 동일한지 확인
-        const isSameCustomer =
-          existingEstimateByNo.customerName === currentEstimate.customerName &&
-          existingEstimateByNo.contact === currentEstimate.contact &&
-          existingEstimateByNo.projectName === currentEstimate.projectName;
+      console.log('현재 견적서 저장 시작:', currentEstimate.estimateNo);
 
-        if (isSameCustomer) {
-          // 고객 정보가 동일하면 수정번호로 저장
-          const baseEstimateNo = currentEstimate.estimateNo
-            .split('-')
-            .slice(0, 2)
-            .join('-');
-
-          // 같은 기본 견적번호를 가진 수정본들 찾기
-          const revisionEstimates = savedEstimates.filter(
-            (est: any) =>
-              est.estimateNo.startsWith(baseEstimateNo) &&
-              est.estimateNo.includes('-')
-          );
-
-          // 수정번호 찾기
-          const revisionNumbers = revisionEstimates
-            .map((est: any) => {
-              const parts = est.estimateNo.split('-');
-              const lastPart = parts[parts.length - 1];
-              return Number(lastPart);
-            })
-            .filter((num: number) => !isNaN(num));
-
-          const maxRevision =
-            revisionNumbers.length > 0 ? Math.max(...revisionNumbers) : 0;
-          const nextRevision = maxRevision + 1;
-
-          finalEstimateNo = `${baseEstimateNo}-${String(nextRevision).padStart(2, '0')}`;
-          finalEstimateName = `${currentEstimate.name} (수정본)`;
-
-          console.log('동일한 고객 정보, 수정번호로 변경:', finalEstimateNo);
-        } else {
-          // 고객 정보가 다르면 신규 견적번호로 저장
-          finalEstimateNo = generateEstimateNo(estimates);
-          finalEstimateName = `견적서명-${finalEstimateNo}`;
-          isNewEstimate = true;
-
-          console.log(
-            '고객 정보가 다름, 신규 견적번호로 변경:',
-            finalEstimateNo
-          );
-        }
-      }
-
-      // 소비자금액과 합계금액 계산 (totalPrice가 이미 VAT 포함이므로 * 1.1 제거)
+      // 소비자금액과 합계금액 계산
       const sumTotalPrice = currentEstimate.rows.reduce(
         (sum: number, row: any) => sum + (row.totalPrice || 0),
         0
@@ -6758,17 +6803,19 @@ const EstimateManagement: React.FC = () => {
           ? totalAmount - discountAmountNumber
           : totalAmount;
 
-      // 저장 시간 추가
+      // 저장할 견적서 데이터 준비 (현재 견적번호 유지)
       const estimateToSave = {
         ...currentEstimate,
-        estimateNo: finalEstimateNo,
-        name: finalEstimateName,
         savedAt: new Date().toISOString(),
         finalizedAmount: finalizedAmount, // 확정금액 저장
         totalAmount,
         discountAmount: discountAmountNumber,
         discountedAmount,
         margin: sumMargin,
+        // 할인 정보 저장
+        discountAmountInput: discountAmount,
+        discountRateInput: discountRate,
+        discountedTotalInput: discountedTotalInput,
         // 실측 정보 추가
         measurementRequired: currentEstimate.measurementRequired,
         measurementInfo: currentEstimate.measurementInfo
@@ -6803,100 +6850,102 @@ const EstimateManagement: React.FC = () => {
           },
       };
 
-      // 강화된 중복 체크: ID와 estimateNo 모두 확인
-      const existingIndexById = savedEstimates.findIndex(
-        (est: any) => est.id === currentEstimate.id
+      // 기존 견적서 찾기 (견적번호로)
+      const existingIndex = savedEstimates.findIndex(
+        (est: any) => est.estimateNo === currentEstimate.estimateNo
       );
-      const existingIndexByNo = savedEstimates.findIndex(
-        (est: any) => est.estimateNo === estimateToSave.estimateNo
-      );
-      
-      if (existingIndexById >= 0) {
-        // ID가 일치하는 경우 업데이트
-        savedEstimates[existingIndexById] = estimateToSave;
-        console.log('기존 견적서 업데이트 (ID 일치):', finalEstimateName);
-      } else if (existingIndexByNo >= 0) {
-        // estimateNo가 일치하는 경우 업데이트 (중복 방지)
-        savedEstimates[existingIndexByNo] = estimateToSave;
-        console.log('기존 견적서 업데이트 (estimateNo 일치):', finalEstimateName);
+
+      if (existingIndex >= 0) {
+        // 기존 견적서 업데이트
+        savedEstimates[existingIndex] = estimateToSave;
+        console.log('기존 견적서 업데이트:', currentEstimate.estimateNo);
       } else {
-        // 완전히 새로운 견적서인 경우 추가
+        // 새로운 견적서 추가
         savedEstimates.push(estimateToSave);
-        console.log('새 견적서 저장:', finalEstimateName);
+        console.log('새 견적서 저장:', currentEstimate.estimateNo);
       }
 
       // localStorage에 저장
       localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
-      console.log(
-        'localStorage 저장 완료. 총',
-        savedEstimates.length,
-        '개의 견적서가 저장됨'
-      );
+      console.log('localStorage 저장 완료:', currentEstimate.estimateNo);
 
-      // Firebase에도 자동 저장
+      // Firebase에 업데이트/저장
       try {
-        console.log('Firebase에 견적서 저장 시작');
-        await estimateService.saveEstimate(estimateToSave);
-        console.log('Firebase 저장 완료:', finalEstimateName);
+        console.log('Firebase에 견적서 저장/업데이트 시작');
+        
+        // 견적번호 검증 후 Firebase 저장/업데이트
+        let isUpdated = false;
+        try {
+          console.log('Firebase 견적서 존재 여부 확인 중...');
+          
+          // 견적번호로 기존 견적서 검색
+          const existingEstimate = await estimateService.getEstimateByNumber(currentEstimate.estimateNo);
+          
+          if (existingEstimate) {
+            // 기존 견적서가 있으면 업데이트
+            console.log('기존 견적서 발견, 업데이트 진행:', existingEstimate.id);
+            await estimateService.updateEstimate(existingEstimate.id, estimateToSave);
+            console.log('Firebase 견적서 업데이트 완료');
+            isUpdated = true;
+            
+            // 업데이트된 ID 정보 반영 (문자열 ID를 숫자로 변환)
+            const firebaseId = typeof existingEstimate.id === 'string' ? parseInt(existingEstimate.id) || Date.now() : existingEstimate.id;
+            if (existingIndex >= 0) {
+              estimateToSave.id = firebaseId;
+              savedEstimates[existingIndex] = estimateToSave;
+            } else {
+              estimateToSave.id = firebaseId;
+              savedEstimates[savedEstimates.length - 1] = estimateToSave;
+            }
+          } else {
+            // 기존 견적서가 없으면 새로 저장
+            console.log('기존 견적서 없음, 새로 저장 진행');
+            const savedEstimate = await estimateService.saveEstimate(estimateToSave);
+            console.log('Firebase에 새로운 견적서 저장 완료:', savedEstimate);
+            
+            // 저장된 ID 반영
+            if (savedEstimate) {
+              const firebaseId = typeof savedEstimate === 'string' ? parseInt(savedEstimate) || Date.now() : savedEstimate;
+              if (existingIndex >= 0) {
+                savedEstimates[existingIndex].id = firebaseId;
+              } else {
+                estimateToSave.id = firebaseId;
+                savedEstimates[savedEstimates.length - 1] = estimateToSave;
+              }
+            }
+          }
+          
+          // localStorage 업데이트
+          localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
+          
+        } catch (error) {
+          console.error('Firebase 저장/업데이트 실패:', error);
+          throw error;
+        }
+        
+        console.log('Firebase 저장/업데이트 완료:', currentEstimate.estimateNo);
+        
+        // 성공 메시지 개선
+        const successMessage = isUpdated 
+          ? `견적서가 업데이트되었습니다.\n견적번호: ${currentEstimate.estimateNo}`
+          : `견적서가 새로 저장되었습니다.\n견적번호: ${currentEstimate.estimateNo}`;
+        
+        alert(successMessage);
       } catch (error) {
         console.error('Firebase 저장 실패:', error);
         // Firebase 저장 실패해도 localStorage는 성공했으므로 사용자에게 경고만 표시
+        const errorMessage = (error as Error).message?.includes('견적서를 찾을 수 없습니다') 
+          ? '견적서가 로컬에 저장되었지만 Firebase 동기화에 실패했습니다. (견적서 검색 실패)'
+          : '견적서가 로컬에 저장되었지만 Firebase 동기화에 실패했습니다. 인터넷 연결을 확인해주세요.';
+        
         setSnackbar({
           open: true,
-          message: '견적서가 저장되었지만 Firebase 동기화에 실패했습니다. 인터넷 연결을 확인해주세요.',
+          message: errorMessage,
+          severity: 'warning',
         });
+        alert(`견적서가 로컬에 저장되었습니다.\n견적번호: ${currentEstimate.estimateNo}\n\nFirebase 동기화 실패: ${(error as Error).message || '알 수 없는 오류'}`);
       }
 
-      if (existingEstimateByNo && !isNewEstimate) {
-        alert(
-          `동일한 견적번호가 있어 수정번호로 저장되었습니다.\n견적번호: ${finalEstimateNo}`
-        );
-      } else if (isNewEstimate) {
-        alert(
-          `고객 정보가 달라 신규 견적번호로 저장되었습니다.\n견적번호: ${finalEstimateNo}`
-        );
-      } else {
-        alert('견적서가 저장되었습니다.');
-      }
-
-      // 저장 후 견적서 입력 내용 초기화
-      const newEstimateNo = generateEstimateNo(estimates);
-      const newEstimate = {
-        id: Date.now(),
-        name: `견적서-${newEstimateNo}`,
-        estimateNo: newEstimateNo,
-        estimateDate: getLocalDate(), // 로컬 시간 기준으로 오늘 날짜 설정
-        customerName: '',
-        contact: '',
-        emergencyContact: '',
-        projectName: '',
-        type: '',
-        address: '',
-        rows: [],
-      };
-
-      // 현재 견적서를 새 견적서로 교체
-      const newEstimates = [...estimates];
-      newEstimates[activeTab] = newEstimate;
-      useEstimateStore.setState({ estimates: newEstimates });
-
-      // meta 상태도 초기화
-      setMeta({
-        estimateNo: newEstimateNo,
-        estimateDate: getLocalDate(), // 로컬 시간 기준으로 오늘 날짜 설정
-        customerName: '',
-        contact: '',
-        emergencyContact: '',
-        projectName: '',
-        type: '',
-        address: '',
-      });
-
-      // 할인 필드 초기화
-      setDiscountAmount('');
-      setDiscountRate('');
-
-      console.log('견적서 입력 내용 초기화 완료');
     } catch (error) {
       console.error('견적서 저장 중 오류:', error);
       alert('견적서 저장 중 오류가 발생했습니다.');
@@ -6992,6 +7041,7 @@ const EstimateManagement: React.FC = () => {
       // 할인 필드 초기화
       setDiscountAmount('');
       setDiscountRate('');
+      setDiscountedTotalInput('');
       setFinalizedAmount(''); // 확정금액도 초기화
 
       console.log('견적서 새이름저장 및 초기화 완료');
@@ -7052,6 +7102,67 @@ const EstimateManagement: React.FC = () => {
       });
     }
   }, [meta, activeTab]);
+
+  // 견적서 탭 변경 시 할인 정보 업데이트
+  useEffect(() => {
+    if (estimates[activeTab]) {
+      const currentEstimate = estimates[activeTab];
+      
+      // 할인 정보 업데이트
+      if (currentEstimate.discountAmountInput) {
+        setDiscountAmount(currentEstimate.discountAmountInput);
+      } else {
+        setDiscountAmount('');
+      }
+      
+      if (currentEstimate.discountRateInput) {
+        setDiscountRate(currentEstimate.discountRateInput);
+      } else {
+        setDiscountRate('');
+      }
+      
+      if (currentEstimate.discountedTotalInput) {
+        setDiscountedTotalInput(currentEstimate.discountedTotalInput);
+      } else {
+        setDiscountedTotalInput('');
+      }
+      
+      // 확정금액 업데이트
+      if (currentEstimate.finalizedAmount) {
+        setFinalizedAmount(currentEstimate.finalizedAmount);
+      } else {
+        setFinalizedAmount('');
+      }
+    }
+  }, [activeTab]);
+
+  // 할인 정보 변경 시 견적서 상태에 반영 (무한 루프 방지를 위해 조건부 업데이트)
+  useEffect(() => {
+    if (estimates[activeTab]) {
+      const currentEstimate = estimates[activeTab];
+      
+      // 현재 상태와 견적서 상태가 다를 때만 업데이트
+      const needsUpdate = 
+        currentEstimate.discountAmountInput !== discountAmount ||
+        currentEstimate.discountRateInput !== discountRate ||
+        currentEstimate.discountedTotalInput !== discountedTotalInput ||
+        currentEstimate.finalizedAmount !== finalizedAmount;
+      
+      if (needsUpdate) {
+        const updatedEstimate = {
+          ...currentEstimate,
+          discountAmountInput: discountAmount,
+          discountRateInput: discountRate,
+          discountedTotalInput: discountedTotalInput,
+          finalizedAmount: finalizedAmount,
+        };
+        
+        const newEstimates = [...estimates];
+        newEstimates[activeTab] = updatedEstimate;
+        useEstimateStore.setState({ estimates: newEstimates });
+      }
+    }
+  }, [discountAmount, discountRate, discountedTotalInput, finalizedAmount, activeTab]);
 
   // 템플릿 선택 핸들러
   const handleTemplateSelect = (template: EstimateTemplateType) => {
@@ -7902,6 +8013,12 @@ const EstimateManagement: React.FC = () => {
         type: '',
         address: '',
       });
+      
+      // 할인 정보 초기화
+      setDiscountAmount('');
+      setDiscountRate('');
+      setDiscountedTotalInput('');
+      setFinalizedAmount('');
     }
   };
 
@@ -10999,7 +11116,7 @@ const EstimateManagement: React.FC = () => {
                     label="가로(mm)"
                     value={editRow.widthMM ? Number(editRow.widthMM).toLocaleString() : ''}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const value = e.target.value.replace(/[^0-9]/g, '');
+                      const value = e.target.value;
                       handleEditChange('widthMM', value);
                     }}
                     onKeyDown={createKeyboardNavigationHandler({
@@ -11025,7 +11142,7 @@ const EstimateManagement: React.FC = () => {
                     label="세로(mm)"
                     value={editRow.heightMM ? Number(editRow.heightMM).toLocaleString() : ''}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const value = e.target.value.replace(/[^0-9]/g, '');
+                      const value = e.target.value;
                       handleEditChange('heightMM', value);
                     }}
                     onKeyDown={createKeyboardNavigationHandler({
@@ -13194,7 +13311,7 @@ const EstimateManagement: React.FC = () => {
                 />
               </Box>
             )}
-            {/* 확정금액 + 계약생성: 할인 영역 하단으로 이동 */}
+            {/* 확정금액 + 계약생성 + 저장하기: 할인 영역 하단으로 이동 */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography sx={{ color: '#d32f2f', fontWeight: 'bold' }}>확정금액(VAT포함)</Typography>
@@ -13217,14 +13334,62 @@ const EstimateManagement: React.FC = () => {
               >
                 계약생성
               </Button>
+              <Tooltip title="견적서 저장">
+                <IconButton
+                  size="small"
+                  onClick={handleSaveEstimate}
+                  sx={{ 
+                    color: 'var(--success-color, #2e7d32)',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--surface-color)',
+                    '&:hover': {
+                      backgroundColor: 'rgba(46, 125, 50, 0.1)',
+                      borderColor: 'var(--success-color)',
+                    },
+                  }}
+                >
+                  <SaveIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
             </Box>
 
             {/* 생성된 계약서 카드: 확정금액 바로 아래 */}
-            {contractsForCurrentEstimate && contractsForCurrentEstimate.length > 0 && (
-              <Box sx={{ mt: 1, mb: 2 }}>
-                <Typography sx={{ fontWeight: 'bold', color: 'var(--text-color)', mb: 1 }}>
-                  계약서
+            
+            {/* 계약서 카드 섹션 */}
+            <Box sx={{ mt: 2, mb: 2 }}>
+              <Box 
+                sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between',
+                  cursor: 'pointer',
+                  p: 1,
+                  borderRadius: 1,
+                  backgroundColor: 'var(--background-color)',
+                  border: '1px solid var(--border-color)',
+                  '&:hover': {
+                    backgroundColor: 'var(--hover-color)',
+                  }
+                }}
+                onClick={() => setContractSectionExpanded(!contractSectionExpanded)}
+              >
+                <Typography sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}>
+                  계약서 ({contractsForCurrentEstimate?.length || 0}개)
                 </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {contractsForCurrentEstimate && contractsForCurrentEstimate.length > 0 && (
+                    <Typography sx={{ color: 'var(--primary-color)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                      계약서 있음
+                    </Typography>
+                  )}
+                  <IconButton size="small" sx={{ color: 'var(--text-color)' }}>
+                    {contractSectionExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  </IconButton>
+                </Box>
+              </Box>
+              
+              <Collapse in={contractSectionExpanded}>
+                {contractsForCurrentEstimate && contractsForCurrentEstimate.length > 0 ? (
                 <Grid container spacing={1}>
                   {contractsForCurrentEstimate.map((c: any) => (
                     <Grid item xs={12} md={6} lg={4} key={c.id}>
@@ -13233,7 +13398,7 @@ const EstimateManagement: React.FC = () => {
                         <Box sx={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 0.5 }}>
                           <IconButton
                             size="small"
-                            onClick={() => handleContractPrint(c)}
+                            onClick={(event) => handleContractPrintMenuClick(event, c)}
                             sx={{
                               color: 'var(--primary-color)',
                               '&:hover': { backgroundColor: 'var(--hover-color)' },
@@ -13323,8 +13488,15 @@ const EstimateManagement: React.FC = () => {
                     </Grid>
                   ))}
                 </Grid>
-              </Box>
-            )}
+              ) : (
+                <Box sx={{ p: 2, textAlign: 'center', color: 'var(--text-secondary-color)' }}>
+                  <Typography variant="body2">
+                    이 견적서에 연결된 계약서가 없습니다.
+                  </Typography>
+                </Box>
+              )}
+              </Collapse>
+            </Box>
 
             {/* 버튼들 */}
             <Box sx={{ display: 'flex', gap: 1, mt: 2, mb: 1 }}>
@@ -13490,8 +13662,28 @@ const EstimateManagement: React.FC = () => {
         totalAmount={sumTotalPrice}
         discountedAmount={Number(finalizedAmount || (discountAmountNumber > 0 ? (discountedTotal || sumTotalPrice) : sumTotalPrice))}
         onSaved={(contract: any) => {
+          console.log('계약서 저장 완료:', contract);
           // 저장 직후 현재 견적의 계약 카드 목록을 갱신
           setContractsForCurrentEstimate((prev: any[]) => [contract, ...prev.filter((c: any) => c.id !== contract.id)]);
+          // 계약서 목록 갱신 트리거 업데이트
+          setContractRefreshTrigger(prev => prev + 1);
+          // 계약서 섹션 자동 펼치기
+          setContractSectionExpanded(true);
+          // localStorage에서 최신 데이터 다시 로드
+          setTimeout(() => {
+            try {
+              const currentEstimateNo = estimates[activeTab]?.estimateNo;
+              if (currentEstimateNo) {
+                const saved: any[] = JSON.parse(localStorage.getItem('contracts') || '[]');
+                const list = saved.filter(c => c.estimateNo === currentEstimateNo);
+                list.sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
+                setContractsForCurrentEstimate(list);
+                console.log('계약서 저장 후 목록 재로드 완료:', list.length, '개');
+              }
+            } catch (error) {
+              console.error('계약서 저장 후 목록 재로드 실패:', error);
+            }
+          }, 100);
         }}
       />
 
@@ -13518,10 +13710,30 @@ const EstimateManagement: React.FC = () => {
         existingContract={selectedContractForEdit}
         isEditMode={true}
         onSaved={(updatedContract: any) => {
+          console.log('계약서 수정 완료:', updatedContract);
           // 수정된 계약서로 목록 업데이트
           setContractsForCurrentEstimate((prev: any[]) => 
             prev.map((c: any) => c.id === updatedContract.id ? updatedContract : c)
           );
+          // 계약서 목록 갱신 트리거 업데이트
+          setContractRefreshTrigger(prev => prev + 1);
+          // 계약서 섹션 자동 펼치기
+          setContractSectionExpanded(true);
+          // localStorage에서 최신 데이터 다시 로드
+          setTimeout(() => {
+            try {
+              const currentEstimateNo = estimates[activeTab]?.estimateNo;
+              if (currentEstimateNo) {
+                const saved: any[] = JSON.parse(localStorage.getItem('contracts') || '[]');
+                const list = saved.filter(c => c.estimateNo === currentEstimateNo);
+                list.sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
+                setContractsForCurrentEstimate(list);
+                console.log('계약서 수정 후 목록 재로드 완료:', list.length, '개');
+              }
+            } catch (error) {
+              console.error('계약서 수정 후 목록 재로드 실패:', error);
+            }
+          }, 100);
           setContractEditModalOpen(false);
           setSelectedContractForEdit(null);
         }}
@@ -13988,19 +14200,19 @@ const EstimateManagement: React.FC = () => {
                             },
                           };
                         } else if (isFinal) {
-                          // Final 견적서는 파란색 배경
-                          backgroundColor = '#2196f3';
+                          // Final 견적서는 일반 견적서와 동일한 배경색 사용
+                          backgroundColor = 'var(--surface-color)';
                           specialStyle = {
-                            backgroundColor: '#2196f3',
-                            border: '2px solid #1976d2',
+                            backgroundColor: 'var(--surface-color)',
+                            border: '2px solid var(--primary-color)',
                             '&:hover': {
-                              backgroundColor: '#42a5f5',
-                              border: '2px solid #1565c0',
+                              backgroundColor: 'var(--hover-color)',
+                              border: '2px solid var(--primary-color)',
                             },
                           };
                         } else {
-                          // 일반 견적서는 화이트 배경
-                          backgroundColor = '#ffffff';
+                          // 일반 견적서는 기본 배경색
+                          backgroundColor = 'var(--surface-color)';
                         }
 
                         return (
@@ -14015,9 +14227,7 @@ const EstimateManagement: React.FC = () => {
                               '&:hover': {
                                 backgroundColor: isOrderCompleted
                                   ? '#66bb6a'
-                                  : isFinal
-                                    ? '#42a5f5'
-                                    : '#f5f5f5',
+                                  : 'var(--hover-color)',
                                 transition: 'background-color 0.2s ease',
                               },
                               ...specialStyle,
@@ -14026,14 +14236,14 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showAddress && (
                               <TableCell
                                 sx={{
-                                  color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
+                                  color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
+                                  textShadow: isOrderCompleted ? 'none' : 'none',
                                   '&:hover': {
-                                    color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                    color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
+                                    textShadow: isOrderCompleted ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -14057,14 +14267,14 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showEstimateNo && (
                               <TableCell
                                 sx={{
-                                  color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
+                                  color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
                                   borderColor: 'var(--border-color)',
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'bold',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                  textShadow: isOrderCompleted ? 'none' : 'none',
                                   '&:hover': {
-                                    color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                    color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
+                                    textShadow: isOrderCompleted ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -14089,10 +14299,11 @@ const EstimateManagement: React.FC = () => {
                                     size="small"
                                     sx={{
                                       ml: 1,
-                                      backgroundColor: '#2196f3',
+                                      backgroundColor: 'var(--primary-color)',
                                       color: '#ffffff',
                                       fontSize: '0.7rem',
                                       height: '20px',
+                                      fontWeight: 'bold',
                                     }}
                                   />
                                 )}
@@ -14101,14 +14312,14 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showEstimateDate && (
                               <TableCell
                                 sx={{
-                                  color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
+                                  color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                  textShadow: isOrderCompleted ? 'none' : 'none',
                                   '&:hover': {
-                                    color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                    color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
+                                    textShadow: isOrderCompleted ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -14118,14 +14329,14 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showSavedDate && (
                               <TableCell
                                 sx={{
-                                  color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
+                                  color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                  textShadow: isOrderCompleted ? 'none' : 'none',
                                   '&:hover': {
-                                    color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                    color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
+                                    textShadow: isOrderCompleted ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -14137,14 +14348,14 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showCustomerName && (
                               <TableCell
                                 sx={{
-                                  color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
+                                  color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                  textShadow: isOrderCompleted ? 'none' : 'none',
                                   '&:hover': {
-                                    color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                    color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
+                                    textShadow: isOrderCompleted ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -14154,14 +14365,14 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showContact && (
                               <TableCell
                                 sx={{
-                                  color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
+                                  color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                  textShadow: isOrderCompleted ? 'none' : 'none',
                                   '&:hover': {
-                                    color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                    color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
+                                    textShadow: isOrderCompleted ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -14171,14 +14382,14 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showProjectName && (
                               <TableCell
                                 sx={{
-                                  color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
+                                  color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                  textShadow: isOrderCompleted ? 'none' : 'none',
                                   '&:hover': {
-                                    color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                    color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
+                                    textShadow: isOrderCompleted ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -14188,14 +14399,14 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showProducts && (
                               <TableCell
                                 sx={{
-                                  color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
+                                  color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                  textShadow: isOrderCompleted ? 'none' : 'none',
                                   '&:hover': {
-                                    color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                    color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
+                                    textShadow: isOrderCompleted ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -14219,14 +14430,14 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showTotalAmount && (
                               <TableCell
                                 sx={{
-                                  color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
+                                  color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                  textShadow: isOrderCompleted ? 'none' : 'none',
                                   '&:hover': {
-                                    color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                    color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
+                                    textShadow: isOrderCompleted ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -14236,14 +14447,14 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showDiscountedAmount && (
                               <TableCell
                                 sx={{
-                                  color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
+                                  color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                  textShadow: isOrderCompleted ? 'none' : 'none',
                                   '&:hover': {
-                                    color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                    color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
+                                    textShadow: isOrderCompleted ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -14253,14 +14464,14 @@ const EstimateManagement: React.FC = () => {
                             {estimateListDisplay.showDiscountAmount && (
                               <TableCell
                                 sx={{
-                                  color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
+                                  color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                  textShadow: isOrderCompleted ? 'none' : 'none',
                                   '&:hover': {
-                                    color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
+                                    color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
+                                    textShadow: isOrderCompleted ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -14506,10 +14717,9 @@ const EstimateManagement: React.FC = () => {
                                     ) {
                                       try {
                                         console.log('=== 견적서 삭제 시작 ===');
-                                        console.log('삭제할 견적서:', est);
+                                        console.log('삭제할 견적서 번호:', est.estimateNo);
                                         console.log('견적서 ID 타입:', typeof est.id);
                                         console.log('견적서 ID 값:', est.id);
-                                        console.log('견적서 전체 데이터:', JSON.stringify(est, null, 2));
 
                                         // Firestore 문서 ID 확인 (est.id가 숫자인 경우 실제 문서 ID를 찾아야 함)
                                         let firestoreId = est.id;
@@ -14527,22 +14737,19 @@ const EstimateManagement: React.FC = () => {
                                           
                                           console.log('동일한 견적번호를 가진 견적서들:', matchingEstimates);
                                           
-                                          // Firestore 문서 ID를 가진 견적서 찾기
+                                          // Firestore 문서 ID를 가진 견적서 찾기 (더 정확한 조건)
                                           const matchingEstimate = matchingEstimates.find(e => 
                                             typeof e.id === 'string' && 
-                                            e.id.length > 10 // Firestore 문서 ID는 보통 20자 이상
+                                            e.id.length > 10 && // Firestore 문서 ID는 보통 20자 이상
+                                            !e.id.includes('-') && // 견적번호가 아닌 실제 문서 ID
+                                            !e.id.match(/^[A-Z]\d{8}-\d{3}-\d{2}$/) // 견적번호 패턴이 아닌 것
                                           );
                                           
                                           if (matchingEstimate) {
                                             firestoreId = matchingEstimate.id;
                                             console.log('실제 Firestore 문서 ID 찾음:', firestoreId);
                                           } else {
-                                            console.error('실제 Firestore 문서 ID를 찾을 수 없음');
-                                            console.log('동일한 견적번호를 가진 견적서들:', matchingEstimates);
-                                            console.log('모든 저장된 견적서:', savedEstimates);
-                                            
-                                            // 견적번호로 삭제 시도
-                                            console.log('견적번호로 삭제를 시도합니다:', est.estimateNo);
+                                            console.log('Firestore 문서 ID를 찾을 수 없어 견적번호로 삭제를 시도합니다:', est.estimateNo);
                                             firestoreId = est.estimateNo;
                                           }
                                         }
@@ -14559,79 +14766,107 @@ const EstimateManagement: React.FC = () => {
 
                                         if (response.ok) {
                                           console.log('Firebase에서 견적서 삭제 성공');
+                                          
+                                          // Firebase 삭제 성공 시에만 localStorage에서도 삭제
+                                          console.log('삭제 전 견적서 개수:', savedEstimates.length);
+                                          console.log('삭제할 견적서 번호:', est.estimateNo);
+                                          console.log('사용한 삭제 ID:', firestoreId);
+                                          
+                                          // localStorage에서 견적서 삭제 (정확히 해당 견적서만)
+                                          const updatedSavedEstimates =
+                                            savedEstimates.filter(
+                                              (e: any) => e.id !== firestoreId && e.estimateNo !== est.estimateNo
+                                            );
+                                          
+                                          console.log('삭제 후 견적서 개수:', updatedSavedEstimates.length);
+                                          console.log('삭제 완료 - 견적서 번호:', est.estimateNo);
+                                          
+                                          localStorage.setItem(
+                                            'saved_estimates',
+                                            JSON.stringify(updatedSavedEstimates)
+                                          );
+
+                                          // 삭제된 견적서를 추적 목록에 추가
+                                          const deletedEstimatesData = localStorage.getItem('deleted_estimates');
+                                          const deletedEstimates = deletedEstimatesData ? JSON.parse(deletedEstimatesData) : [];
+                                          if (!deletedEstimates.includes(est.estimateNo)) {
+                                            deletedEstimates.push(est.estimateNo);
+                                            localStorage.setItem('deleted_estimates', JSON.stringify(deletedEstimates));
+                                            console.log('삭제된 견적서 추적 목록에 추가:', est.estimateNo);
+                                          }
+
+                                          // 상태 업데이트 (즉시 반영)
+                                          setSavedEstimates(updatedSavedEstimates);
+
+                                          // 성공 메시지 표시
+                                          alert('견적서가 삭제되었습니다.');
                                         } else {
                                           const errorText = await response.text();
                                           console.error('Firebase 삭제 실패:', response.status, response.statusText, errorText);
-                                          // Firebase 삭제 실패해도 localStorage는 삭제 진행
-                                        }
-
-                                        console.log('삭제 전 견적서 개수:', savedEstimates.length);
-                                        console.log('삭제할 견적서 ID:', est.id);
-                                        console.log('삭제할 견적서 번호:', est.estimateNo);
-                                        console.log('사용할 Firestore ID:', firestoreId);
-                                        
-                                        // localStorage에서 견적서 삭제 (정확히 해당 견적서만)
-                                        const updatedSavedEstimates =
-                                          savedEstimates.filter(
-                                            (e: any) => e.id !== firestoreId && e.estimateNo !== est.estimateNo
+                                          
+                                          // Firebase 삭제 실패 시 사용자에게 선택권 제공
+                                          const shouldDeleteLocally = window.confirm(
+                                            '서버에서 견적서 삭제에 실패했습니다. 로컬에서만 삭제하시겠습니까?\n\n' +
+                                            '로컬에서만 삭제하면 나중에 다시 동기화될 수 있습니다.'
                                           );
-                                        
-                                        console.log('삭제 후 견적서 개수:', updatedSavedEstimates.length);
-                                        console.log('삭제된 견적서 목록:', updatedSavedEstimates.map(e => ({ id: e.id, estimateNo: e.estimateNo })));
-                                        
-                                        localStorage.setItem(
-                                          'saved_estimates',
-                                          JSON.stringify(updatedSavedEstimates)
-                                        );
-
-                                        // 상태 업데이트 (즉시 반영)
-                                        setSavedEstimates(updatedSavedEstimates);
-
-                                        // 성공 메시지 표시
-                                        alert('견적서가 삭제되었습니다.');
+                                          
+                                          if (shouldDeleteLocally) {
+                                            // 로컬에서만 삭제
+                                            const updatedSavedEstimates = savedEstimates.filter(
+                                              (e: any) => e.id !== firestoreId && e.estimateNo !== est.estimateNo
+                                            );
+                                            
+                                            localStorage.setItem(
+                                              'saved_estimates',
+                                              JSON.stringify(updatedSavedEstimates)
+                                            );
+                                            
+                                            // 삭제된 견적서를 추적 목록에 추가
+                                            const deletedEstimatesData = localStorage.getItem('deleted_estimates');
+                                            const deletedEstimates = deletedEstimatesData ? JSON.parse(deletedEstimatesData) : [];
+                                            if (!deletedEstimates.includes(est.estimateNo)) {
+                                              deletedEstimates.push(est.estimateNo);
+                                              localStorage.setItem('deleted_estimates', JSON.stringify(deletedEstimates));
+                                              console.log('삭제된 견적서 추적 목록에 추가 (로컬 삭제):', est.estimateNo);
+                                            }
+                                            
+                                            setSavedEstimates(updatedSavedEstimates);
+                                            alert('로컬에서 견적서가 삭제되었습니다. 서버 동기화는 나중에 다시 시도해주세요.');
+                                          }
+                                          return;
+                                        }
                                       } catch (error) {
                                         console.error('견적서 삭제 중 오류:', error);
                                         
-                                        // 오류 발생 시에도 Firestore ID를 다시 계산
-                                        let errorFirestoreId = est.id;
-                                        if (typeof est.id === 'number') {
-                                          const matchingEstimates = savedEstimates.filter(e => 
-                                            e.estimateNo === est.estimateNo
-                                          );
-                                          const matchingEstimate = matchingEstimates.find(e => 
-                                            typeof e.id === 'string' && 
-                                            e.id.length > 10
-                                          );
-                                          if (matchingEstimate) {
-                                            errorFirestoreId = matchingEstimate.id;
-                                          } else {
-                                            errorFirestoreId = est.estimateNo; // 임시로 견적번호 사용
-                                          }
-                                        }
-                                        
-                                        console.log('오류 발생 - 삭제 전 견적서 개수:', savedEstimates.length);
-                                        console.log('오류 발생 - 삭제할 견적서 ID:', est.id);
-                                        console.log('오류 발생 - 삭제할 견적서 번호:', est.estimateNo);
-                                        console.log('오류 발생 - 사용할 Firestore ID:', errorFirestoreId);
-                                        
-                                        // 오류 발생 시에도 localStorage는 삭제 (정확히 해당 견적서만)
-                                        const updatedSavedEstimates =
-                                          savedEstimates.filter(
-                                            (e: any) => e.id !== errorFirestoreId && e.estimateNo !== est.estimateNo
-                                          );
-                                        
-                                        console.log('오류 발생 - 삭제 후 견적서 개수:', updatedSavedEstimates.length);
-                                        console.log('오류 발생 - 삭제된 견적서 목록:', updatedSavedEstimates.map(e => ({ id: e.id, estimateNo: e.estimateNo })));
-                                        
-                                        localStorage.setItem(
-                                          'saved_estimates',
-                                          JSON.stringify(updatedSavedEstimates)
+                                        // 네트워크 오류 등으로 인한 삭제 실패 시 사용자에게 선택권 제공
+                                        const shouldDeleteLocally = window.confirm(
+                                          '견적서 삭제 중 오류가 발생했습니다. 로컬에서만 삭제하시겠습니까?\n\n' +
+                                          '로컬에서만 삭제하면 나중에 다시 동기화될 수 있습니다.'
                                         );
                                         
-                                        // 상태 업데이트 (즉시 반영)
-                                        setSavedEstimates(updatedSavedEstimates);
-                                        
-                                        alert('견적서가 삭제되었습니다. (서버 연결 오류가 있었지만 로컬에서는 삭제됨)');
+                                        if (shouldDeleteLocally) {
+                                          // 로컬에서만 삭제
+                                          const updatedSavedEstimates = savedEstimates.filter(
+                                            (e: any) => e.id !== est.id && e.estimateNo !== est.estimateNo
+                                          );
+                                          
+                                          localStorage.setItem(
+                                            'saved_estimates',
+                                            JSON.stringify(updatedSavedEstimates)
+                                          );
+                                          
+                                          // 삭제된 견적서를 추적 목록에 추가
+                                          const deletedEstimatesData = localStorage.getItem('deleted_estimates');
+                                          const deletedEstimates = deletedEstimatesData ? JSON.parse(deletedEstimatesData) : [];
+                                          if (!deletedEstimates.includes(est.estimateNo)) {
+                                            deletedEstimates.push(est.estimateNo);
+                                            localStorage.setItem('deleted_estimates', JSON.stringify(deletedEstimates));
+                                            console.log('삭제된 견적서 추적 목록에 추가 (오류 시 로컬 삭제):', est.estimateNo);
+                                          }
+                                          
+                                          setSavedEstimates(updatedSavedEstimates);
+                                          alert('로컬에서 견적서가 삭제되었습니다. 서버 동기화는 나중에 다시 시도해주세요.');
+                                        }
                                       }
                                     }
                                   }}
@@ -15673,6 +15908,116 @@ const EstimateManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* 계약서 출력용 숨겨진 div */}
+      <div ref={contractPrintRef} style={{ display: 'none' }}>
+        {selectedContractForPrint && (
+          <ContractTemplate
+            contract={selectedContractForPrint}
+            open={false}
+            onClose={() => {}}
+          />
+        )}
+      </div>
+
+      {/* 계약서 출력 모달 */}
+      {selectedContractForPrint && (
+        <ContractTemplate
+          contract={selectedContractForPrint}
+          open={contractTemplateOpen}
+          onClose={() => setContractTemplateOpen(false)}
+        />
+      )}
+
+      {/* 계약서 출력 메뉴 */}
+      <Menu
+        anchorEl={contractPrintMenuAnchorEl}
+        open={contractPrintMenuOpen}
+        onClose={handleContractPrintMenuClose}
+        PaperProps={{
+          sx: {
+            backgroundColor: 'var(--surface-color)',
+            color: 'var(--text-color)',
+            border: '1px solid var(--border-color)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+            '& .MuiMenuItem-root': {
+              color: 'var(--text-color)',
+              '&:hover': {
+                backgroundColor: 'var(--hover-color)',
+              },
+            },
+          },
+        }}
+      >
+        <MenuItem
+          onClick={() => {
+            if (selectedContractForPrintMenu) {
+              handleContractPrint(selectedContractForPrintMenu);
+            }
+            handleContractPrintMenuClose();
+          }}
+          sx={{
+            color: 'var(--text-color)',
+            '&:hover': {
+              backgroundColor: 'var(--hover-color)',
+            },
+          }}
+        >
+          <PrintIcon fontSize="small" sx={{ mr: 1, color: 'var(--primary-color)' }} />
+          인쇄
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (selectedContractForPrintMenu) {
+              handleContractPdfClick(selectedContractForPrintMenu);
+            }
+            handleContractPrintMenuClose();
+          }}
+          sx={{
+            color: 'var(--text-color)',
+            '&:hover': {
+              backgroundColor: 'var(--hover-color)',
+            },
+          }}
+        >
+          <PictureAsPdfIcon fontSize="small" sx={{ mr: 1, color: '#f44336' }} />
+          PDF 다운로드
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (selectedContractForPrintMenu) {
+              handleContractJpgClick(selectedContractForPrintMenu);
+            }
+            handleContractPrintMenuClose();
+          }}
+          sx={{
+            color: 'var(--text-color)',
+            '&:hover': {
+              backgroundColor: 'var(--hover-color)',
+            },
+          }}
+        >
+          <ImageIcon fontSize="small" sx={{ mr: 1, color: '#4caf50' }} />
+          JPG 다운로드
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (selectedContractForPrintMenu) {
+              handleContractShareClick(selectedContractForPrintMenu);
+            }
+            handleContractPrintMenuClose();
+          }}
+          sx={{
+            color: 'var(--text-color)',
+            '&:hover': {
+              backgroundColor: 'var(--hover-color)',
+            },
+          }}
+        >
+          <ShareIcon fontSize="small" sx={{ mr: 1, color: '#ff9800' }} />
+          공유
+        </MenuItem>
+      </Menu>
     </>
   );
 };

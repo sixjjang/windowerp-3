@@ -250,16 +250,70 @@ export const estimateService = {
     }
   },
 
-  // 견적번호로 견적서 찾기
+  // 견적번호로 견적서 찾기 (강화된 검색)
   async getEstimateByNumber(estimateNo: string) {
     try {
+      console.log('견적번호로 견적서 검색 시작:', estimateNo);
+      
       const estimatesRef = collection(db, 'estimates');
-      const q = query(estimatesRef, where('estimateNo', '==', estimateNo));
-      const snapshot = await getDocs(q);
+      
+      // 1. 정확한 견적번호 매칭
+      let q = query(estimatesRef, where('estimateNo', '==', estimateNo));
+      let snapshot = await getDocs(q);
+      
       if (!snapshot.empty) {
         const doc = snapshot.docs[0];
+        console.log('정확한 견적번호 매칭 성공:', estimateNo, '문서 ID:', doc.id);
         return { id: doc.id, ...doc.data() };
       }
+      
+      // 2. 기본 견적번호 매칭 (수정 버전 제거)
+      if (estimateNo.includes('-')) {
+        const baseEstimateNo = estimateNo.split('-').slice(0, 2).join('-');
+        console.log('기본 견적번호로 검색 시도:', baseEstimateNo);
+        
+        q = query(estimatesRef, where('estimateNo', '==', baseEstimateNo));
+        snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+          const doc = snapshot.docs[0];
+          console.log('기본 견적번호 매칭 성공:', baseEstimateNo, '문서 ID:', doc.id);
+          return { id: doc.id, ...doc.data() };
+        }
+      }
+      
+      // 3. 부분 매칭 (견적번호 패턴 분석)
+      if (estimateNo.includes('-')) {
+        const baseEstimateNo = estimateNo.split('-')[0] + '-' + estimateNo.split('-')[1];
+        console.log('부분 견적번호로 검색 시도:', baseEstimateNo);
+        
+        q = query(
+          estimatesRef, 
+          where('estimateNo', '>=', baseEstimateNo),
+          where('estimateNo', '<=', baseEstimateNo + '\uf8ff')
+        );
+        snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+          // 가장 최근에 수정된 문서 반환
+          let latestDoc = snapshot.docs[0];
+          let latestUpdatedAt = latestDoc.data().updatedAt || latestDoc.data().createdAt || new Date(0);
+          
+          snapshot.docs.forEach(doc => {
+            const data = doc.data();
+            const updatedAt = data.updatedAt || data.createdAt || new Date(0);
+            if (updatedAt > latestUpdatedAt) {
+              latestDoc = doc;
+              latestUpdatedAt = updatedAt;
+            }
+          });
+          
+          console.log('부분 견적번호 매칭 성공:', baseEstimateNo, '문서 ID:', latestDoc.id);
+          return { id: latestDoc.id, ...latestDoc.data() };
+        }
+      }
+      
+      console.log('견적번호로 견적서를 찾을 수 없음:', estimateNo);
       return null;
     } catch (error) {
       console.error('견적서 검색 실패:', error);

@@ -485,12 +485,62 @@ exports.updateEstimate = functions.https.onRequest(async (req, res) => {
       const estimateData = req.body;
       estimateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
 
-      // 문서 ID로 직접 견적서 수정
-      const estimateRef = db.collection('estimates').doc(decodedEstimateId);
-      const estimateDoc = await estimateRef.get();
+      // 문서 ID로 직접 견적서 수정 시도
+      let estimateRef = db.collection('estimates').doc(decodedEstimateId);
+      let estimateDoc = await estimateRef.get();
 
+      // 문서 ID로 찾지 못한 경우, 견적번호로 검색 (강화된 검색 로직)
       if (!estimateDoc.exists) {
-        return res.status(404).json({ error: '견적서를 찾을 수 없습니다.' });
+        console.log('문서 ID로 견적서를 찾을 수 없음, 견적번호로 검색 시도:', decodedEstimateId);
+        
+        // 1. 정확한 견적번호 매칭
+        let estimatesQuery = db.collection('estimates').where('estimateNo', '==', decodedEstimateId);
+        let querySnapshot = await estimatesQuery.get();
+        
+        // 2. 정확한 매칭이 없으면 기본 견적번호 매칭 (수정 버전 제거)
+        if (querySnapshot.empty && decodedEstimateId.includes('-')) {
+          const baseEstimateNo = decodedEstimateId.split('-').slice(0, 2).join('-');
+          console.log('기본 견적번호로 검색 시도:', baseEstimateNo);
+          
+          estimatesQuery = db.collection('estimates').where('estimateNo', '==', baseEstimateNo);
+          querySnapshot = await estimatesQuery.get();
+        }
+        
+        // 3. 부분 매칭 (견적번호 패턴 분석)
+        if (querySnapshot.empty && decodedEstimateId.includes('-')) {
+          const baseEstimateNo = decodedEstimateId.split('-')[0] + '-' + decodedEstimateId.split('-')[1];
+          console.log('부분 견적번호로 검색 시도:', baseEstimateNo);
+          
+          estimatesQuery = db.collection('estimates').where('estimateNo', '>=', baseEstimateNo)
+            .where('estimateNo', '<=', baseEstimateNo + '\uf8ff');
+          querySnapshot = await estimatesQuery.get();
+        }
+        
+        if (querySnapshot.empty) {
+          console.log('모든 검색 방법으로 견적서를 찾을 수 없음:', decodedEstimateId);
+          return res.status(404).json({ error: '견적서를 찾을 수 없습니다.' });
+        }
+        
+        // 견적번호로 찾은 문서들 중에서 가장 최근에 수정된 것만 업데이트 (중복 방지)
+        let targetDoc = null;
+        let latestUpdatedAt = null;
+        
+        querySnapshot.forEach(doc => {
+          const data = doc.data();
+          const updatedAt = data.updatedAt || data.createdAt || new Date(0);
+          
+          if (!targetDoc || updatedAt > latestUpdatedAt) {
+            targetDoc = doc;
+            latestUpdatedAt = updatedAt;
+          }
+        });
+        
+        if (targetDoc) {
+          estimateRef = targetDoc.ref;
+          console.log('견적번호로 찾은 최신 견적서 업데이트:', decodedEstimateId, '문서 ID:', targetDoc.id);
+        } else {
+          return res.status(404).json({ error: '견적서를 찾을 수 없습니다.' });
+        }
       }
 
       // 견적서 수정
@@ -543,12 +593,30 @@ exports.deleteEstimate = functions.https.onRequest(async (req, res) => {
           return res.status(404).json({ error: '견적서를 찾을 수 없습니다.' });
         }
         
-        // 모든 매칭되는 문서 batch로 삭제
-        const batch = db.batch();
-        querySnapshot.forEach(doc => batch.delete(doc.ref));
-        await batch.commit();
-        console.log('견적번호로 매칭된 모든 견적서 batch 삭제 완료:', decodedEstimateId, '삭제된 개수:', querySnapshot.size);
-        return res.status(200).json({ message: '견적서가 성공적으로 삭제되었습니다.' });
+        // 견적번호로 찾은 문서들 중에서 가장 최근에 수정된 것만 삭제 (중복 방지)
+        let targetDoc = null;
+        let latestUpdatedAt = null;
+        
+        querySnapshot.forEach(doc => {
+          const data = doc.data();
+          const updatedAt = data.updatedAt || data.createdAt || new Date(0);
+          
+          if (!targetDoc || updatedAt > latestUpdatedAt) {
+            targetDoc = doc;
+            latestUpdatedAt = updatedAt;
+          }
+        });
+        
+        if (targetDoc) {
+          await targetDoc.ref.delete();
+          console.log('견적번호로 찾은 최신 견적서 삭제 완료:', decodedEstimateId, '문서 ID:', targetDoc.id);
+          return res.status(200).json({ 
+            message: '견적서가 성공적으로 삭제되었습니다.',
+            estimateId: targetDoc.id
+          });
+        } else {
+          return res.status(404).json({ error: '삭제할 견적서를 찾을 수 없습니다.' });
+        }
       }
 
       // 견적서 삭제 (문서 ID로 찾은 경우)
