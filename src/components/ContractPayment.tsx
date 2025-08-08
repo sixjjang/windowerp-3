@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
   TextField,
@@ -53,6 +53,12 @@ const ContractPayment: React.FC<ContractPaymentProps> = ({
   const [measurementDate, setMeasurementDate] = useState<string>('');
   const [constructionDate, setConstructionDate] = useState<string>('');
   const [memo, setMemo] = useState<string>('');
+
+  // 외부에서 전달되는 할인후금액(= 확정금액)을 항상 동기화
+  useEffect(() => {
+    setCurrentDiscountedAmount(discountedAmount);
+    setDiscountedDisplay(discountedAmount.toLocaleString());
+  }, [discountedAmount]);
 
   const handleSave = () => {
     onSave({

@@ -75,6 +75,8 @@ export interface EstimateRow {
   widthMM: number;
   heightMM: number;
   area: number;
+  // 사용자가 면적을 직접 입력했는지 여부 (블라인드 수동 면적 유지용)
+  isManualArea?: boolean;
   lineDir: string;
   lineLen: string | number;
   pleatAmount: string | number;

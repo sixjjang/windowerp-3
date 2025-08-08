@@ -83,6 +83,7 @@ import { templateRoomToEstimateRow } from '../../utils/templateUtils';
 import { EstimateTemplate as EstimateTemplateType, Estimate, EstimateRow, OptionItem, Installer, ASRequest, PaymentRecord } from '../../types';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import ContractCreateModal from '../../components/ContractCreateModal';
 import { findLastIndex } from 'lodash';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '../../utils/notificationStore';
@@ -1272,6 +1273,33 @@ const FILTER_FIELDS: FilterField[] = [
   { key: 'margin', label: '마진', visible: true },
 ];
 
+// 열 표시 기본값 (이미지에서 체크된 항목만 true)
+const DEFAULT_COLUMN_VISIBILITY: { [key: string]: boolean } = {
+  vendor: true,
+  brand: false,
+  productName: true,
+  space: true,
+  productCode: true,
+  productType: false,
+  curtainType: true,
+  pleatType: true,
+  width: false,
+  details: true,
+  widthMM: true,
+  heightMM: true,
+  area: true,
+  lineDir: false,
+  lineLen: false,
+  pleatAmount: true,
+  widthCount: true,
+  quantity: true,
+  totalPrice: true,
+  salePrice: false,
+  cost: false,
+  purchaseCost: false,
+  margin: false,
+};
+
 // Customer 타입 정의
 // 계약 타입 정의
 interface Contract {
@@ -1605,6 +1633,46 @@ const ContractListModal: React.FC<{
 const EstimateManagement: React.FC = () => {
   // === UI 개선을 위한 선언 ===
   const isMobile = useMediaQuery('(max-width:600px)');
+
+  // 그룹별 색상 배열 (라이트모드/다크모드 대응)
+  const groupColors = [
+    { 
+      light: 'var(--surface-color)', 
+      dark: 'var(--background-color)' 
+    }, // 기본 그룹
+    { 
+      light: 'rgba(25, 118, 210, 0.1)', 
+      dark: 'rgba(25, 118, 210, 0.2)' 
+    }, // 블루 그룹
+    { 
+      light: 'rgba(156, 39, 176, 0.1)', 
+      dark: 'rgba(156, 39, 176, 0.2)' 
+    }, // 바이올렛 그룹
+  ];
+
+  // 견적 그룹화 함수
+  const groupEstimatesByCustomer = (estimates: any[]) => {
+    const groups: { [key: string]: any[] } = {};
+
+    estimates.forEach(estimate => {
+      const key = `${estimate.customerName || ''}-${estimate.contact || ''}-${estimate.address || ''}`;
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+      groups[key].push(estimate);
+    });
+
+    // 각 그룹 내에서 최신 견적을 맨 위로 정렬
+    Object.keys(groups).forEach(key => {
+      groups[key].sort((a, b) => {
+        const dateA = new Date(a.savedAt || a.estimateDate || 0);
+        const dateB = new Date(b.savedAt || b.estimateDate || 0);
+        return dateB.getTime() - dateA.getTime();
+      });
+    });
+
+    return groups;
+  };
 
   // 공간별 색상 함수
   function getSpaceColor(space: string, lightness = 1) {
@@ -2222,18 +2290,26 @@ const EstimateManagement: React.FC = () => {
   });
   const [columnVisibility, setColumnVisibility] = useState<{ [key: string]: boolean }>(() => {
     try {
+      // 기본값을 "현재 표시 중인 컬럼들"로 설정한다: FILTER_FIELDS의 visible을 모두 true로 둔 기존 방식 대신,
+      // 사용자가 마지막으로 보던 상태가 있으면 그걸 사용하고, 없으면 현재 테이블 렌더 기준으로 모두 표시(true)로 시작
       const saved = localStorage.getItem('estimateColumnVisibility');
       if (saved) return JSON.parse(saved);
-      const initial: { [key: string]: boolean } = {};
-      FILTER_FIELDS.forEach(field => {
-        initial[field.key] = field.visible;
-      });
+      
+      // 저장된 기본값이 있으면 사용
+      const savedDefault = localStorage.getItem('estimateListDisplayDefault');
+      if (savedDefault) {
+        try {
+          return JSON.parse(savedDefault);
+        } catch (e) {
+          console.error('저장된 기본값 파싱 실패:', e);
+        }
+      }
+      
+      // 이미지 기준 기본 체크 세트 적용
+      const initial: { [key: string]: boolean } = { ...DEFAULT_COLUMN_VISIBILITY };
       return initial;
     } catch {
-      const initial: { [key: string]: boolean } = {};
-      FILTER_FIELDS.forEach(field => {
-        initial[field.key] = field.visible;
-      });
+      const initial: { [key: string]: boolean } = { ...DEFAULT_COLUMN_VISIBILITY };
       return initial;
     }
   });
@@ -2242,6 +2318,8 @@ const EstimateManagement: React.FC = () => {
   const [discountAmount, setDiscountAmount] = useState('');
   const [discountRate, setDiscountRate] = useState('');
   const [discountedTotalInput, setDiscountedTotalInput] = useState('');
+  // 확정금액(VAT포함) 인풋 상태
+  const [finalizedAmount, setFinalizedAmount] = useState('');
   const [outputAnchorEl, setOutputAnchorEl] = useState<null | HTMLElement>(
     null
   );
@@ -2290,6 +2368,10 @@ const EstimateManagement: React.FC = () => {
   // 공간 설정 모달 상태
   const [spaceSettingsOpen, setSpaceSettingsOpen] = useState(false);
 
+  // 계약서 관련 상태
+  const [contractEditModalOpen, setContractEditModalOpen] = useState(false);
+  const [selectedContractForEdit, setSelectedContractForEdit] = useState<any>(null);
+
   // 고객리스트 검색 상태 추가
   const [customerSearch, setCustomerSearch] = useState('');
 
@@ -2336,7 +2418,75 @@ const EstimateManagement: React.FC = () => {
   const handleCellEdit = (rowIndex: number, field: string, value: string) => {
     const currentRows = [...estimates[activeTab].rows];
     if (currentRows[rowIndex]) {
-      currentRows[rowIndex] = { ...currentRows[rowIndex], [field]: value };
+      const updatedRow = { ...currentRows[rowIndex], [field]: value };
+      
+      // 세부내용 자동 업데이트 (주름방식, 폭수 등이 변경될 때)
+      if (['curtainType', 'pleatType', 'widthCount', 'pleatAmount', 'pleatMultiplier'].includes(field)) {
+        updatedRow.details = generateAutoDetails(updatedRow);
+      }
+      
+      // 겉커튼 폭수 변경 시 주름양 재계산
+      if (field === 'widthCount' && updatedRow.productType === '커튼' && updatedRow.curtainType === '겉커튼') {
+        const widthCount = Number(value) || 0;
+        const widthMM = Number(updatedRow.widthMM) || 0;
+        
+        if (widthCount > 0 && widthMM > 0) {
+          // 제품 정보 찾기
+          const product = productOptions.find(p => p.productCode === updatedRow.productCode);
+          const productWidth = product ? Number(product.width) || 0 : 0;
+          
+          // 주름양 계산
+          let calculatedPleatAmount = '';
+          if (updatedRow.pleatType === '민자' || updatedRow.pleatType === '나비') {
+            calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(widthMM, widthCount, productWidth);
+          } else {
+            calculatedPleatAmount = getPleatAmount(widthMM, productWidth, updatedRow.pleatType, updatedRow.curtainType, widthCount);
+          }
+          
+          updatedRow.pleatAmount = calculatedPleatAmount || '';
+        }
+      }
+      
+      // 면적 변경 시 금액 재계산
+      if (field === 'area') {
+        // 블라인드 제품에서 면적을 직접 수정한 경우, 수동 입력 플래그 설정 및 숫자형으로 반영
+        if (updatedRow.productType === '블라인드') {
+          (updatedRow as any).isManualArea = true;
+        }
+        const areaNum = Number(String(value).replace(/,/g, '')) || 0;
+        // area 필드를 숫자값으로 저장하여 이후 계산 및 표시 포맷 일관성 유지
+        (updatedRow as any).area = areaNum;
+        const quantity = Number(updatedRow.quantity) || 1;
+        
+        // 판매가 계산
+        let basePrice = 0;
+        if (updatedRow.salePrice && areaNum) {
+          basePrice = Math.round(updatedRow.salePrice * areaNum);
+        } else if (updatedRow.salePrice) {
+          basePrice = updatedRow.salePrice;
+        }
+        updatedRow.totalPrice = basePrice * quantity;
+        
+        // 원가 계산
+        let baseCost = 0;
+        if (updatedRow.purchaseCost && areaNum) {
+          baseCost = Math.round(updatedRow.purchaseCost * areaNum);
+        } else if (updatedRow.purchaseCost) {
+          baseCost = updatedRow.purchaseCost;
+        }
+        updatedRow.cost = baseCost * quantity;
+        
+        // 마진 계산
+        updatedRow.margin = Math.round(updatedRow.totalPrice / 1.1 - updatedRow.cost);
+      }
+      // 블라인드에서 가로/세로가 변경되면 수동 면적 플래그 해제 (자동계산으로 복귀)
+      if ((field === 'widthMM' || field === 'heightMM') && updatedRow.productType === '블라인드') {
+        if ((updatedRow as any).isManualArea) {
+          (updatedRow as any).isManualArea = false;
+        }
+      }
+      
+      currentRows[rowIndex] = updatedRow;
       updateEstimateRows(activeTab, currentRows);
     }
     setEditingCell(null);
@@ -2812,6 +2962,17 @@ const EstimateManagement: React.FC = () => {
   const [estimateListDisplay, setEstimateListDisplay] = useState(() => {
     const saved = localStorage.getItem('estimateListDisplay');
     if (saved) return JSON.parse(saved);
+    
+    // 저장된 기본값이 있으면 사용, 없으면 하드코딩된 기본값 사용
+    const savedDefault = localStorage.getItem('estimateListDisplayDefault');
+    if (savedDefault) {
+      try {
+        return JSON.parse(savedDefault);
+      } catch (e) {
+        console.error('저장된 기본값 파싱 실패:', e);
+      }
+    }
+    
     return {
       showEstimateNo: true,
       showEstimateDate: true,
@@ -3481,6 +3642,13 @@ const EstimateManagement: React.FC = () => {
       type: savedEstimate.type || '',
       address: savedEstimate.address || '',
     });
+
+    // 확정금액 불러오기
+    if (savedEstimate.finalizedAmount) {
+      setFinalizedAmount(savedEstimate.finalizedAmount);
+    } else {
+      setFinalizedAmount(''); // 확정금액이 없으면 빈 값으로 초기화
+    }
 
     setEstimateDialogOpen(false);
 
@@ -5131,6 +5299,11 @@ const EstimateManagement: React.FC = () => {
       // 사용자가 필요시 직접 세부내용에 입력할 수 있도록 함
     }
 
+    // 세부내용 자동 업데이트 (주름방식, 폭수 등이 변경될 때)
+    if (['curtainType', 'pleatType', 'widthCount', 'pleatAmount', 'pleatMultiplier'].includes(field)) {
+      newEditRow.details = generateAutoDetails(newEditRow);
+    }
+
     // 상태 업데이트 (무한 루프 방지)
       setEditRow(newEditRow);
   };
@@ -5180,13 +5353,26 @@ const EstimateManagement: React.FC = () => {
       
       // 폭수가 있으면 주름양 계산
       if (updatedRow.widthCount > 0) {
-        const calculatedPleatAmount = getPleatAmount(
-          updatedRow.widthMM,
-          productWidth,
-          updatedRow.pleatType,
-          updatedRow.curtainType,
-          updatedRow.widthCount
-        );
+        let calculatedPleatAmount = '';
+        
+        // 겉커튼 민자/나비는 새로운 계산 함수 사용
+        if (updatedRow.pleatType === '민자' || updatedRow.pleatType === '나비') {
+          calculatedPleatAmount = calculatePleatAmountForGgeotCurtain(
+            updatedRow.widthMM, 
+            updatedRow.widthCount, 
+            productWidth
+          );
+        } else {
+          // 기존 함수 사용
+          calculatedPleatAmount = getPleatAmount(
+            updatedRow.widthMM,
+            productWidth,
+            updatedRow.pleatType,
+            updatedRow.curtainType,
+            updatedRow.widthCount
+          );
+        }
+        
         updatedRow.pleatAmount = calculatedPleatAmount || '';
       }
     }
@@ -5209,6 +5395,8 @@ const EstimateManagement: React.FC = () => {
     // 4-3. 면적 계산 (겉커튼은 면적 계산하지 않음)
     if (updatedRow.curtainType === '겉커튼') {
       updatedRow.area = 0;
+    } else if (updatedRow.productType === '블라인드' && (updatedRow as any).isManualArea) {
+      // 블라인드이면서 사용자가 면적을 수동으로 입력한 경우, 기존 면적 유지 (자동 계산 건너뜀)
     } else {
       updatedRow.area =
         Number(
@@ -5238,7 +5426,37 @@ const EstimateManagement: React.FC = () => {
       updatedRow.totalPrice / 1.1 - updatedRow.cost
     );
 
-    // 7. 최종적으로 업데이트된 행을 견적서에 반영
+    // 7. 세부내용 자동 업데이트 (편집된 값으로 계산)
+    const details: string[] = [];
+
+    // 제품의 기본 정보 추가 (편집된 값 사용)
+    if (updatedRow.productType === '커튼') {
+      if (updatedRow.curtainType === '겉커튼') {
+        if (updatedRow.widthCount) details.push(`${updatedRow.widthCount}폭`);
+        if (updatedRow.pleatType) details.push(updatedRow.pleatType);
+        if (updatedRow.pleatAmount) details.push(updatedRow.pleatAmount.toString());
+      } else if (updatedRow.curtainType === '속커튼') {
+        if (updatedRow.pleatType) details.push(updatedRow.pleatType);
+        if (updatedRow.pleatAmount) details.push(updatedRow.pleatAmount.toString());
+      }
+    }
+
+    // 연결된 옵션들 찾기 (productId로 연결된 옵션들)
+    const connectedOptions = newRows.filter(r => 
+      r.type === 'option' && r.productId === updatedRow.id
+    );
+
+    // 옵션 정보 추가 (레일 제외)
+    connectedOptions.forEach(option => {
+      const optionName = option.optionLabel || option.productName;
+      if (optionName && optionName !== '레일') {
+        details.push(optionName);
+      }
+    });
+
+    updatedRow.details = details.join(', ');
+
+    // 8. 최종적으로 업데이트된 행을 견적서에 반영
     newRows[editRowIdx] = updatedRow;
     updateEstimateRows(activeTab, newRows);
 
@@ -5271,6 +5489,17 @@ const EstimateManagement: React.FC = () => {
     });
     setColumnVisibility(reset);
     setFilterModalOpen(false);
+  };
+
+  const handleSaveAsDefault = () => {
+    try {
+      // 현재 체크된 항목들을 기본설정값으로 저장
+      localStorage.setItem('estimateListDisplayDefault', JSON.stringify(columnVisibility));
+      alert('현재 설정이 기본값으로 저장되었습니다.');
+    } catch (e) {
+      console.error('기본값 저장 실패:', e);
+      alert('기본값 저장에 실패했습니다.');
+    }
   };
 
   // Move getRowValue inside the component so it can access productOptions
@@ -5323,6 +5552,15 @@ const EstimateManagement: React.FC = () => {
       return row.space;
     }
 
+    // 주름양 표시 (0일 때 빈값으로 표시)
+    if (key === 'pleatAmount') {
+      const value = row[key];
+      if (value === 0 || value === '0' || value === '') {
+        return '';
+      }
+      return value;
+    }
+
     // 줄길이 표시 (lineLength 사용, 직접입력인 경우 customLineLength 표시)
     if (key === 'lineLen') {
       if (row.lineLength === '직접입력') {
@@ -5366,52 +5604,60 @@ const EstimateManagement: React.FC = () => {
     }));
   };
 
+  // 계약생성 모달 상태
+  const [contractModalOpen, setContractModalOpen] = useState(false);
+  // 현재 견적의 계약 카드 리스트
+  const [contractsForCurrentEstimate, setContractsForCurrentEstimate] = useState<any[]>([]);
+
+  // 탭 변경/견적 변경 시 현재 견적에 연결된 계약 카드 목록 갱신
+  useEffect(() => {
+    try {
+      const currentEstimateNo = estimates[activeTab]?.estimateNo;
+      if (!currentEstimateNo) {
+        setContractsForCurrentEstimate([]);
+        return;
+      }
+      const saved: any[] = JSON.parse(localStorage.getItem('contracts') || '[]');
+      const list = saved.filter(c => c.estimateNo === currentEstimateNo);
+      list.sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
+      setContractsForCurrentEstimate(list);
+    } catch {
+      setContractsForCurrentEstimate([]);
+    }
+  }, [activeTab, estimates]);
+
+
   // 세부내용 자동입력 함수
   const generateAutoDetails = (row: EstimateRow) => {
     const details: string[] = [];
+    const currentRows = estimates[activeTab]?.rows || [];
 
-    // 블라인드인 경우
-    if (row.curtainType === '블라인드') {
-      // 연결된 블라인드 옵션이 있을 때
-      if (row.options && row.options.length > 0) {
-        row.options.forEach(option => {
-          if (option.optionName && option.optionName !== '레일') {
-            details.push(option.optionName);
-          }
-        });
+    // 제품의 기본 정보 추가
+    if (row.productType === '커튼') {
+      if (row.curtainType === '겉커튼') {
+        if (row.widthCount) details.push(`${row.widthCount}폭`);
+        if (row.pleatType) details.push(row.pleatType);
+        if (row.pleatAmount) details.push(row.pleatAmount.toString());
+      } else if (row.curtainType === '속커튼') {
+        if (row.pleatType) details.push(row.pleatType);
+        if (row.pleatAmount) details.push(row.pleatAmount.toString());
       }
+    } else if (row.productType === '블라인드') {
+      // 블라인드는 기본 정보만 표시
     }
-    // 겉커튼인 경우
-    else if (row.curtainType === '겉커튼') {
-      // 기본 정보 추가
-      if (row.widthCount) details.push(row.widthCount.toString());
-      if (row.pleatType) details.push(row.pleatType);
-      if (row.pleatAmount) details.push(row.pleatAmount.toString());
-      
-      // 연결된 커튼 옵션이 있을 때
-      if (row.options && row.options.length > 0) {
-        row.options.forEach(option => {
-          if (option.optionName && option.optionName !== '레일') {
-            details.push(option.optionName);
-          }
-        });
+
+    // 연결된 옵션들 찾기 (productId로 연결된 옵션들)
+    const connectedOptions = currentRows.filter(r => 
+      r.type === 'option' && r.productId === row.id
+    );
+
+    // 옵션 정보 추가 (레일 제외)
+    connectedOptions.forEach(option => {
+      const optionName = option.optionLabel || option.productName;
+      if (optionName && optionName !== '레일') {
+        details.push(optionName);
       }
-    }
-    // 속커튼인 경우
-    else if (row.curtainType === '속커튼') {
-      // 기본 정보 추가
-      if (row.pleatType) details.push(row.pleatType);
-      if (row.pleatAmount) details.push(row.pleatAmount.toString());
-      
-      // 연결된 커튼 옵션이 있을 때
-      if (row.options && row.options.length > 0) {
-        row.options.forEach(option => {
-          if (option.optionName && option.optionName !== '레일') {
-            details.push(option.optionName);
-          }
-        });
-      }
-    }
+    });
 
     return details.join(', ');
   };
@@ -6213,6 +6459,65 @@ const EstimateManagement: React.FC = () => {
     );
   };
 
+  // 계약서 관련 핸들러 함수들
+  const handleContractPrint = (contract: any) => {
+    // 계약서 출력 로직 (향후 구현)
+    console.log('계약서 출력:', contract);
+    alert('계약서 출력 기능은 향후 구현 예정입니다.');
+  };
+
+  const handleContractEdit = (contract: any) => {
+    setSelectedContractForEdit(contract);
+    setContractEditModalOpen(true);
+  };
+
+  const handleContractDelete = async (contract: any) => {
+    if (window.confirm('정말로 이 계약서를 삭제하시겠습니까?')) {
+      try {
+        // localStorage에서 계약서 삭제
+        const savedContracts = JSON.parse(localStorage.getItem('contracts') || '[]');
+        const updatedContracts = savedContracts.filter((c: any) => c.id !== contract.id);
+        localStorage.setItem('contracts', JSON.stringify(updatedContracts));
+        
+        // 현재 견적의 계약서 목록에서도 삭제
+        setContractsForCurrentEstimate((prev: any[]) => 
+          prev.filter((c: any) => c.id !== contract.id)
+        );
+        
+        alert('계약서가 삭제되었습니다.');
+      } catch (error) {
+        console.error('계약서 삭제 실패:', error);
+        alert('계약서 삭제 중 오류가 발생했습니다.');
+      }
+    }
+  };
+
+  // 계약서 날짜 변경 핸들러
+  const handleContractDateChange = (contractId: number, field: 'measurementDate' | 'constructionDate', value: string) => {
+    try {
+      // 현재 견적의 계약서 목록 업데이트
+      setContractsForCurrentEstimate((prev: any[]) => 
+        prev.map((c: any) => 
+          c.id === contractId 
+            ? { ...c, [field]: value ? `${value}T00:00:00.000Z` : '' }
+            : c
+        )
+      );
+
+      // localStorage에서도 업데이트
+      const savedContracts = JSON.parse(localStorage.getItem('contracts') || '[]');
+      const updatedContracts = savedContracts.map((c: any) => 
+        c.id === contractId 
+          ? { ...c, [field]: value ? `${value}T00:00:00.000Z` : '', updatedAt: new Date().toISOString() }
+          : c
+      );
+      localStorage.setItem('contracts', JSON.stringify(updatedContracts));
+    } catch (error) {
+      console.error('계약서 날짜 변경 실패:', error);
+      alert('날짜 변경 중 오류가 발생했습니다.');
+    }
+  };
+
   // 저장하기 핸들러 함수
   const handleSaveEstimate = async () => {
     try {
@@ -6252,6 +6557,7 @@ const EstimateManagement: React.FC = () => {
           savedEstimates[existingFinalIndex] = {
             ...currentEstimate,
             savedAt: new Date().toISOString(),
+            finalizedAmount: finalizedAmount, // 확정금액 저장
             totalAmount: Math.round(
               currentEstimate.rows.reduce(
                 (sum: number, row: any) => sum + (row.totalPrice || 0),
@@ -6283,6 +6589,7 @@ const EstimateManagement: React.FC = () => {
           const estimateToSave = {
             ...currentEstimate,
             savedAt: new Date().toISOString(),
+            finalizedAmount: finalizedAmount, // 확정금액 저장
             totalAmount: Math.round(
               currentEstimate.rows.reduce(
                 (sum: number, row: any) => sum + (row.totalPrice || 0),
@@ -6457,6 +6764,7 @@ const EstimateManagement: React.FC = () => {
         estimateNo: finalEstimateNo,
         name: finalEstimateName,
         savedAt: new Date().toISOString(),
+        finalizedAmount: finalizedAmount, // 확정금액 저장
         totalAmount,
         discountAmount: discountAmountNumber,
         discountedAmount,
@@ -6592,6 +6900,104 @@ const EstimateManagement: React.FC = () => {
     } catch (error) {
       console.error('견적서 저장 중 오류:', error);
       alert('견적서 저장 중 오류가 발생했습니다.');
+    }
+  };
+
+  // 새이름저장 핸들러 함수
+  const handleSaveAsNewEstimate = async () => {
+    try {
+      const currentEstimate = estimates[activeTab];
+      
+      if (!currentEstimate) {
+        alert('저장할 견적서가 없습니다.');
+        return;
+      }
+
+      // 새 견적번호 생성
+      const newEstimateNo = generateEstimateNo(estimates);
+      
+      // 저장할 견적서 데이터 준비 (새 ID와 견적번호로)
+      const estimateToSave = {
+        ...currentEstimate,
+        id: `estimate_${Date.now()}`,
+        estimateNo: newEstimateNo,
+        name: `견적서-${newEstimateNo}`,
+        savedAt: new Date().toISOString(),
+        savedDate: getLocalDate(),
+        finalizedAmount: finalizedAmount, // 확정금액 저장
+        // 할인 설정 저장
+        discountAmount: discountAmount,
+        discountRate: discountRate,
+        // 할인후금액 계산하여 저장
+        discountedAmount: discountAmountNumber > 0 ? discountedTotal : sumTotalPrice,
+      };
+
+      // 기존 저장된 견적서 목록에 추가
+      const existingSavedEstimates = [...savedEstimates];
+      existingSavedEstimates.push(estimateToSave);
+
+      // localStorage에 저장
+      localStorage.setItem('saved_estimates', JSON.stringify(existingSavedEstimates));
+      
+      // 상태 업데이트
+      setSavedEstimates(existingSavedEstimates);
+
+      // Firebase에도 자동 저장
+      try {
+        await estimateService.saveEstimate(estimateToSave);
+        console.log('Firebase 새이름저장 완료:', newEstimateNo);
+      } catch (error) {
+        console.error('Firebase 새이름저장 실패:', error);
+        setSnackbar({
+          open: true,
+          message: '견적서가 저장되었지만 Firebase 동기화에 실패했습니다. 인터넷 연결을 확인해주세요.',
+        });
+        return;
+      }
+
+      alert(`견적서가 새이름으로 저장되었습니다.\n견적번호: ${newEstimateNo}`);
+
+      // 저장 후 견적서 입력 내용 초기화
+      const newEstimate = {
+        id: Date.now(),
+        name: `견적서-${generateEstimateNo(estimates)}`,
+        estimateNo: generateEstimateNo(estimates),
+        estimateDate: getLocalDate(),
+        customerName: '',
+        contact: '',
+        emergencyContact: '',
+        projectName: '',
+        type: '',
+        address: '',
+        rows: [],
+      };
+
+      // 현재 견적서를 새 견적서로 교체
+      const newEstimates = [...estimates];
+      newEstimates[activeTab] = newEstimate;
+      useEstimateStore.setState({ estimates: newEstimates });
+
+      // meta 상태도 초기화
+      setMeta({
+        estimateNo: generateEstimateNo(estimates),
+        estimateDate: getLocalDate(),
+        customerName: '',
+        contact: '',
+        emergencyContact: '',
+        projectName: '',
+        type: '',
+        address: '',
+      });
+
+      // 할인 필드 초기화
+      setDiscountAmount('');
+      setDiscountRate('');
+      setFinalizedAmount(''); // 확정금액도 초기화
+
+      console.log('견적서 새이름저장 및 초기화 완료');
+    } catch (error) {
+      console.error('견적서 새이름저장 중 오류:', error);
+      alert('견적서 새이름저장 중 오류가 발생했습니다.');
     }
   };
 
@@ -7070,46 +7476,6 @@ const EstimateManagement: React.FC = () => {
       default:
         return '알 수 없음';
     }
-  };
-
-  // 그룹별 색상 배열 (라이트모드/다크모드 대응)
-  const groupColors = [
-    { 
-      light: 'var(--surface-color)', 
-      dark: 'var(--background-color)' 
-    }, // 기본 그룹
-    { 
-      light: 'rgba(25, 118, 210, 0.1)', 
-      dark: 'rgba(25, 118, 210, 0.2)' 
-    }, // 블루 그룹
-    { 
-      light: 'rgba(156, 39, 176, 0.1)', 
-      dark: 'rgba(156, 39, 176, 0.2)' 
-    }, // 바이올렛 그룹
-  ];
-
-  // 견적 그룹화 함수
-  const groupEstimatesByCustomer = (estimates: any[]) => {
-    const groups: { [key: string]: any[] } = {};
-
-    estimates.forEach(estimate => {
-      const key = `${estimate.customerName || ''}-${estimate.contact || ''}-${estimate.address || ''}`;
-      if (!groups[key]) {
-        groups[key] = [];
-      }
-      groups[key].push(estimate);
-    });
-
-    // 각 그룹 내에서 최신 견적을 맨 위로 정렬
-    Object.keys(groups).forEach(key => {
-      groups[key].sort((a, b) => {
-        const dateA = new Date(a.savedAt || a.estimateDate || 0);
-        const dateB = new Date(b.savedAt || b.estimateDate || 0);
-        return dateB.getTime() - dateA.getTime();
-      });
-    });
-
-    return groups;
   };
 
   const activeEstimate = estimates[activeTab];
@@ -11373,17 +11739,19 @@ const EstimateManagement: React.FC = () => {
         <Grid item xs={12}>
           <Paper sx={{ p: 2, pt: 0, backgroundColor: 'var(--surface-color)' }}>
             {/* 일괄 변경 모드 컨트롤 */}
-            {estimates[activeTab]?.rows.length > 0 && (
-              <Box sx={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 2, 
-                mb: 2, 
-                p: 1, 
-                backgroundColor: isBulkEditMode ? 'rgba(255, 193, 7, 0.1)' : 'transparent',
-                border: isBulkEditMode ? '1px solid #ffc107' : 'none',
-                borderRadius: 1
-              }}>
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 2, 
+              mb: 2, 
+              p: 1, 
+              backgroundColor: isBulkEditMode ? 'rgba(255, 193, 7, 0.1)' : 'transparent',
+              border: isBulkEditMode ? '1px solid #ffc107' : 'none',
+              borderRadius: 1
+            }}>
+                {/* 저장하기 아이콘 제거 요청에 따라 삭제 */}
+                {/* 새이름저장 아이콘 */}
+                
                 <Tooltip title="빈 제품 행 추가">
                   <IconButton
                     size="medium"
@@ -11511,6 +11879,47 @@ const EstimateManagement: React.FC = () => {
                 >
                   <SaveIcon fontSize="small" />
                 </Button>
+                {/* 새이름저장 아이콘: 저장하기 버튼 바로 옆 */}
+                <Tooltip title="새이름저장">
+                  <IconButton
+                    size="small"
+                    onClick={handleSaveAsNewEstimate}
+                    sx={{ 
+                      ml: 1,
+                      color: 'var(--warning-color, #ed6c02)',
+                      border: '1px solid var(--border-color)',
+                      '&:hover': {
+                        backgroundColor: 'rgba(237, 108, 2, 0.1)',
+                        borderColor: 'var(--warning-color)',
+                      },
+                    }}
+                  >
+                    <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                      <SaveIcon fontSize="small" />
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          position: 'absolute',
+                          top: '-2px',
+                          right: '-2px',
+                          fontSize: '0.6rem',
+                          fontWeight: 'bold',
+                          color: 'var(--warning-color, #ed6c02)',
+                          backgroundColor: 'white',
+                          borderRadius: '50%',
+                          width: '12px',
+                          height: '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: '1px solid var(--warning-color, #ed6c02)',
+                        }}
+                      >
+                        N
+                      </Typography>
+                    </Box>
+                  </IconButton>
+                </Tooltip>
                 
                 {isBulkEditMode && (
                   <>
@@ -11537,7 +11946,6 @@ const EstimateManagement: React.FC = () => {
                   </>
                 )}
               </Box>
-            )}
             {(() => {
               return estimates[activeTab]?.rows.length > 0 ? (
                 <TableContainer sx={{
@@ -11800,13 +12208,13 @@ const EstimateManagement: React.FC = () => {
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis',
                                         cursor: (() => {
-                                          const editableFields = ['space', 'productCode', 'details', 'widthMM', 'heightMM', 'curtainType', 'pleatType', 'lineDir', 'lineLen', 'widthCount', 'quantity'];
+                                          const editableFields = ['space', 'productCode', 'details', 'widthMM', 'heightMM', 'curtainType', 'pleatType', 'lineDir', 'lineLen', 'widthCount', 'quantity', 'area'];
                                           return editableFields.includes(field.key) ? 'pointer' : 'default';
                                         })()
                                       }}
                                       onClick={() => {
                                         // 편집 가능한 필드만 인필드 편집 허용
-                                        const editableFields = ['space', 'productCode', 'details', 'widthMM', 'heightMM', 'curtainType', 'pleatType', 'lineDir', 'lineLen', 'widthCount', 'quantity'];
+                                        const editableFields = ['space', 'productCode', 'details', 'widthMM', 'heightMM', 'curtainType', 'pleatType', 'lineDir', 'lineLen', 'widthCount', 'quantity', 'area'];
                                         if (editableFields.includes(field.key) && !(editingCell && editingCell.rowIndex === idx && editingCell.field === field.key)) {
                                           setEditingCell({ rowIndex: idx, field: field.key });
                                           setEditingValue(getRowValue(row, field.key) || '');
@@ -11839,6 +12247,8 @@ const EstimateManagement: React.FC = () => {
                                                     handleTableCellKeyboardNavigation(idx, field.key, 'up');
                                                   } else if (e.key === 'Enter') {
                                                     e.preventDefault();
+                                                    // 엔터 시 현재 값 저장 후 다음 셀로 이동
+                                                    handleCellEdit(idx, field.key, editingValue);
                                                     handleTableCellKeyboardNavigation(idx, field.key, 'next');
                                                   } else if (e.key === 'Escape') {
                                                     handleCellCancel();
@@ -12258,13 +12668,13 @@ const EstimateManagement: React.FC = () => {
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis',
                                         cursor: (() => {
-                                          const editableFields = ['space', 'productCode', 'details', 'widthMM', 'heightMM', 'curtainType', 'pleatType', 'lineDir', 'lineLen', 'widthCount', 'quantity'];
+                                          const editableFields = ['space', 'productCode', 'details', 'widthMM', 'heightMM', 'curtainType', 'pleatType', 'lineDir', 'lineLen', 'widthCount', 'quantity', 'area'];
                                           return editableFields.includes(field.key) ? 'pointer' : 'default';
                                         })()
                                       }}
                                       onClick={() => {
                                         // 편집 가능한 필드만 인필드 편집 허용
-                                        const editableFields = ['space', 'productCode', 'details', 'widthMM', 'heightMM', 'curtainType', 'pleatType', 'lineDir', 'lineLen', 'widthCount', 'quantity'];
+                                        const editableFields = ['space', 'productCode', 'details', 'widthMM', 'heightMM', 'curtainType', 'pleatType', 'lineDir', 'lineLen', 'widthCount', 'quantity', 'area'];
                                         if (editableFields.includes(field.key) && !(editingCell && editingCell.rowIndex === idx && editingCell.field === field.key)) {
                                           setEditingCell({ rowIndex: idx, field: field.key });
                                           setEditingValue(getRowValue(row, field.key) || '');
@@ -12579,15 +12989,15 @@ const EstimateManagement: React.FC = () => {
                       })}
                   {/* 합계 행 */}
                   <TableRow sx={{ backgroundColor: '#e3f2fd', fontWeight: 'bold' }}>
-                    {isBulkEditMode && <TableCell></TableCell>}
-                    <TableCell>합계</TableCell>
+                    {isBulkEditMode && <TableCell sx={{ fontSize: 'calc(1em + 1px)', fontWeight: 'bold' }}></TableCell>}
+                    <TableCell sx={{ fontSize: 'calc(1em + 1px)', fontWeight: 'bold' }}>합계</TableCell>
                     {FILTER_FIELDS.map(field => 
                       columnVisibility[field.key] && (
-                        <TableCell key={field.key}>
+                        <TableCell key={field.key} sx={{ fontSize: 'calc(1em + 1px)', fontWeight: 'bold' }}>
                           {field.key === 'area' ? 
                             estimates[activeTab]?.rows?.reduce((sum, row) => {
-                              // 겉커튼은 면적 계산에서 제외
-                              if (row?.curtainType === '겉커튼') {
+                              // 겉커튼과 속커튼은 면적 계산에서 제외
+                              if (row?.curtainType === '겉커튼' || row?.curtainType === '속커튼') {
                                 return sum;
                               }
                               return sum + (Number(row?.area) || 0);
@@ -12605,7 +13015,7 @@ const EstimateManagement: React.FC = () => {
                         </TableCell>
                       )
                     )}
-                    <TableCell></TableCell>
+                    <TableCell sx={{ fontSize: 'calc(1em + 1px)', fontWeight: 'bold' }}></TableCell>
                   </TableRow>
                     </TableBody>
                   </Table>
@@ -12689,7 +13099,7 @@ const EstimateManagement: React.FC = () => {
 
             <Box
               sx={{
-                mt: 0,
+                mt: 1,
                 mb: 2,
                 fontWeight: 'bold',
                 fontSize: 16,
@@ -12784,6 +13194,138 @@ const EstimateManagement: React.FC = () => {
                 />
               </Box>
             )}
+            {/* 확정금액 + 계약생성: 할인 영역 하단으로 이동 */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography sx={{ color: '#d32f2f', fontWeight: 'bold' }}>확정금액(VAT포함)</Typography>
+                <input
+                  type="text"
+                  value={finalizedAmount ? Number(finalizedAmount).toLocaleString() : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/,/g, '');
+                    if (/^\d*$/.test(raw)) setFinalizedAmount(raw);
+                  }}
+                  placeholder={(discountAmountNumber > 0 ? (discountedTotal || sumTotalPrice) : sumTotalPrice).toLocaleString()}
+                  style={{ width: 140, fontSize: '15px', padding: '4px 8px', border: '1px solid var(--border-color)', borderRadius: 4, color: '#d32f2f', background: 'var(--surface-color)', fontWeight: 'bold' }}
+                />
+              </Box>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => setContractModalOpen(true)}
+                sx={{ backgroundColor: 'var(--primary-color)', color: 'var(--text-color)' }}
+              >
+                계약생성
+              </Button>
+            </Box>
+
+            {/* 생성된 계약서 카드: 확정금액 바로 아래 */}
+            {contractsForCurrentEstimate && contractsForCurrentEstimate.length > 0 && (
+              <Box sx={{ mt: 1, mb: 2 }}>
+                <Typography sx={{ fontWeight: 'bold', color: 'var(--text-color)', mb: 1 }}>
+                  계약서
+                </Typography>
+                <Grid container spacing={1}>
+                  {contractsForCurrentEstimate.map((c: any) => (
+                    <Grid item xs={12} md={6} lg={4} key={c.id}>
+                      <Card variant="outlined" sx={{ backgroundColor: 'var(--surface-color)', borderColor: 'var(--border-color)', position: 'relative' }}>
+                        {/* 우측 상단 아이콘들 */}
+                        <Box sx={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 0.5 }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleContractPrint(c)}
+                            sx={{
+                              color: 'var(--primary-color)',
+                              '&:hover': { backgroundColor: 'var(--hover-color)' },
+                              width: 28,
+                              height: 28,
+                            }}
+                            title="출력"
+                          >
+                            <PrintIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleContractEdit(c)}
+                            sx={{
+                              color: 'var(--text-secondary-color)',
+                              '&:hover': { backgroundColor: 'var(--hover-color)' },
+                              width: 28,
+                              height: 28,
+                            }}
+                            title="수정"
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleContractDelete(c)}
+                            sx={{
+                              color: '#d32f2f',
+                              '&:hover': { backgroundColor: 'var(--hover-color)' },
+                              width: 28,
+                              height: 28,
+                            }}
+                            title="삭제"
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                        <CardContent sx={{ color: 'var(--text-color)', pt: 4 }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'var(--text-color)', fontSize: '1.1rem' }}>{c.contractNo}</Typography>
+                          <Typography variant="body2" sx={{ color: 'var(--text-color)', fontSize: '0.95rem' }}>견적번호: {c.estimateNo}</Typography>
+                          <Typography variant="body2" sx={{ color: 'var(--text-color)', fontSize: '0.95rem' }}>고객명: {c.customerName}</Typography>
+                          <Typography variant="body2" sx={{ color: 'var(--text-color)', fontSize: '0.95rem' }}>계약일자: {new Date(c.contractDate).toLocaleDateString()}</Typography>
+                          <Typography variant="body2" sx={{ color: 'var(--text-color)', fontSize: '0.95rem' }}>할인후금액: {(c.discountedAmount || 0).toLocaleString()}원</Typography>
+                          <Typography variant="body2" sx={{ color: 'var(--text-color)', fontSize: '0.95rem' }}>계약금: {(c.depositAmount || 0).toLocaleString()}원 / 잔금: {(c.remainingAmount || 0).toLocaleString()}원</Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                            <Typography variant="body2" sx={{ color: 'var(--text-color)', fontSize: '0.9rem', minWidth: '60px' }}>
+                              실측일자:
+                            </Typography>
+                            <input
+                              type="date"
+                              value={c.measurementDate ? c.measurementDate.split('T')[0] : ''}
+                              onChange={(e) => handleContractDateChange(c.id, 'measurementDate', e.target.value)}
+                              style={{
+                                fontSize: '0.9rem',
+                                padding: '4px 8px',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: 3,
+                                background: 'var(--surface-color)',
+                                color: 'var(--text-color)',
+                                width: '130px',
+                                minWidth: '130px'
+                              }}
+                            />
+                          </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                            <Typography variant="body2" sx={{ color: 'var(--text-color)', fontSize: '0.9rem', minWidth: '60px' }}>
+                              시공일자:
+                            </Typography>
+                            <input
+                              type="date"
+                              value={c.constructionDate ? c.constructionDate.split('T')[0] : ''}
+                              onChange={(e) => handleContractDateChange(c.id, 'constructionDate', e.target.value)}
+                              style={{
+                                fontSize: '0.9rem',
+                                padding: '4px 8px',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: 3,
+                                background: 'var(--surface-color)',
+                                color: 'var(--text-color)',
+                                width: '130px',
+                                minWidth: '130px'
+                              }}
+                            />
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Box>
+            )}
+
             {/* 버튼들 */}
             <Box sx={{ display: 'flex', gap: 1, mt: 2, mb: 1 }}>
 
@@ -12837,7 +13379,7 @@ const EstimateManagement: React.FC = () => {
             },
           }}
         >
-          <DialogTitle sx={{ color: 'var(--text-color)' }}>열 표시 설정</DialogTitle>
+          <DialogTitle sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>열 표시 설정</DialogTitle>
           <DialogContent sx={{ backgroundColor: 'var(--surface-color)' }}>
             <Grid container spacing={2}>
               {FILTER_FIELDS.map(f => (
@@ -12879,6 +13421,17 @@ const EstimateManagement: React.FC = () => {
             >
               초기화
             </Button>
+            <Button 
+              onClick={handleSaveAsDefault}
+              sx={{
+                color: 'var(--text-color)',
+                '&:hover': {
+                  backgroundColor: 'var(--hover-color)',
+                },
+              }}
+            >
+              기본값으로 저장
+            </Button>
             <Button
               variant="contained"
               onClick={() => setFilterModalOpen(false)}
@@ -12917,6 +13470,61 @@ const EstimateManagement: React.FC = () => {
         open={templateDialogOpen}
         onClose={() => setTemplateDialogOpen(false)}
         onTemplateSelect={handleTemplateSelect}
+      />
+
+      {/* 계약 생성 모달 - 견적서 페이지에서 독립적으로 표시 */}
+      <ContractCreateModal
+        open={contractModalOpen}
+        onClose={() => setContractModalOpen(false)}
+        estimate={{
+          estimateNo: estimates[activeTab]?.estimateNo,
+          estimateDate: estimates[activeTab]?.estimateDate,
+          customerName: estimates[activeTab]?.customerName,
+          contact: estimates[activeTab]?.contact,
+          emergencyContact: estimates[activeTab]?.emergencyContact,
+          projectName: estimates[activeTab]?.projectName,
+          type: estimates[activeTab]?.type,
+          address: estimates[activeTab]?.address,
+          rows: estimates[activeTab]?.rows,
+        }}
+        totalAmount={sumTotalPrice}
+        discountedAmount={Number(finalizedAmount || (discountAmountNumber > 0 ? (discountedTotal || sumTotalPrice) : sumTotalPrice))}
+        onSaved={(contract: any) => {
+          // 저장 직후 현재 견적의 계약 카드 목록을 갱신
+          setContractsForCurrentEstimate((prev: any[]) => [contract, ...prev.filter((c: any) => c.id !== contract.id)]);
+        }}
+      />
+
+      {/* 계약서 수정 모달 */}
+      <ContractCreateModal
+        open={contractEditModalOpen}
+        onClose={() => {
+          setContractEditModalOpen(false);
+          setSelectedContractForEdit(null);
+        }}
+        estimate={{
+          estimateNo: selectedContractForEdit?.estimateNo,
+          estimateDate: selectedContractForEdit?.estimateDate,
+          customerName: selectedContractForEdit?.customerName,
+          contact: selectedContractForEdit?.contact,
+          emergencyContact: selectedContractForEdit?.emergencyContact,
+          projectName: selectedContractForEdit?.projectName,
+          type: selectedContractForEdit?.type,
+          address: selectedContractForEdit?.address,
+          rows: selectedContractForEdit?.rows,
+        }}
+        totalAmount={selectedContractForEdit?.totalAmount || 0}
+        discountedAmount={selectedContractForEdit?.discountedAmount || 0}
+        existingContract={selectedContractForEdit}
+        isEditMode={true}
+        onSaved={(updatedContract: any) => {
+          // 수정된 계약서로 목록 업데이트
+          setContractsForCurrentEstimate((prev: any[]) => 
+            prev.map((c: any) => c.id === updatedContract.id ? updatedContract : c)
+          );
+          setContractEditModalOpen(false);
+          setSelectedContractForEdit(null);
+        }}
       />
 
       {/* 저장된 견적서 리스트 */}
@@ -13237,6 +13845,13 @@ const EstimateManagement: React.FC = () => {
                 <Table size="small">
                   <TableHead>
                     <TableRow sx={{ backgroundColor: 'var(--background-color)' }}>
+                      {estimateListDisplay.showAddress && (
+                        <TableCell
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
+                        >
+                          주소
+                        </TableCell>
+                      )}
                       {estimateListDisplay.showEstimateNo && (
                         <TableCell
                           sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
@@ -13328,13 +13943,6 @@ const EstimateManagement: React.FC = () => {
                           작업
                         </TableCell>
                       )}
-                      {estimateListDisplay.showAddress && (
-                        <TableCell
-                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
-                        >
-                          주소
-                        </TableCell>
-                      )}
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -13353,6 +13961,16 @@ const EstimateManagement: React.FC = () => {
                         
                         // 발주완료 상태 확인
                         const isOrderCompleted = status === '발주완료' || status === '납품완료';
+                        
+                        // 계약완료 상태 확인 (해당 견적서로 생성된 계약서가 있는지 확인)
+                        const hasContract = (() => {
+                          try {
+                            const contracts = JSON.parse(localStorage.getItem('contracts') || '[]');
+                            return contracts.some((contract: any) => contract.estimateNo === est.estimateNo);
+                          } catch {
+                            return false;
+                          }
+                        })();
                         
                         // 배경색 결정: 발주완료 > Final > 일반 순서로 우선순위
                         let backgroundColor;
@@ -13381,10 +13999,8 @@ const EstimateManagement: React.FC = () => {
                             },
                           };
                         } else {
-                          // 일반 견적서는 그룹별 색상
-                          backgroundColor = isLatest
-                            ? groupColors[colorIndex].dark
-                            : groupColors[colorIndex].light;
+                          // 일반 견적서는 화이트 배경
+                          backgroundColor = '#ffffff';
                         }
 
                         return (
@@ -13401,14 +14017,43 @@ const EstimateManagement: React.FC = () => {
                                   ? '#66bb6a'
                                   : isFinal
                                     ? '#42a5f5'
-                                    : isLatest
-                                      ? groupColors[colorIndex].light
-                                      : groupColors[colorIndex].dark,
+                                    : '#f5f5f5',
                                 transition: 'background-color 0.2s ease',
                               },
                               ...specialStyle,
                             }}
                           >
+                            {estimateListDisplay.showAddress && (
+                              <TableCell
+                                sx={{
+                                  color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
+                                  borderColor: 'var(--border-color)',
+                                  fontSize: 'calc(1em + 1px)', // 1px 크게
+                                  fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
+                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
+                                  '&:hover': {
+                                    color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
+                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                  },
+                                }}
+                              >
+                                {est.address}
+                                {hasContract && (
+                                  <Chip
+                                    label="계약완료"
+                                    size="small"
+                                    sx={{
+                                      ml: 1,
+                                      backgroundColor: '#ff9800',
+                                      color: '#ffffff',
+                                      fontSize: '0.7rem',
+                                      height: '20px',
+                                      fontWeight: 'bold',
+                                    }}
+                                  />
+                                )}
+                              </TableCell>
+                            )}
                             {estimateListDisplay.showEstimateNo && (
                               <TableCell
                                 sx={{
@@ -13416,10 +14061,10 @@ const EstimateManagement: React.FC = () => {
                                   borderColor: 'var(--border-color)',
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'bold',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   '&:hover': {
                                     color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.9)',
+                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -13460,10 +14105,10 @@ const EstimateManagement: React.FC = () => {
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
+                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   '&:hover': {
                                     color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -13477,10 +14122,10 @@ const EstimateManagement: React.FC = () => {
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
+                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   '&:hover': {
                                     color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -13496,10 +14141,10 @@ const EstimateManagement: React.FC = () => {
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
+                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   '&:hover': {
                                     color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -13513,10 +14158,10 @@ const EstimateManagement: React.FC = () => {
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
+                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   '&:hover': {
                                     color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -13530,10 +14175,10 @@ const EstimateManagement: React.FC = () => {
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
+                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   '&:hover': {
                                     color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -13547,10 +14192,10 @@ const EstimateManagement: React.FC = () => {
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
+                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   '&:hover': {
                                     color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -13578,10 +14223,10 @@ const EstimateManagement: React.FC = () => {
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
+                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   '&:hover': {
                                     color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -13595,10 +14240,10 @@ const EstimateManagement: React.FC = () => {
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
+                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   '&:hover': {
                                     color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -13612,10 +14257,10 @@ const EstimateManagement: React.FC = () => {
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
+                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   '&:hover': {
                                     color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -13629,10 +14274,10 @@ const EstimateManagement: React.FC = () => {
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
+                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   '&:hover': {
                                     color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -13651,10 +14296,10 @@ const EstimateManagement: React.FC = () => {
                                   borderColor: 'var(--border-color)',
                                   fontSize: 'calc(1em + 1px)', // 1px 크게
                                   fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
+                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   '&:hover': {
                                     color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                    textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                   },
                                 }}
                               >
@@ -13668,122 +14313,15 @@ const EstimateManagement: React.FC = () => {
                                 fontSize: 'calc(1em + 1px)', // 1px 크게
                                 color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
                                 fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
+                                textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                 '&:hover': {
                                   color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
+                                  textShadow: isOrderCompleted || isFinal ? 'none' : 'none',
                                 },
                               }}>
-                                {/* final 견적서인 경우 특별한 버튼 표시 */}
-                                {isFinal && (
-                                  <>
-                                    <Button
-                                      size="small"
-                                      variant="contained"
-                                      sx={{
-                                        mr: 1,
-                                        minWidth: 80,
-                                        backgroundColor: '#2196f3',
-                                        color: '#ffffff',
-                                        '&:hover': {
-                                          backgroundColor: '#1976d2',
-                                        },
-                                      }}
-                                      onClick={() =>
-                                        handleProceedToContract(est)
-                                      }
-                                    >
-                                      계약진행
-                                    </Button>
-                                    <Button
-                                      size="small"
-                                      variant="outlined"
-                                      sx={{
-                                        mr: 1,
-                                        minWidth: 80,
-                                        borderColor: '#4caf50',
-                                        color: '#4caf50',
-                                        '&:hover': {
-                                          borderColor: '#2e7d32',
-                                          backgroundColor:
-                                            'rgba(76, 175, 80, 0.1)',
-                                        },
-                                      }}
-                                      onClick={() =>
-                                        handleUpdateExistingContract(est)
-                                      }
-                                    >
-                                      기존계약업데이트
-                                    </Button>
-                                    <IconButton
-                                      size="small"
-                                      onClick={() =>
-                                        handleEditFinalEstimate(est)
-                                      }
-                                      sx={{
-                                        mr: 1,
-                                        color: 'var(--primary-color)',
-                                        '&:hover': {
-                                          backgroundColor: 'var(--hover-color)',
-                                        },
-                                      }}
-                                      title="Final 견적서 수정"
-                                    >
-                                      <EditIcon fontSize="small" />
-                                    </IconButton>
-                                    <IconButton
-                                      size="small"
-                                      onClick={() =>
-                                        handleAddNewFinalEstimate(est)
-                                      }
-                                      sx={{
-                                        mr: 1,
-                                        color: 'var(--primary-color)',
-                                        '&:hover': {
-                                          backgroundColor: 'var(--hover-color)',
-                                        },
-                                      }}
-                                      title="새 Final 견적서 생성"
-                                    >
-                                      <AddIcon fontSize="small" />
-                                    </IconButton>
-                                  </>
-                                )}
 
-                                {/* 상태에 따른 버튼 표시 */}
-                                {!isFinal && status === '견적완료' && (
-                                  <Button
-                                    size={isMobile ? "large" : "small"}
-                                    variant="contained"
-                                    color="primary"
-                                    sx={{
-                                      mr: 1,
-                                      fontWeight: 'bold',
-                                      minWidth: isMobile ? 100 : 80,
-                                      color: '#ffffff',
-                                      fontSize: isMobile ? 16 : 12,
-                                      py: isMobile ? 1.5 : 0.5,
-                                      px: isMobile ? 3 : 1,
-                                      touchAction: 'manipulation',
-                                      WebkitTapHighlightColor: 'transparent',
-                                      '&:active': {
-                                        transform: 'scale(0.95)',
-                                      },
-                                    }}
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      console.log('진행버튼 터치됨');
-                                      handleProceedToContract(est);
-                                    }}
-                                    onTouchStart={(e) => {
-                                      e.preventDefault();
-                                      console.log('진행버튼 터치 시작');
-                                    }}
-                                  >
-                                    진행
-                                  </Button>
-                                )}
+
+
 
                                 {status === '계약진행중' && (
                                   <>
@@ -14105,23 +14643,6 @@ const EstimateManagement: React.FC = () => {
                                 >
                                   <DeleteIcon fontSize="small" />
                                 </IconButton>
-                              </TableCell>
-                            )}
-                            {estimateListDisplay.showAddress && (
-                              <TableCell
-                                sx={{
-                                  color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                  borderColor: 'var(--border-color)',
-                                  fontSize: 'calc(1em + 1px)', // 1px 크게
-                                  fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
-                                  textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.6)',
-                                  '&:hover': {
-                                    color: isOrderCompleted ? '#ffffff' : isFinal ? '#ffffff' : '#000000',
-                                    textShadow: isOrderCompleted || isFinal ? 'none' : '0 1px 2px rgba(255,255,255,0.8)',
-                                  },
-                                }}
-                              >
-                                {est.address}
                               </TableCell>
                             )}
                           </TableRow>

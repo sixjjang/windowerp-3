@@ -2381,7 +2381,11 @@ const OrderManagement: React.FC = () => {
     
     if (updatedRows[rowIndex]) {
       const row = updatedRows[rowIndex];
-      updatedRows[rowIndex] = { ...row, [field]: value };
+      const updatedRow = { ...row, [field]: value };
+      
+      // 인라인 편집에서는 세부내용 자동 업데이트를 하지 않음 (편집 모달에서 처리)
+      
+      updatedRows[rowIndex] = updatedRow;
       
       // 줄길이 직접입력 처리
       if (field === 'lineLength' && value === '직접입력') {
@@ -3267,7 +3271,7 @@ const OrderManagement: React.FC = () => {
       area: 0,
       lineDir: '',
       lineLen: 0,
-      pleatAmount: product.category === '커튼' && product.insideOutside === '속' ? '1.8~2' : 0,
+      pleatAmount: product.category === '커튼' && product.insideOutside === '속' ? '1.8~2' : '',
       widthCount: 0,
       quantity: 1,
       totalPrice: product.salePrice || 0,
@@ -3315,7 +3319,7 @@ const OrderManagement: React.FC = () => {
       area: 0,
       lineDir: '',
       lineLen: 0,
-      pleatAmount: product.category === '커튼' && product.insideOutside === '속' ? '1.8~2' : 0,
+      pleatAmount: product.category === '커튼' && product.insideOutside === '속' ? '1.8~2' : '',
       widthCount: 0,
       quantity: 1,
       totalPrice: product.salePrice || 0,
