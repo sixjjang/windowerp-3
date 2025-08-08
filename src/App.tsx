@@ -8,7 +8,7 @@ import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import Schedule from './pages/business/Schedule';
 import EstimateManagement from './pages/business/EstimateManagement';
-import DeliveryManagement from './pages/business/DeliveryManagement';
+
 import OrderManagement from './pages/business/OrderManagement';
 import ProductManagement from './pages/business/ProductManagement';
 import AdminUserManagement from './pages/admin/AdminUserManagement';
@@ -127,7 +127,7 @@ function AppContent() {
             <Route path="estimate" element={<EstimateManagement />} />
             <Route path="contract" element={<ContractManagement />} />
             <Route path="order" element={<OrderManagement />} />
-            <Route path="delivery" element={<DeliveryManagement />} />
+
             <Route path="schedule" element={<Schedule />} />
             <Route path="measurement" element={<MeasurementData />} />
             <Route path="historical" element={<HistoricalDataManagement />} />

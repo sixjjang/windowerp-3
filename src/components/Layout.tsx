@@ -48,7 +48,7 @@ import {
   ArrowBack as ArrowBackIcon,
   Home as HomeIcon,
   Description as DescriptionIcon,
-  LocalShipping as LocalShippingIcon,
+
   Schedule as ScheduleIcon,
   Straighten as StraightenIcon,
   History as HistoryIcon,
@@ -244,12 +244,7 @@ const menuItems = [
         path: '/order',
         roles: ['admin', 'staff'],
       },
-      {
-        text: '납품 관리',
-        icon: <LocalShippingIcon />,
-        path: '/delivery',
-        roles: ['admin', 'staff'],
-      },
+
       {
         text: '스케줄',
         icon: <ScheduleIcon />,
