@@ -39,6 +39,7 @@ import {
 
 import { Estimate, EstimateRow, OptionItem } from '../types';
 import { getCurrentUser } from '../utils/auth';
+import { userService } from '../utils/firebaseDataService';
 
 interface EstimateTemplateProps {
   estimate: Estimate;
@@ -61,6 +62,7 @@ const OUTPUT_FIELDS = [
   { key: 'area', label: '면적' },
   { key: 'lineDir', label: '줄방향' },
   { key: 'lineLen', label: '줄길이' },
+  { key: 'pleatType', label: '주름방식' },
   { key: 'pleatAmount', label: '주름양' },
   { key: 'widthCount', label: '폭수' },
   { key: 'quantity', label: '수량' },
@@ -409,9 +411,38 @@ const TemplateSettingsModal: React.FC<{
             </Box>
 
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ mb: 2, color: 'var(--text-color)' }}>
-                출력할 항목 선택
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Typography variant="h6" sx={{ color: 'var(--text-color)' }}>
+                  출력할 항목 선택
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    try {
+                      localStorage.setItem('estimateDefaultOutputFields', JSON.stringify(template.fields));
+                      // 원격에도 저장 시도
+                      (async () => {
+                        try {
+                          const user = await getCurrentUser();
+                          const uid = (user && (user.uid || user.id)) ? (user.uid || user.id) : null;
+                          if (uid) {
+                            await userService.saveUserSettings(uid, { estimateDefaultOutputFields: template.fields });
+                          }
+                        } catch (e) {
+                          console.warn('원격 기본값 저장 실패(무시):', e);
+                        }
+                      })();
+                      alert('현재 체크된 항목 구성이 기본값으로 저장되었습니다.');
+                    } catch (e) {
+                      console.error('기본값 저장 실패', e);
+                      alert('기본값 저장 중 오류가 발생했습니다.');
+                    }
+                  }}
+                >
+                  기본값으로 설정
+                </Button>
+              </Box>
               <Grid container spacing={2}>
                 {OUTPUT_FIELDS.map(field => (
                   <Grid item xs={6} key={field.key}>
@@ -852,9 +883,25 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
       });
     }
     
+    // 출력 항목 기본값(사용자 저장)이 있으면 현재 템플릿들에 반영
+    try {
+      const defaultFieldsRaw = localStorage.getItem('estimateDefaultOutputFields');
+      if (defaultFieldsRaw) {
+        const defaultFields: string[] = JSON.parse(defaultFieldsRaw);
+        Object.keys(savedTemplates).forEach(key => {
+          if (Array.isArray(savedTemplates[key].fields)) {
+            savedTemplates[key].fields = defaultFields;
+          }
+        });
+      }
+    } catch (e) {
+      // 무시하고 진행
+    }
+
     return savedTemplates;
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
   // 저장된 회사 정보와 안내 문구 가져오기
   const companyInfo = (() => {
@@ -920,6 +967,8 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
         return row.width || '-';
       case 'details':
         return row.details || '-';
+      case 'pleatType':
+        return row.pleatType || '-';
       case 'widthMM':
         return row.widthMM ? `${Number(row.widthMM).toLocaleString()}mm` : '-';
       case 'heightMM':
@@ -978,6 +1027,39 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
       try {
         const user = await getCurrentUser();
         setCurrentUser(user);
+        if (user?.uid || user?.id) {
+          setUserId(user.uid || user.id);
+          // 사용자 설정 로드 (클라우드)
+          try {
+            const remote = await userService.getUserSettings(user.uid || user.id);
+            if (remote?.estimateDefaultOutputFields && Array.isArray(remote.estimateDefaultOutputFields)) {
+              setTemplates((prev: any) => {
+                const cloned = { ...prev } as any;
+                Object.keys(cloned).forEach(k => {
+                  if (Array.isArray(cloned[k].fields)) cloned[k].fields = remote.estimateDefaultOutputFields;
+                });
+                // 로컬에도 동기화
+                localStorage.setItem('estimateDefaultOutputFields', JSON.stringify(remote.estimateDefaultOutputFields));
+                localStorage.setItem('estimateTemplates', JSON.stringify(cloned));
+                return cloned;
+              });
+            }
+            if (remote?.estimateCompanyInfo) {
+              localStorage.setItem('estimateCompanyInfo', JSON.stringify(remote.estimateCompanyInfo));
+            }
+            if (remote?.estimateNoticeText) {
+              localStorage.setItem('estimateNoticeText', remote.estimateNoticeText);
+            }
+            if (remote?.estimateShowStamp !== undefined) {
+              localStorage.setItem('estimateShowStamp', JSON.stringify(remote.estimateShowStamp));
+            }
+            if (remote?.estimateStampImage) {
+              localStorage.setItem('estimateStampImage', remote.estimateStampImage);
+            }
+          } catch (e) {
+            console.warn('원격 사용자 설정 로드 실패(무시):', e);
+          }
+        }
       } catch (error) {
         console.error('사용자 정보 로드 실패:', error);
         // 기본 사용자 정보 설정
@@ -1199,7 +1281,16 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
 
             {/* Estimate & Customer Info */}
             {currentTemplate.showCustomerInfo && (
-              <Grid container spacing={2} sx={{ mb: 3, fontSize: '10pt' }}>
+              <Grid
+                container
+                spacing={2}
+                sx={{
+                  mb: 3,
+                  '& .MuiTypography-body2': {
+                    fontSize: '11pt',
+                  },
+                }}
+              >
                 <Grid item xs={6}>
                   <Box
                     sx={{
@@ -1354,7 +1445,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                 제품 상세 내역
               </Typography>
               <TableContainer>
-                <Table size="small" sx={{ fontSize: '11pt' }}>
+                <Table size="small" sx={{ fontSize: '12pt' }}>
                   <TableHead>
                     <TableRow>
                       <TableCell
@@ -1421,7 +1512,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                   p: 0.5,
                                   color: '#000',
                                   verticalAlign: 'top',
-                                  fontSize: '11pt',
+                                  fontSize: '12pt',
                                 }}
                               >
                                 {index + 1}
@@ -1433,7 +1524,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                     p: 0.5,
                                     color: '#000',
                                     verticalAlign: 'top',
-                                    fontSize: '11pt',
+                                    fontSize: '12pt',
                                   }}
                                 >
                                   {getFieldValue(row, fieldKey)}
@@ -1459,7 +1550,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                           p: 0.5,
                                           color: '#000',
                                           verticalAlign: 'top',
-                                          fontSize: '10.5pt',
+                                          fontSize: '11.5pt',
                                         }}
                                       >
                                         옵션
@@ -1474,7 +1565,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                                   p: 0.5,
                                                   color: '#000',
                                                   verticalAlign: 'top',
-                                                  fontSize: '10.5pt',
+                                                  fontSize: '11.5pt',
                                                 }}
                                               >
                                                 └ {option.optionName}
@@ -1488,7 +1579,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                                   p: 0.5,
                                                   color: '#000',
                                                   verticalAlign: 'top',
-                                                  fontSize: '10.5pt',
+                                                  fontSize: '11.5pt',
                                                 }}
                                               >
                                                 {option.details}
@@ -1502,7 +1593,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                                   p: 0.5,
                                                   color: '#000',
                                                   verticalAlign: 'top',
-                                                  fontSize: '10.5pt',
+                                                  fontSize: '11.5pt',
                                                 }}
                                               >
                                                 {option.quantity || 1}
@@ -1520,7 +1611,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                                   p: 0.5,
                                                   color: '#000',
                                                   verticalAlign: 'top',
-                                                  fontSize: '10.5pt',
+                                                  fontSize: '11.5pt',
                                                 }}
                                               >
                                                 {optionAmount.toLocaleString()}원
@@ -1534,7 +1625,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                                   p: 0.5,
                                                   color: '#000',
                                                   verticalAlign: 'top',
-                                                  fontSize: '10.5pt',
+                                                  fontSize: '11.5pt',
                                                 }}
                                               >
                                                 -
@@ -1561,7 +1652,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                   p: 0.5,
                                   color: '#000',
                                   verticalAlign: 'top',
-                                  fontSize: '11pt',
+                                  fontSize: '12pt',
                                 }}
                               >
                                 레일
@@ -1573,7 +1664,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                     p: 0.5,
                                     color: '#000',
                                     verticalAlign: 'top',
-                                    fontSize: '11pt',
+                                    fontSize: '12pt',
                                   }}
                                 >
                                   {getFieldValue(row, fieldKey)}
@@ -1805,7 +1896,16 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
 
         {/* Estimate & Customer Info */}
         {currentTemplate.showCustomerInfo && (
-          <Grid container spacing={2} sx={{ mb: 3, fontSize: '10pt' }}>
+          <Grid
+            container
+            spacing={2}
+            sx={{
+              mb: 3,
+              '& .MuiTypography-body2': {
+                fontSize: '11pt',
+              },
+            }}
+          >
             <Grid item xs={6}>
               <Box
                 sx={{
@@ -1960,7 +2060,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
             제품 상세 내역
           </Typography>
           <TableContainer>
-            <Table size="small" sx={{ fontSize: '11pt' }}>
+            <Table size="small" sx={{ fontSize: '12pt' }}>
               <TableHead>
                 <TableRow>
                   <TableCell
@@ -2005,7 +2105,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                           p: 0.5,
                           color: '#000',
                           verticalAlign: 'top',
-                          fontSize: '11pt',
+                          fontSize: '12pt',
                         }}
                       >
                         {index + 1}
@@ -2017,7 +2117,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                             p: 0.5,
                             color: '#000',
                             verticalAlign: 'top',
-                            fontSize: '11pt',
+                            fontSize: '12pt',
                           }}
                         >
                           {getFieldValue(row, fieldKey)}
@@ -2038,7 +2138,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                 p: 0.5,
                                 color: '#000',
                                 verticalAlign: 'top',
-                                fontSize: '10.5pt',
+                                fontSize: '11.5pt',
                               }}
                             ></TableCell>
                             {currentTemplate.fields.map((fieldKey: string) => {
@@ -2050,7 +2150,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                       p: 0.5,
                                       color: '#000',
                                       verticalAlign: 'top',
-                                      fontSize: '10.5pt',
+                                      fontSize: '11.5pt',
                                     }}
                                   >
                                     └ {option.optionName}
@@ -2064,7 +2164,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                       p: 0.5,
                                       color: '#000',
                                       verticalAlign: 'top',
-                                      fontSize: '10.5pt',
+                                      fontSize: '11.5pt',
                                     }}
                                   >
                                     {option.details}
@@ -2078,7 +2178,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                       p: 0.5,
                                       color: '#000',
                                       verticalAlign: 'top',
-                                      fontSize: '10.5pt',
+                                      fontSize: '11.5pt',
                                     }}
                                   >
                                     {option.quantity || 1}
@@ -2096,7 +2196,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                       p: 0.5,
                                       color: '#000',
                                       verticalAlign: 'top',
-                                      fontSize: '10.5pt',
+                                      fontSize: '11.5pt',
                                     }}
                                   >
                                     {optionAmount.toLocaleString()}원
@@ -2110,7 +2210,7 @@ const EstimateTemplate: React.FC<EstimateTemplateProps> = ({
                                       p: 0.5,
                                       color: '#000',
                                       verticalAlign: 'top',
-                                      fontSize: '10.5pt',
+                                      fontSize: '11.5pt',
                                     }}
                                   >
                                     -

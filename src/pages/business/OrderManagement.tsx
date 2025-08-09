@@ -78,6 +78,7 @@ import { evaluate } from 'mathjs';
 import Slide from '@mui/material/Slide';
 import EstimateTemplate from '../../components/EstimateTemplate';
 import Autocomplete from '@mui/material/Autocomplete';
+import { measurementService } from '../../utils/firebaseDataService';
 import TemplateManager from '../../components/TemplateManager';
 import { templateRoomToEstimateRow } from '../../utils/templateUtils';
 import { EstimateTemplate as EstimateTemplateType, Estimate, EstimateRow, OptionItem, Installer, ASRequest, PaymentRecord } from '../../types';
@@ -158,7 +159,11 @@ interface Contract {
   address?: string; // 주소 필드 추가 (기존 customerAddress와 별도)
   projectName: string;
   projectType: string;
+  // 일정
+  measurementDate?: string; // 실측일자(ISO)
+  constructionDate?: string; // 시공일자(ISO)
   totalAmount: number;
+  discountedAmount?: number; // 계약서에 저장된 할인후금액
   status: string;
   items: any[];
   createdAt: string;
@@ -898,7 +903,8 @@ const ContractListModal: React.FC<{
                   <TableCell sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>주소</TableCell>
                   <TableCell sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>고객명</TableCell>
                   <TableCell sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>계약일자</TableCell>
-                  <TableCell sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>계약금액</TableCell>
+                  <TableCell sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }}>견적번호</TableCell>
+                  <TableCell sx={{ color: 'var(--text-color)', backgroundColor: 'var(--surface-color)' }} align="right">할인후금액</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -913,8 +919,9 @@ const ContractListModal: React.FC<{
                     <TableCell sx={{ color: 'var(--text-color)' }}>{(contract as any).address || contract.customerAddress || '-'}</TableCell>
                     <TableCell sx={{ color: 'var(--text-color)' }}>{contract.customerName}</TableCell>
                     <TableCell sx={{ color: 'var(--text-color)' }}>{contract.contractDate}</TableCell>
-                    <TableCell sx={{ color: 'var(--text-color)' }}>
-                      {contract.totalAmount?.toLocaleString()}원
+                    <TableCell sx={{ color: 'var(--text-color)' }}>{contract.estimateNo || '-'}</TableCell>
+                    <TableCell sx={{ color: 'var(--text-color)' }} align="right">
+                      {((contract as any).discountedAmount ?? contract.totalAmount ?? 0).toLocaleString()}원
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1090,6 +1097,64 @@ const OrderManagement: React.FC = () => {
   // 발주서 납품 관련 상태
   const [deliveryMethod, setDeliveryMethod] = useState<string>('직접배송');
   const [deliveryDate, setDeliveryDate] = useState<string>(getLocalDate());
+
+  // 주문서 → 실측데이터 저장
+  const handleSaveMeasurementFromOrder = useCallback(async () => {
+    try {
+      const currentOrder = orders[activeTab];
+      if (!currentOrder) {
+        setSnackbarMessage('주문서가 없습니다. 먼저 주문서를 생성해주세요.');
+        setSnackbarOpen(true);
+        return;
+      }
+      if (!currentOrder.rows || currentOrder.rows.length === 0) {
+        setSnackbarMessage('실측으로 저장할 제품이 없습니다.');
+        setSnackbarOpen(true);
+        return;
+      }
+
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mi = String(now.getMinutes()).padStart(2, '0');
+
+      const measurementEvent: any = {
+        title: `실측-주문-${currentOrder.estimateNo || 'NO'}`,
+        date: `${yyyy}-${mm}-${dd}`,
+        time: `${hh}:${mi}`,
+        customerName: currentOrder.customerName || '',
+        estimateNo: currentOrder.estimateNo || '',
+        address: currentOrder.address || '',
+        description: currentOrder.projectName || '',
+        // MeasurementData 화면은 type === '실측' 인 항목만 로딩하므로 고정값으로 저장
+        type: '실측',
+        projectType: currentOrder.type || '',
+        projectName: currentOrder.projectName || '',
+        measurementData: (currentOrder.rows || []).map((row: any, idx: number) => ({
+          id: String(idx + 1),
+          space: row.space || '',
+          productName: row.productName || row.optionLabel || row.details || '',
+          measuredWidth: Number(row.widthMM) || 0,
+          measuredHeight: Number(row.heightMM) || 0,
+          lineDirection: row.lineDir || '',
+          lineLength: row.lineLen || '',
+          memo: row.details || '',
+        })),
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      };
+
+      await measurementService.saveMeasurement(measurementEvent);
+      setSnackbarMessage('실측데이터 메뉴로 전송되었습니다. (실측목록에서 확인)');
+      setSnackbarOpen(true);
+    } catch (error) {
+      console.error('실측 저장 실패:', error);
+      setSnackbarMessage('실측 저장에 실패했습니다.');
+      setSnackbarOpen(true);
+    }
+  }, [orders, activeTab, setSnackbarMessage, setSnackbarOpen]);
 
   // 키보드 네비게이션을 위한 ref들
   const orderNoRef = useRef<HTMLInputElement>(null);
@@ -1636,13 +1701,49 @@ const OrderManagement: React.FC = () => {
           contractNo: contract.contractNo,
           estimateNo: contract.estimateNo, // 견적서 번호 추가
           estimateDate: getLocalDate(),
-          // 주문관리 추가 필드들 초기화
-          measurementDate: '',
-          installationDate: '',
+          // 주문관리 일정: 계약서/견적서 값 우선 사용
+          measurementDate: (contract as any).measurementDate || linkedEstimate?.measurementDate || currentOrder.measurementDate || '',
+          installationDate: (contract as any).constructionDate || linkedEstimate?.installationDate || currentOrder.installationDate || '',
+          // 할인/확정금액: 견적서 → 계약서 → 기존주문 순서로 매핑
+          discountAmount: (
+            linkedEstimate?.discountAmountInput ??
+            (contract as any).discountAmountInput ??
+            currentOrder.discountAmount ??
+            ''
+          ),
+          discountRate: (
+            linkedEstimate?.discountRateInput ??
+            (contract as any).discountRateInput ??
+            currentOrder.discountRate ??
+            ''
+          ),
+          discountedTotalInput: (
+            linkedEstimate?.discountedTotalInput ??
+            (contract as any).discountedTotalInput ??
+            (typeof (contract as any).discountedAmount === 'number' ? String((contract as any).discountedAmount) : undefined) ??
+            currentOrder.discountedTotalInput ??
+            ''
+          ),
+          finalizedAmount: (
+            linkedEstimate?.finalizedAmount ??
+            (contract as any).finalizedAmount ??
+            currentOrder.finalizedAmount ??
+            ''
+          ),
           installerId: '',
           installerName: '',
         };
       
+        // 상태와 localStorage에 즉시 반영
+        const updatedOrdersImmediate = [...orders];
+        updatedOrdersImmediate[activeTab] = updatedOrder as any;
+        setOrders(updatedOrdersImmediate);
+        try {
+          const existingSavedOrders = JSON.parse(localStorage.getItem('saved_orders') || '[]');
+          const merged = existingSavedOrders.map((o: any, idx: number) => (idx === activeTab ? { ...o, ...updatedOrder } : o));
+          localStorage.setItem('saved_orders', JSON.stringify(merged));
+        } catch (_) {}
+
       // 연결된 견적서가 있으면 견적서의 내용을 우선 사용
       if (linkedEstimate) {
         console.log('견적서 내용으로 주문서 업데이트:', linkedEstimate);
@@ -1825,11 +1926,18 @@ const OrderManagement: React.FC = () => {
           return convertedRow;
         }) || [];
       }
+
+      // 할인 입력 상태를 주문서 값으로 동기화 (UI 즉시 반영)
+      try {
+        setDiscountAmount(((updatedOrder as any).discountAmount ?? '').toString());
+        setDiscountRate(((updatedOrder as any).discountRate ?? '').toString());
+        setDiscountedTotalInput(((updatedOrder as any).discountedTotalInput ?? '').toString());
+      } catch (_) {}
       
-      // 주문서 업데이트
-      const updatedOrders = [...orders];
-      updatedOrders[activeTab] = updatedOrder;
-      setOrders(updatedOrders);
+      // 주문서 업데이트 (이미 위에서 한 번 반영했으므로 여기서는 최신 상태로 한 번 더 보장)
+      const updatedOrdersFinal = [...orders];
+      updatedOrdersFinal[activeTab] = updatedOrder;
+      setOrders(updatedOrdersFinal);
       setIsOrderEditMode(true);
       
       console.log('=== 주문서 업데이트 완료 ===');
@@ -2214,17 +2322,28 @@ const OrderManagement: React.FC = () => {
   const updateVendorPurchaseOrderInfo = (vendor: string, field: string, value: string) => {
     const currentOrderId = orders[activeTab]?.id;
     if (!currentOrderId) return;
-    
-    setVendorPurchaseOrderInfo(prev => ({
-      ...prev,
-      [currentOrderId]: {
-        ...prev[currentOrderId],
-        [vendor]: {
-          ...prev[currentOrderId]?.[vendor],
-          [field]: value
+
+    setVendorPurchaseOrderInfo(prev => {
+      const existingVendorInfo = prev[currentOrderId]?.[vendor];
+      const baseInfo = existingVendorInfo || {
+        purchaseOrderDate: getLocalDate(),
+        purchaseOrderName: convertAddressToPurchaseOrderName(orders[activeTab]?.address || ''),
+        deliveryMethod: '직접배송',
+        deliveryDate: getLocalDate(),
+        additionalNotes: ''
+      };
+
+      return {
+        ...prev,
+        [currentOrderId]: {
+          ...prev[currentOrderId],
+          [vendor]: {
+            ...baseInfo,
+            [field]: value,
+          }
         }
-      }
-    }));
+      } as typeof prev;
+    });
   };
   
   // 현재 거래처의 발주 상태 가져오기
@@ -2286,28 +2405,61 @@ const OrderManagement: React.FC = () => {
     margin: false,
   };
 
-  const [columnVisibility, setColumnVisibility] = useState({
-    vendor: true,        // 거래처
-    brand: false,        // 브랜드
-    space: true,         // 공간
-    productCode: true,   // 제품코드
-    productType: false,  // 제품종류
-    productName: true,   // 제품명
-    width: false,        // 폭
-    details: true,       // 세부내용
-    widthMM: true,       // 가로(mm)
-    heightMM: true,      // 세로(mm)
-    area: true,          // 면적(㎡)
-    lineDir: true,       // 줄방향
-    lineLen: true,       // 줄길이
-    pleatAmount: false,  // 주름양
-    widthCount: false,   // 폭수
-    quantity: true,      // 수량
-    totalPrice: true,    // 판매금액
-    salePrice: true,     // 판매단가
-    cost: true,          // 입고금액
-    purchaseCost: true,  // 입고원가
-    margin: true,        // 마진
+  type ColumnVisibility = {
+    vendor: boolean;
+    brand: boolean;
+    space: boolean;
+    productCode: boolean;
+    productType: boolean;
+    productName: boolean;
+    width: boolean;
+    details: boolean;
+    widthMM: boolean;
+    heightMM: boolean;
+    area: boolean;
+    lineDir: boolean;
+    lineLen: boolean;
+    pleatAmount: boolean;
+    widthCount: boolean;
+    quantity: boolean;
+    totalPrice: boolean;
+    salePrice: boolean;
+    cost: boolean;
+    purchaseCost: boolean;
+    margin: boolean;
+  };
+
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(() => {
+    // 저장된 기본값이 있으면 사용, 없으면 초기 추천값 사용
+    try {
+      const saved = localStorage.getItem('orderColumnVisibilityDefault');
+      if (saved) return JSON.parse(saved);
+    } catch (_) {
+      // ignore
+    }
+    return {
+      vendor: true,        // 거래처
+      brand: false,        // 브랜드
+      space: true,         // 공간
+      productCode: true,   // 제품코드
+      productType: false,  // 제품종류
+      productName: true,   // 제품명
+      width: false,        // 폭
+      details: true,       // 세부내용
+      widthMM: true,       // 가로(mm)
+      heightMM: true,      // 세로(mm)
+      area: true,          // 면적(㎡)
+      lineDir: true,       // 줄방향
+      lineLen: true,       // 줄길이
+      pleatAmount: false,  // 주름양
+      widthCount: false,   // 폭수
+      quantity: true,      // 수량
+      totalPrice: true,    // 판매금액
+      salePrice: true,     // 판매단가
+      cost: true,          // 입고금액
+      purchaseCost: true,  // 입고원가
+      margin: true,        // 마진
+    };
   });
 
   // 제품검색 관련 상태 추가
@@ -3195,7 +3347,7 @@ const OrderManagement: React.FC = () => {
     setShowMarginSum(!showMarginSum);
     
     // WINDOWSTORY 버튼 클릭 시 입고금액, 입고원가, 마진 항목 토글
-    setColumnVisibility(prev => ({
+    setColumnVisibility((prev: ColumnVisibility) => ({
       ...prev,
       cost: !prev.cost,
       purchaseCost: !prev.purchaseCost,
@@ -3276,10 +3428,10 @@ const OrderManagement: React.FC = () => {
   };
 
   // 컬럼 표시/숨김 토글
-  const handleColumnToggle = (field: string) => {
-    setColumnVisibility(prev => ({
+  const handleColumnToggle = (field: keyof ColumnVisibility) => {
+    setColumnVisibility((prev: ColumnVisibility) => ({
       ...prev,
-      [field]: !prev[field as keyof typeof prev]
+      [field]: !prev[field]
     }));
   };
 
@@ -3308,6 +3460,18 @@ const OrderManagement: React.FC = () => {
       purchaseCost: true,
       margin: true,
     });
+  };
+
+  // 현재 표시 설정을 기본값으로 저장
+  const handleSaveColumnDefaults = () => {
+    try {
+      localStorage.setItem('orderColumnVisibilityDefault', JSON.stringify(columnVisibility));
+      setSnackbarMessage('열 표시 설정을 기본값으로 저장했습니다.');
+      setSnackbarOpen(true);
+    } catch (error) {
+      setSnackbarMessage('기본값 저장 중 오류가 발생했습니다.');
+      setSnackbarOpen(true);
+    }
   };
 
   // 제품 검색 모달 열기
@@ -9068,103 +9232,323 @@ const OrderManagement: React.FC = () => {
               pt: 2,
               borderTop: '1px solid var(--border-color)'
             }}>
-              {/* 실측일자 */}
-              <TextField
-                label="실측일자"
-                type="datetime-local"
-                value={orders[activeTab].measurementDate || ''}
-                onChange={(e) => {
-                  const updatedOrders = [...orders];
-                  updatedOrders[activeTab] = {
-                    ...updatedOrders[activeTab],
-                    measurementDate: e.target.value
-                  };
-                  setOrders(updatedOrders);
-                }}
-                size="small"
-                sx={{ 
-                  minWidth: 200,
-                  '& .MuiInputBase-root': {
+              {/* 실측일자 - 커스텀 10분 단위 선택 */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TextField
+                  label="실측일자"
+                  type="date"
+                  value={orders[activeTab].measurementDate ? new Date(orders[activeTab].measurementDate as string).toISOString().slice(0,10) : ''}
+                  onChange={(e) => {
+                    const base = orders[activeTab].measurementDate || new Date().toISOString();
+                    const d = new Date(base);
+                    const [yy,mm,dd] = e.target.value.split('-').map(Number);
+                    d.setFullYear(yy, mm - 1, dd);
+                    const updatedOrders = [...orders];
+                    updatedOrders[activeTab] = {
+                      ...updatedOrders[activeTab],
+                      measurementDate: new Date(d).toISOString()
+                    };
+                    setOrders(updatedOrders);
+                  }}
+                  size="small"
+                  sx={{ minWidth: 160 }}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <Select
+                  size="small"
+                  value={(() => {
+                    const d = orders[activeTab].measurementDate ? new Date(orders[activeTab].measurementDate as string) : new Date();
+                    return d.getHours() < 12 ? '오전' : '오후';
+                  })()}
+                  onChange={(e) => {
+                    const base = orders[activeTab].measurementDate || new Date().toISOString();
+                    const d = new Date(base);
+                    let h = d.getHours();
+                    const minute = Math.floor(d.getMinutes()/10)*10;
+                    const isAM = e.target.value === '오전';
+                    if (isAM && h >= 12) h -= 12;
+                    if (!isAM && h < 12) h += 12;
+                    d.setHours(h, minute, 0, 0);
+                    const updatedOrders = [...orders];
+                    updatedOrders[activeTab] = { ...updatedOrders[activeTab], measurementDate: d.toISOString() };
+                    setOrders(updatedOrders);
+                  }}
+                  sx={{
                     backgroundColor: 'var(--background-color)',
                     border: '1px solid var(--border-color)',
                     color: 'var(--text-color)',
                     '&:hover': {
                       backgroundColor: 'var(--hover-color)',
-                      borderColor: 'var(--primary-color)',
+                      borderColor: 'var(--primary-color)'
                     },
-                    '&:focus-within': {
-                      borderColor: 'var(--primary-color)',
-                      boxShadow: '0 0 0 2px var(--border-color)',
+                    '& .MuiSelect-icon': { color: 'var(--text-secondary-color)' }
+                  }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        backgroundColor: 'var(--surface-color)',
+                        color: 'var(--text-color)',
+                        '& .MuiMenuItem-root': {
+                          color: 'var(--text-color)',
+                          '&:hover': { backgroundColor: 'var(--hover-color)' }
+                        }
+                      }
+                    }
+                  }}
+                >
+                  <MenuItem value="오전">오전</MenuItem>
+                  <MenuItem value="오후">오후</MenuItem>
+                </Select>
+                <Select
+                  size="small"
+                  value={(() => {
+                    const d = orders[activeTab].measurementDate ? new Date(orders[activeTab].measurementDate as string) : new Date();
+                    let h = d.getHours();
+                    const hour12 = ((h + 11) % 12) + 1;
+                    return String(hour12).padStart(2, '0');
+                  })()}
+                  onChange={(e) => {
+                    const base = orders[activeTab].measurementDate || new Date().toISOString();
+                    const d = new Date(base);
+                    const isAM = d.getHours() < 12;
+                    let hour = parseInt(String(e.target.value), 10);
+                    if (!isAM && hour !== 12) hour += 12;
+                    if (isAM && hour === 12) hour = 0;
+                    const minute = Math.floor(d.getMinutes()/10)*10;
+                    d.setHours(hour, minute, 0, 0);
+                    const updatedOrders = [...orders];
+                    updatedOrders[activeTab] = { ...updatedOrders[activeTab], measurementDate: d.toISOString() };
+                    setOrders(updatedOrders);
+                  }}
+                  sx={{
+                    backgroundColor: 'var(--background-color)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-color)',
+                    '&:hover': {
+                      backgroundColor: 'var(--hover-color)',
+                      borderColor: 'var(--primary-color)'
                     },
-                  },
-                  '& .MuiInputLabel-root': {
-                    color: 'var(--text-secondary-color)',
-                    '&.Mui-focused': {
-                      color: 'var(--primary-color)',
+                    '& .MuiSelect-icon': { color: 'var(--text-secondary-color)' }
+                  }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        backgroundColor: 'var(--surface-color)',
+                        color: 'var(--text-color)',
+                        '& .MuiMenuItem-root': {
+                          color: 'var(--text-color)',
+                          '&:hover': { backgroundColor: 'var(--hover-color)' }
+                        }
+                      }
+                    }
+                  }}
+                >
+                  {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(h => (
+                    <MenuItem key={h} value={h}>{h}</MenuItem>
+                  ))}
+                </Select>
+                <Select
+                  size="small"
+                  value={(() => {
+                    const d = orders[activeTab].measurementDate ? new Date(orders[activeTab].measurementDate as string) : new Date();
+                    return String(Math.floor(d.getMinutes()/10)*10).padStart(2, '0');
+                  })()}
+                  onChange={(e) => {
+                    const base = orders[activeTab].measurementDate || new Date().toISOString();
+                    const d = new Date(base);
+                    const minute = parseInt(String(e.target.value), 10);
+                    d.setMinutes(minute, 0, 0);
+                    const updatedOrders = [...orders];
+                    updatedOrders[activeTab] = { ...updatedOrders[activeTab], measurementDate: d.toISOString() };
+                    setOrders(updatedOrders);
+                  }}
+                  sx={{
+                    backgroundColor: 'var(--background-color)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-color)',
+                    '&:hover': {
+                      backgroundColor: 'var(--hover-color)',
+                      borderColor: 'var(--primary-color)'
                     },
-                  },
-                  '& .MuiInputLabel-shrink': {
-                    transform: 'translate(14px, -9px) scale(0.75)',
-                  },
-                }}
-                inputProps={{
-                  step: 1800, // 30분 단위 (초 단위)
-                  min: '2020-01-01T00:00',
-                  max: '2030-12-31T23:59',
-                }}
-                InputLabelProps={{
-                  shrink: true,
-                }}
-              />
+                    '& .MuiSelect-icon': { color: 'var(--text-secondary-color)' }
+                  }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        backgroundColor: 'var(--surface-color)',
+                        color: 'var(--text-color)',
+                        '& .MuiMenuItem-root': {
+                          color: 'var(--text-color)',
+                          '&:hover': { backgroundColor: 'var(--hover-color)' }
+                        }
+                      }
+                    }
+                  }}
+                >
+                  {['00','10','20','30','40','50'].map(m => (
+                    <MenuItem key={m} value={m}>{m}</MenuItem>
+                  ))}
+                </Select>
+              </Box>
               
-              {/* 시공일자 */}
-              <TextField
-                label="시공일자"
-                type="datetime-local"
-                value={orders[activeTab].installationDate || ''}
-                onChange={(e) => {
-                  const updatedOrders = [...orders];
-                  updatedOrders[activeTab] = {
-                    ...updatedOrders[activeTab],
-                    installationDate: e.target.value
-                  };
-                  setOrders(updatedOrders);
-                }}
-                size="small"
-                sx={{ 
-                  minWidth: 200,
-                  '& .MuiInputBase-root': {
+              {/* 시공일자 - 커스텀 10분 단위 선택 */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TextField
+                  label="시공일자"
+                  type="date"
+                  value={orders[activeTab].installationDate ? new Date(orders[activeTab].installationDate as string).toISOString().slice(0,10) : ''}
+                  onChange={(e) => {
+                    const base = orders[activeTab].installationDate || new Date().toISOString();
+                    const d = new Date(base);
+                    const [yy,mm,dd] = e.target.value.split('-').map(Number);
+                    d.setFullYear(yy, mm - 1, dd);
+                    const updatedOrders = [...orders];
+                    updatedOrders[activeTab] = {
+                      ...updatedOrders[activeTab],
+                      installationDate: new Date(d).toISOString()
+                    };
+                    setOrders(updatedOrders);
+                  }}
+                  size="small"
+                  sx={{ minWidth: 160 }}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <Select
+                  size="small"
+                  value={(() => {
+                    const d = orders[activeTab].installationDate ? new Date(orders[activeTab].installationDate as string) : new Date();
+                    return d.getHours() < 12 ? '오전' : '오후';
+                  })()}
+                  onChange={(e) => {
+                    const base = orders[activeTab].installationDate || new Date().toISOString();
+                    const d = new Date(base);
+                    let h = d.getHours();
+                    const minute = Math.floor(d.getMinutes()/10)*10;
+                    const isAM = e.target.value === '오전';
+                    if (isAM && h >= 12) h -= 12;
+                    if (!isAM && h < 12) h += 12;
+                    d.setHours(h, minute, 0, 0);
+                    const updatedOrders = [...orders];
+                    updatedOrders[activeTab] = { ...updatedOrders[activeTab], installationDate: d.toISOString() };
+                    setOrders(updatedOrders);
+                  }}
+                  sx={{
                     backgroundColor: 'var(--background-color)',
                     border: '1px solid var(--border-color)',
                     color: 'var(--text-color)',
                     '&:hover': {
                       backgroundColor: 'var(--hover-color)',
-                      borderColor: 'var(--primary-color)',
+                      borderColor: 'var(--primary-color)'
                     },
-                    '&:focus-within': {
-                      borderColor: 'var(--primary-color)',
-                      boxShadow: '0 0 0 2px var(--border-color)',
+                    '& .MuiSelect-icon': { color: 'var(--text-secondary-color)' }
+                  }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        backgroundColor: 'var(--surface-color)',
+                        color: 'var(--text-color)',
+                        '& .MuiMenuItem-root': {
+                          color: 'var(--text-color)',
+                          '&:hover': { backgroundColor: 'var(--hover-color)' }
+                        }
+                      }
+                    }
+                  }}
+                >
+                  <MenuItem value="오전">오전</MenuItem>
+                  <MenuItem value="오후">오후</MenuItem>
+                </Select>
+                <Select
+                  size="small"
+                  value={(() => {
+                    const d = orders[activeTab].installationDate ? new Date(orders[activeTab].installationDate as string) : new Date();
+                    let h = d.getHours();
+                    const hour12 = ((h + 11) % 12) + 1;
+                    return String(hour12).padStart(2, '0');
+                  })()}
+                  onChange={(e) => {
+                    const base = orders[activeTab].installationDate || new Date().toISOString();
+                    const d = new Date(base);
+                    const isAM = d.getHours() < 12;
+                    let hour = parseInt(String(e.target.value), 10);
+                    if (!isAM && hour !== 12) hour += 12;
+                    if (isAM && hour === 12) hour = 0;
+                    const minute = Math.floor(d.getMinutes()/10)*10;
+                    d.setHours(hour, minute, 0, 0);
+                    const updatedOrders = [...orders];
+                    updatedOrders[activeTab] = { ...updatedOrders[activeTab], installationDate: d.toISOString() };
+                    setOrders(updatedOrders);
+                  }}
+                  sx={{
+                    backgroundColor: 'var(--background-color)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-color)',
+                    '&:hover': {
+                      backgroundColor: 'var(--hover-color)',
+                      borderColor: 'var(--primary-color)'
                     },
-                  },
-                  '& .MuiInputLabel-root': {
-                    color: 'var(--text-secondary-color)',
-                    '&.Mui-focused': {
-                      color: 'var(--primary-color)',
+                    '& .MuiSelect-icon': { color: 'var(--text-secondary-color)' }
+                  }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        backgroundColor: 'var(--surface-color)',
+                        color: 'var(--text-color)',
+                        '& .MuiMenuItem-root': {
+                          color: 'var(--text-color)',
+                          '&:hover': { backgroundColor: 'var(--hover-color)' }
+                        }
+                      }
+                    }
+                  }}
+                >
+                  {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(h => (
+                    <MenuItem key={h} value={h}>{h}</MenuItem>
+                  ))}
+                </Select>
+                <Select
+                  size="small"
+                  value={(() => {
+                    const d = orders[activeTab].installationDate ? new Date(orders[activeTab].installationDate as string) : new Date();
+                    return String(Math.floor(d.getMinutes()/10)*10).padStart(2, '0');
+                  })()}
+                  onChange={(e) => {
+                    const base = orders[activeTab].installationDate || new Date().toISOString();
+                    const d = new Date(base);
+                    const minute = parseInt(String(e.target.value), 10);
+                    d.setMinutes(minute, 0, 0);
+                    const updatedOrders = [...orders];
+                    updatedOrders[activeTab] = { ...updatedOrders[activeTab], installationDate: d.toISOString() };
+                    setOrders(updatedOrders);
+                  }}
+                  sx={{
+                    backgroundColor: 'var(--background-color)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-color)',
+                    '&:hover': {
+                      backgroundColor: 'var(--hover-color)',
+                      borderColor: 'var(--primary-color)'
                     },
-                  },
-                  '& .MuiInputLabel-shrink': {
-                    transform: 'translate(14px, -9px) scale(0.75)',
-                  },
-                }}
-                inputProps={{
-                  step: 1800, // 30분 단위 (초 단위)
-                  min: '2020-01-01T00:00',
-                  max: '2030-12-31T23:59',
-                }}
-                InputLabelProps={{
-                  shrink: true,
-                }}
-              />
+                    '& .MuiSelect-icon': { color: 'var(--text-secondary-color)' }
+                  }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        backgroundColor: 'var(--surface-color)',
+                        color: 'var(--text-color)',
+                        '& .MuiMenuItem-root': {
+                          color: 'var(--text-color)',
+                          '&:hover': { backgroundColor: 'var(--hover-color)' }
+                        }
+                      }
+                    }
+                  }}
+                >
+                  {['00','10','20','30','40','50'].map(m => (
+                    <MenuItem key={m} value={m}>{m}</MenuItem>
+                  ))}
+                </Select>
+              </Box>
               
               {/* 시공기사 드롭다운 */}
               <FormControl size="small" sx={{ minWidth: 200 }}>
@@ -9774,7 +10158,7 @@ const OrderManagement: React.FC = () => {
                                 width: `${calculateInputWidth(editingValue, 50, 120)}px !important`,
                                 fontSize: 'inherit',
                                 '& .MuiInputBase-input': {
-                                  color: '#000000 !important',
+                                  color: 'var(--text-color) !important',
                                   padding: '2px 4px !important',
                                   width: `${calculateInputWidth(editingValue, 50, 120)}px !important`
                                 },
@@ -9846,7 +10230,7 @@ const OrderManagement: React.FC = () => {
                                 width: `${calculateInputWidth(editingValue, 50, 120)}px !important`,
                                 fontSize: 'inherit',
                                 '& .MuiInputBase-input': {
-                                  color: '#000000 !important',
+                                  color: 'var(--text-color) !important',
                                   padding: '2px 4px !important',
                                   width: `${calculateInputWidth(editingValue, 50, 120)}px !important`
                                 },
@@ -9934,7 +10318,7 @@ const OrderManagement: React.FC = () => {
                                 width: `${calculateInputWidth(editingValue, 150, 400)}px !important`,
                                 fontSize: 'inherit',
                                 '& .MuiInputBase-input': {
-                                  color: '#000000 !important',
+                                  color: 'var(--text-color) !important',
                                   padding: '2px 4px !important',
                                   width: `${calculateInputWidth(editingValue, 150, 400)}px !important`
                                 },
@@ -10007,7 +10391,7 @@ const OrderManagement: React.FC = () => {
                                 width: `${calculateInputWidth(editingValue, 40, 80)}px !important`,
                                 fontSize: 'inherit',
                                 '& .MuiInputBase-input': {
-                                  color: '#000000 !important',
+                                  color: 'var(--text-color) !important',
                                   padding: '2px 4px !important',
                                   width: `${calculateInputWidth(editingValue, 40, 80)}px !important`
                                 },
@@ -10079,7 +10463,7 @@ const OrderManagement: React.FC = () => {
                                 width: `${calculateInputWidth(editingValue, 40, 80)}px !important`,
                                 fontSize: 'inherit',
                                 '& .MuiInputBase-input': {
-                                  color: '#000000 !important',
+                                  color: 'var(--text-color) !important',
                                   padding: '2px 4px !important',
                                   width: `${calculateInputWidth(editingValue, 40, 80)}px !important`
                                 },
@@ -10134,7 +10518,7 @@ const OrderManagement: React.FC = () => {
                                 width: `${calculateInputWidth(editingValue, 25, 60)}px !important`,
                                 fontSize: 'inherit',
                                 '& .MuiInputBase-input': {
-                                  color: '#000000 !important',
+                                  color: 'var(--text-color) !important',
                                   padding: '2px 4px !important',
                                   width: `${calculateInputWidth(editingValue, 25, 60)}px !important`
                                 },
@@ -10207,12 +10591,12 @@ const OrderManagement: React.FC = () => {
                                   width: `${calculateInputWidth(editingValue, 30, 60)}px !important`,
                                   fontSize: 'inherit',
                                   '& .MuiSelect-select': {
-                                    color: '#000000 !important',
+                                    color: 'var(--text-color) !important',
                                     padding: '2px 4px !important',
                                     width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
                                   },
                                   '& .MuiInputBase-input': {
-                                    color: '#000000 !important',
+                                    color: 'var(--text-color) !important',
                                     padding: '2px 4px !important',
                                     width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
                                   },
@@ -10222,16 +10606,16 @@ const OrderManagement: React.FC = () => {
                                     width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
                                   },
                                   '& .MuiMenu-paper': {
-                                    backgroundColor: '#ffffff !important',
-                                    color: '#000000 !important',
+                                    backgroundColor: 'var(--surface-color) !important',
+                                    color: 'var(--text-color) !important',
                                     minWidth: '30px !important',
                                     maxWidth: '60px !important',
                                   },
                                   '& .MuiMenuItem-root': {
-                                    color: '#000000 !important',
-                                    backgroundColor: '#ffffff !important',
+                                    color: 'var(--text-color) !important',
+                                    backgroundColor: 'var(--surface-color) !important',
                                     '&:hover': {
-                                      backgroundColor: '#f5f5f5 !important',
+                                      backgroundColor: 'var(--hover-color) !important',
                                     },
                                   },
                                 }}
@@ -10241,10 +10625,10 @@ const OrderManagement: React.FC = () => {
                                   key={option} 
                                   value={option}
                                   sx={{
-                                    color: '#000000 !important',
-                                    backgroundColor: '#ffffff !important',
+                                    color: 'var(--text-color) !important',
+                                    backgroundColor: 'var(--surface-color) !important',
                                     '&:hover': {
-                                      backgroundColor: '#f5f5f5 !important',
+                                      backgroundColor: 'var(--hover-color) !important',
                                     },
                                   }}
                                 >
@@ -10303,8 +10687,8 @@ const OrderManagement: React.FC = () => {
                                      padding: '2px 4px !important',
                                      width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
                                    },
-                                   '& .MuiInputBase-input': {
-                                     color: '#000000 !important',
+                                 '& .MuiInputBase-input': {
+                                   color: 'var(--text-color) !important',
                                      padding: '2px 4px !important',
                                      width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
                                    },
@@ -10407,8 +10791,8 @@ const OrderManagement: React.FC = () => {
                                     maxWidth: '60px !important',
                                     width: `${calculateInputWidth(editingCustomValue, 30, 60)}px !important`,
                                     fontSize: 'inherit',
-                                    '& .MuiInputBase-input': {
-                                      color: '#000000 !important',
+                                     '& .MuiInputBase-input': {
+                                       color: 'var(--text-color) !important',
                                       padding: '2px 4px !important',
                                       width: `${calculateInputWidth(editingCustomValue, 30, 60)}px !important`
                                     },
@@ -10489,8 +10873,8 @@ const OrderManagement: React.FC = () => {
                                 maxWidth: '60px !important',
                                 width: `${calculateInputWidth(editingValue, 30, 60)}px !important`,
                                 fontSize: 'inherit',
-                                '& .MuiInputBase-input': {
-                                  color: '#000000 !important',
+                                 '& .MuiInputBase-input': {
+                                   color: 'var(--text-color) !important',
                                   padding: '2px 4px !important',
                                   width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
                                 },
@@ -10562,7 +10946,7 @@ const OrderManagement: React.FC = () => {
                                 width: `${calculateInputWidth(editingValue, 30, 60)}px !important`,
                                 fontSize: 'inherit',
                                 '& .MuiInputBase-input': {
-                                  color: '#000000 !important',
+                                  color: 'var(--text-color) !important',
                                   padding: '2px 4px !important',
                                   width: `${calculateInputWidth(editingValue, 30, 60)}px !important`
                                 },
@@ -10662,7 +11046,7 @@ const OrderManagement: React.FC = () => {
                     </TableRow>
                   ))}
                   {/* 합계 행 */}
-                  <TableRow sx={{ backgroundColor: '#e3f2fd', fontWeight: 'bold', fontSize: 'calc(1em + 1px)' }}>
+                  <TableRow sx={{ backgroundColor: 'var(--hover-color)', fontWeight: 'bold', fontSize: 'calc(1em + 1px)', '& .MuiTableCell-root': { color: 'var(--text-color)' } }}>
                     {isBulkEditMode && <TableCell></TableCell>}
                     <TableCell>합계</TableCell>
                     {(isMobile ? mobileProductColumnVisibility.vendor : columnVisibility.vendor) && <TableCell></TableCell>}
@@ -10708,11 +11092,11 @@ const OrderManagement: React.FC = () => {
 
             {/* 합계 정보 */}
             <Box sx={{ mt: 2, mb: 2, fontWeight: 'bold', fontSize: 16 }}>
-              <span style={{ color: '#000000', marginRight: 32 }}>
+              <span style={{ color: 'var(--text-color)', marginRight: 32 }}>
                 소비자금액(VAT포함): {sumTotalPrice.toLocaleString()} 원
               </span>
               {discountAmountNumber > 0 && (
-                <span style={{ color: 'var(--primary-color, #6a1b9a)', marginRight: 32 }}>
+                <span style={{ color: 'var(--text-color)', marginRight: 32 }}>
                   할인후금액(VAT포함): {discountedTotal.toLocaleString()} 원
                 </span>
               )}
@@ -10754,6 +11138,45 @@ const OrderManagement: React.FC = () => {
               >
                 발주서 만들기
               </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                sx={{
+                  mx: 1,
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--text-color)',
+                  backgroundColor: 'var(--surface-color)',
+                  '&:hover': { backgroundColor: 'var(--hover-color)' },
+                  fontWeight: 'bold',
+                  boxShadow: 'none',
+                  borderRadius: 1,
+                  minWidth: 120,
+                  paddingX: 2,
+                }}
+                onClick={handleSaveMeasurementFromOrder}
+                disabled={!orders[activeTab]?.rows || orders[activeTab].rows.length === 0}
+              >
+                실측저장
+              </Button>
+            </Box>
+            {/* 소비자금액 바로 아래 표시되는 할인후금액 */}
+            <Box sx={{ mt: 1, mb: 1 }}>
+              <span style={{ color: 'var(--primary-color)', fontWeight: 'bold', fontSize: 16 }}>
+                할인후금액(VAT포함): {
+                  (() => {
+                    const fromOrderInput = orders[activeTab]?.discountedTotalInput as (string | undefined);
+                    const fromOrderAmount = orders[activeTab]?.discountedAmount as (number | undefined);
+                    const val = fromOrderInput && fromOrderInput !== ''
+                      ? Number(fromOrderInput)
+                      : (typeof fromOrderAmount === 'number' && fromOrderAmount > 0)
+                        ? fromOrderAmount
+                        : (discountedTotalInput
+                            ? Number(discountedTotalInput)
+                            : (discountAmountNumber > 0 ? discountedTotal : sumTotalPrice));
+                    return val.toLocaleString();
+                  })()
+                } 원
+              </span>
             </Box>
             {/* 할인 설정 - 소비자금액 바로 아래 */}
             {orders[activeTab]?.rows && orders[activeTab].rows.length > 0 && (
@@ -10763,16 +11186,16 @@ const OrderManagement: React.FC = () => {
                 gap: 2, 
                 mb: 2, 
                 p: 2, 
-                backgroundColor: '#f8f9fa', 
+                backgroundColor: 'var(--surface-color)', 
                 borderRadius: 1, 
-                border: '1px solid #e9ecef',
+                border: '1px solid var(--border-color)',
                 flexWrap: 'wrap'
               }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#000', mr: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'var(--text-color)', mr: 2 }}>
                   할인 설정:
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
-                  <span style={{ fontSize: '14px', color: '#333' }}>할인금액:</span>
+                  <span style={{ fontSize: '14px', color: 'var(--text-color)' }}>할인금액:</span>
                   <input
                     type="text"
                     value={discountAmount ? Number(discountAmount).toLocaleString() : ''}
@@ -10781,13 +11204,15 @@ const OrderManagement: React.FC = () => {
                       width: 100, 
                       fontSize: '14px', 
                       padding: '4px 8px',
-                      border: '1px solid #ccc',
-                      borderRadius: '4px'
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '4px',
+                      color: 'var(--text-color)',
+                      backgroundColor: 'var(--background-color)'
                     }}
                   />
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
-                  <span style={{ fontSize: '14px', color: '#333' }}>할인율(%):</span>
+                  <span style={{ fontSize: '14px', color: 'var(--text-color)' }}>할인율(%):</span>
                   <input
                     type="number"
                     value={discountRate}
@@ -10796,13 +11221,15 @@ const OrderManagement: React.FC = () => {
                       width: 60, 
                       fontSize: '14px',
                       padding: '4px 8px',
-                      border: '1px solid #ccc',
-                      borderRadius: '4px'
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '4px',
+                      color: 'var(--text-color)',
+                      backgroundColor: 'var(--background-color)'
                     }}
                   />
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <span style={{ fontSize: '14px', color: '#333' }}>할인후금액:</span>
+                  <span style={{ fontSize: '14px', color: 'var(--text-color)' }}>할인후금액:</span>
                   <input
                     type="text"
                     value={discountedTotalInput ? Number(discountedTotalInput).toLocaleString() : ''}
@@ -10811,8 +11238,10 @@ const OrderManagement: React.FC = () => {
                       width: 120, 
                       fontSize: '14px',
                       padding: '4px 8px',
-                      border: '1px solid #ccc',
-                      borderRadius: '4px'
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '4px',
+                      color: 'var(--text-color)',
+                      backgroundColor: 'var(--background-color)'
                     }}
                   />
                 </Box>
@@ -10820,9 +11249,9 @@ const OrderManagement: React.FC = () => {
             )}
             {/* 수금내역 및 AS접수내역 - 서술형으로 표시 */}
             {orders[activeTab] && orders[activeTab].estimateNo && (
-              <Box sx={{ mt: 2, mb: 2, p: 2, backgroundColor: '#f8f9fa', borderRadius: 1, border: '1px solid #e9ecef' }}>
+              <Box sx={{ mt: 2, mb: 2, p: 2, backgroundColor: 'var(--surface-color)', borderRadius: 1, border: '1px solid var(--border-color)' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#000' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}>
                     수금내역 및 AS접수내역
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 1 }}>
@@ -10863,7 +11292,7 @@ const OrderManagement: React.FC = () => {
                 
                 {/* 수금내역 서술형 표시 */}
                 <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#000', mb: 1 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'var(--text-color)', mb: 1 }}>
                     수금내역:
                   </Typography>
                   {(() => {
@@ -10894,7 +11323,7 @@ const OrderManagement: React.FC = () => {
                           <>
                             {currentOrderPaymentRecords.map((record, index) => (
                               <Box key={record.id} sx={{ mb: 1, pl: 2 }}>
-                                <Typography variant="body2" sx={{ color: '#333', mb: 0.5 }}>
+                                <Typography variant="body2" sx={{ color: 'var(--text-color)', mb: 0.5 }}>
                                   {index + 1}. {record.paymentDate} - {record.paymentMethod}로 {record.amount.toLocaleString()}원 수금
                                 </Typography>
                                 {/* 오입금 송금 정보 표시 */}
@@ -10925,7 +11354,7 @@ const OrderManagement: React.FC = () => {
                             </Box>
                           </>
                         ) : (
-                          <Typography variant="body2" sx={{ color: '#666', fontStyle: 'italic', pl: 2 }}>
+                          <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)', fontStyle: 'italic', pl: 2 }}>
                             수금내역이 없습니다.
                           </Typography>
                         )}
@@ -10936,7 +11365,7 @@ const OrderManagement: React.FC = () => {
 
                 {/* 최종견적서 정보 */}
                 <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#000', mb: 1 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'var(--text-color)', mb: 1 }}>
                     최종견적서:
                   </Typography>
                   {(() => {
@@ -10954,9 +11383,50 @@ const OrderManagement: React.FC = () => {
                       );
                     }
 
-                    // 저장된 견적서에서 해당 견적서 찾기
+                    // 저장된 견적서/계약서에서 '계약완료된 해당건과 연결된 견적서' 우선 선택
                     const savedEstimates = JSON.parse(localStorage.getItem('saved_estimates') || '[]');
-                    const linkedEstimate = savedEstimates.find((est: any) => est.estimateNo === currentOrder.estimateNo);
+                    const savedContracts = JSON.parse(localStorage.getItem('contracts') || '[]');
+
+                    let linkedEstimate: any = null;
+
+                    // 1) 주문서에 연결된 계약을 우선 탐색 (contractNo → fallback: estimateNo)
+                    const linkedContract = savedContracts.find((c: any) => c.contractNo && c.contractNo === currentOrder.contractNo)
+                      || savedContracts.find((c: any) => c.estimateNo && c.estimateNo === currentOrder.estimateNo);
+
+                    if (linkedContract?.estimateNo) {
+                      const contractEstimateNo = linkedContract.estimateNo;
+                      const baseEstimateNo = contractEstimateNo.includes('-')
+                        ? contractEstimateNo.split('-').slice(0, 2).join('-')
+                        : contractEstimateNo;
+
+                      // 1-a) 견적서리스트에서 상태가 '계약완료'인 동일 건 우선
+                      const completedCandidates = savedEstimates.filter((est: any) =>
+                        est.status === '계약완료' &&
+                        (est.estimateNo === contractEstimateNo || (typeof est.estimateNo === 'string' && est.estimateNo.startsWith(baseEstimateNo)))
+                      );
+
+                      if (completedCandidates.length > 0) {
+                        completedCandidates.sort((a: any, b: any) => {
+                          const aFinal = typeof a.estimateNo === 'string' && a.estimateNo.includes('-final') ? 1 : 0;
+                          const bFinal = typeof b.estimateNo === 'string' && b.estimateNo.includes('-final') ? 1 : 0;
+                          if (aFinal !== bFinal) return bFinal - aFinal;
+                          const at = new Date(a.updatedAt || a.savedAt || a.estimateDate || 0).getTime();
+                          const bt = new Date(b.updatedAt || b.savedAt || b.estimateDate || 0).getTime();
+                          return bt - at;
+                        });
+                        linkedEstimate = completedCandidates[0];
+                      } else {
+                        // 1-b) 계약이 가리키는 견적번호 그대로 매칭
+                        linkedEstimate = savedEstimates.find((est: any) => est.estimateNo === contractEstimateNo) || null;
+                      }
+                    }
+
+                    // 2) 계약 기준 매칭이 없으면, 주문서 estimateNo로 기존 방식 매칭
+                    if (!linkedEstimate) {
+                      linkedEstimate = savedEstimates.find((est: any) => est.estimateNo === currentOrder.estimateNo) || null;
+                    }
+
+                    console.log('선택된 최종견적서(계약 기준 우선):', linkedEstimate);
                     
                     console.log('저장된 견적서 목록:', savedEstimates);
                     console.log('찾으려는 estimateNo:', currentOrder.estimateNo);
@@ -10988,7 +11458,7 @@ const OrderManagement: React.FC = () => {
                     return (
                       <Box sx={{ pl: 2 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                          <Typography variant="body2" sx={{ color: '#333', flex: 1 }}>
+                          <Typography variant="body2" sx={{ color: 'var(--text-color)', flex: 1 }}>
                             견적일자: {linkedEstimate.estimateDate || '미설정'}
                           </Typography>
                           <IconButton
@@ -11004,13 +11474,13 @@ const OrderManagement: React.FC = () => {
                             <PrintIcon fontSize="small" />
                           </IconButton>
                         </Box>
-                        <Typography variant="body2" sx={{ color: '#333', mb: 1 }}>
+                        <Typography variant="body2" sx={{ color: 'var(--text-color)', mb: 1 }}>
                           견적번호: {linkedEstimate.estimateNo || '미설정'}
                         </Typography>
-                        <Typography variant="body2" sx={{ color: '#333', mb: 1 }}>
+                        <Typography variant="body2" sx={{ color: 'var(--text-color)', mb: 1 }}>
                           소비자금액: {consumerPrice.toLocaleString()}원
                         </Typography>
-                        <Typography variant="body2" sx={{ color: '#333', mb: 1 }}>
+                        <Typography variant="body2" sx={{ color: 'var(--text-color)', mb: 1 }}>
                           할인후금액: {discountedPrice.toLocaleString()}원
                         </Typography>
                       </Box>
@@ -11020,7 +11490,7 @@ const OrderManagement: React.FC = () => {
 
                 {/* AS접수내역 서술형 표시 */}
                 <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#000', mb: 1 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'var(--text-color)', mb: 1 }}>
                     AS접수내역:
                   </Typography>
                   {(asRequests[orders[activeTab]?.estimateNo] || []).length > 0 ? (
@@ -11028,7 +11498,7 @@ const OrderManagement: React.FC = () => {
                       .map((request, index) => (
                         <Box key={request.id} sx={{ mb: 1, pl: 2 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                            <Typography variant="body2" sx={{ color: '#333', flex: 1 }}>
+                            <Typography variant="body2" sx={{ color: 'var(--text-color)', flex: 1 }}>
                               {index + 1}. {request.asRequestDate} - {request.processingMethod}
                               {request.selectedProducts.length > 0 && ` (${request.selectedProducts.join(', ')})`}
                             </Typography>
@@ -11058,19 +11528,19 @@ const OrderManagement: React.FC = () => {
                                   horizontal: 'right',
                                 }}
                               >
-                                <MenuItem onClick={() => handleASPrint('print', request)} sx={{ color: '#333', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(76, 175, 80, 0.08)' } }}>
+                                <MenuItem onClick={() => handleASPrint('print', request)} sx={{ color: 'var(--text-color)', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(76, 175, 80, 0.08)' } }}>
                                   <PrintIcon sx={{ mr: 1, fontSize: 20, color: '#4caf50' }} />
                                   프린트
                                 </MenuItem>
-                                <MenuItem onClick={() => handleASPrint('jpg', request)} sx={{ color: '#333', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(255, 193, 7, 0.08)' } }}>
+                                <MenuItem onClick={() => handleASPrint('jpg', request)} sx={{ color: 'var(--text-color)', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(255, 193, 7, 0.08)' } }}>
                                   <ImageIcon sx={{ mr: 1, fontSize: 20, color: '#ffc107' }} />
                                   JPG
                                 </MenuItem>
-                                <MenuItem onClick={() => handleASPrint('pdf', request)} sx={{ color: '#333', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(233, 30, 99, 0.08)' } }}>
+                                <MenuItem onClick={() => handleASPrint('pdf', request)} sx={{ color: 'var(--text-color)', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(233, 30, 99, 0.08)' } }}>
                                   <PictureAsPdfIcon sx={{ mr: 1, fontSize: 20, color: '#e91e63' }} />
                                   PDF
                                 </MenuItem>
-                                <MenuItem onClick={() => handleASPrint('kakao', request)} sx={{ color: '#333', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(255, 235, 59, 0.08)' } }}>
+                                <MenuItem onClick={() => handleASPrint('kakao', request)} sx={{ color: 'var(--text-color)', fontWeight: 'bold', '&:hover': { backgroundColor: 'rgba(255, 235, 59, 0.08)' } }}>
                                   <ChatIcon sx={{ mr: 1, fontSize: 20, color: '#ffeb3b' }} />
                                   카톡전송
                                 </MenuItem>
@@ -11078,27 +11548,27 @@ const OrderManagement: React.FC = () => {
                             </Box>
                           </Box>
                           {request.problem && (
-                            <Typography variant="body2" sx={{ color: '#666', pl: 2, fontSize: '0.9rem' }}>
+                            <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)', pl: 2, fontSize: '0.9rem' }}>
                               문제점: {request.problem}
                             </Typography>
                           )}
                           {request.solution && (
-                            <Typography variant="body2" sx={{ color: '#666', pl: 2, fontSize: '0.9rem' }}>
+                            <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)', pl: 2, fontSize: '0.9rem' }}>
                               해결방안: {request.solution}
                             </Typography>
                           )}
                           {request.cost > 0 && (
-                            <Typography variant="body2" sx={{ color: '#666', pl: 2, fontSize: '0.9rem' }}>
+                            <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)', pl: 2, fontSize: '0.9rem' }}>
                               비용: {request.cost.toLocaleString()}원
                             </Typography>
                           )}
                           {request.memo && (
-                            <Typography variant="body2" sx={{ color: '#666', pl: 2, fontSize: '0.9rem' }}>
+                            <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)', pl: 2, fontSize: '0.9rem' }}>
                               메모: {request.memo}
                             </Typography>
                           )}
                           {request.asProcessDate && (
-                            <Typography variant="body2" sx={{ color: '#666', pl: 2, fontSize: '0.9rem' }}>
+                            <Typography variant="body2" sx={{ color: 'var(--text-secondary-color)', pl: 2, fontSize: '0.9rem' }}>
                               AS처리일자: {new Date(request.asProcessDate).toLocaleDateString('ko-KR', {
                                 year: 'numeric',
                                 month: '2-digit',
@@ -11147,7 +11617,23 @@ const OrderManagement: React.FC = () => {
               <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'var(--text-color)' }}>
                 거래처별 발주서 목록
               </Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                {/* 저장 아이콘 (주문서 우측상단과 동일 동작) */}
+                <IconButton
+                  size="small"
+                  onClick={handleSaveOrder}
+                  title="주문서 저장"
+                  sx={{
+                    color: 'var(--text-color)',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--surface-color)',
+                    '&:hover': {
+                      backgroundColor: 'var(--hover-color)'
+                    }
+                  }}
+                >
+                  <SaveIcon fontSize="small" />
+                </IconButton>
                 <Button
                   variant="outlined"
                   size="small"
@@ -11463,8 +11949,8 @@ const OrderManagement: React.FC = () => {
         {/* 주문서 목록 - 항상 최하단에 표시 */}
         <Paper sx={{ p: isMobile ? 1 : 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#000' }}>
-              저장된 주문서 목록
+            <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'var(--text-color)', fontSize: 'calc(1rem + 2px)' }}>
+              주문/납품 LIST
             </Typography>
             <IconButton
               onClick={() => setSavedOrderColumnSettingsOpen(true)}
@@ -11486,31 +11972,31 @@ const OrderManagement: React.FC = () => {
                 <TableHead>
                   <TableRow>
                     {(isMobile ? mobileSavedOrderColumnVisibility.address : savedOrderColumnVisibility.address) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>주소</TableCell>
+                      <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: 'calc(1rem + 2px)' }}>주소</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.customerName : savedOrderColumnVisibility.customerName) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>고객명</TableCell>
+                      <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: 'calc(1rem + 2px)' }}>고객명</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.contact : savedOrderColumnVisibility.contact) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>연락처</TableCell>
+                      <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: 'calc(1rem + 2px)' }}>연락처</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.estimateNo : savedOrderColumnVisibility.estimateNo) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>주문번호</TableCell>
+                      <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: 'calc(1rem + 2px)' }}>주문번호</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.estimateDate : savedOrderColumnVisibility.estimateDate) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>주문일자</TableCell>
+                      <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: 'calc(1rem + 2px)' }}>주문일자</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.installationDate : savedOrderColumnVisibility.installationDate) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>시공일자</TableCell>
+                      <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: 'calc(1rem + 2px)' }}>시공일자</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.totalAmount : savedOrderColumnVisibility.totalAmount) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>소비자금액</TableCell>
+                      <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: 'calc(1rem + 2px)' }}>소비자금액</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.discountedAmount : savedOrderColumnVisibility.discountedAmount) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>할인후금액</TableCell>
+                      <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: 'calc(1rem + 2px)' }}>할인후금액</TableCell>
                     )}
                     {(isMobile ? mobileSavedOrderColumnVisibility.actions : savedOrderColumnVisibility.actions) && (
-                      <TableCell sx={{ color: '#000', fontWeight: 'bold', fontSize: 'calc(1rem + 0.8px)' }}>액션</TableCell>
+                      <TableCell sx={{ color: 'var(--text-color)', fontWeight: 'bold', fontSize: 'calc(1rem + 2px)' }}>액션</TableCell>
                     )}
                   </TableRow>
                 </TableHead>
@@ -11571,7 +12057,7 @@ const OrderManagement: React.FC = () => {
                         }}
                       >
                         {(isMobile ? mobileSavedOrderColumnVisibility.address : savedOrderColumnVisibility.address) && (
-                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>
+                          <TableCell sx={{ color: 'var(--text-color)', fontSize: 'calc(1rem + 2px)' }}>
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                               <span>{order.address}</span>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -11693,19 +12179,19 @@ const OrderManagement: React.FC = () => {
                           </TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.customerName : savedOrderColumnVisibility.customerName) && (
-                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>{order.customerName}</TableCell>
+                          <TableCell sx={{ color: 'var(--text-color)', fontSize: 'calc(1rem + 2px)' }}>{order.customerName}</TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.contact : savedOrderColumnVisibility.contact) && (
-                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>{order.contact}</TableCell>
+                          <TableCell sx={{ color: 'var(--text-color)', fontSize: 'calc(1rem + 2px)' }}>{order.contact}</TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.estimateNo : savedOrderColumnVisibility.estimateNo) && (
-                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>{order.estimateNo}</TableCell>
+                          <TableCell sx={{ color: 'var(--text-color)', fontSize: 'calc(1rem + 2px)' }}>{order.estimateNo}</TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.estimateDate : savedOrderColumnVisibility.estimateDate) && (
-                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>{order.estimateDate}</TableCell>
+                          <TableCell sx={{ color: 'var(--text-color)', fontSize: 'calc(1rem + 2px)' }}>{order.estimateDate}</TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.installationDate : savedOrderColumnVisibility.installationDate) && (
-                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>{order.installationDate ? new Date(order.installationDate).toLocaleString('ko-KR', {
+                          <TableCell sx={{ color: 'var(--text-color)', fontSize: 'calc(1rem + 2px)' }}>{order.installationDate ? new Date(order.installationDate).toLocaleString('ko-KR', {
                             year: 'numeric',
                             month: '2-digit',
                             day: '2-digit',
@@ -11714,13 +12200,13 @@ const OrderManagement: React.FC = () => {
                           }) : '-'}</TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.totalAmount : savedOrderColumnVisibility.totalAmount) && (
-                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>{totalAmount.toLocaleString()}원</TableCell>
+                          <TableCell sx={{ color: 'var(--text-color)', fontSize: 'calc(1rem + 2px)' }}>{totalAmount.toLocaleString()}원</TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.discountedAmount : savedOrderColumnVisibility.discountedAmount) && (
-                          <TableCell sx={{ color: '#000', fontSize: 'calc(1rem + 0.8px)' }}>{discountedAmount.toLocaleString()}원</TableCell>
+                          <TableCell sx={{ color: 'var(--text-color)', fontSize: 'calc(1rem + 2px)' }}>{discountedAmount.toLocaleString()}원</TableCell>
                         )}
                         {(isMobile ? mobileSavedOrderColumnVisibility.actions : savedOrderColumnVisibility.actions) && (
-                          <TableCell sx={{ fontSize: 'calc(1rem + 0.8px)' }}>
+                          <TableCell sx={{ fontSize: 'calc(1rem + 2px)', color: 'var(--text-color)' }}>
                             <Box sx={{ display: 'flex', gap: 0.5, flexDirection: isMobile ? 'column' : 'row' }}>
                               <Tooltip title="로드">
                                 <IconButton
@@ -13315,6 +13801,7 @@ const OrderManagement: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleFilterReset} sx={{ color: '#000' }}>초기화</Button>
+          <Button onClick={handleSaveColumnDefaults} sx={{ color: '#000' }}>현재값을 기본값으로</Button>
           <Button variant="contained" onClick={() => setFilterModalOpen(false)} sx={{ color: '#fff' }}>
             적용
           </Button>
@@ -14487,7 +14974,7 @@ const OrderManagement: React.FC = () => {
           maxWidth="md"
           PaperProps={{ 
             sx: { 
-              backgroundColor: 'white', 
+              backgroundColor: 'var(--surface-color)', 
               color: 'var(--text-color)',
               width: '90%',
               maxWidth: '800px'
@@ -15617,7 +16104,7 @@ const OrderManagement: React.FC = () => {
           <Grid container spacing={2}>
             {/* 납품정보 섹션 */}
             <Grid item xs={12}>
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#000' }}>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'var(--text-color)' }}>
                 납품정보
               </Typography>
             </Grid>
@@ -15629,7 +16116,11 @@ const OrderManagement: React.FC = () => {
                 fullWidth
                 size="small"
                 InputProps={{ readOnly: true }}
-                sx={{ backgroundColor: '#f5f5f5' }}
+                sx={{ 
+                  backgroundColor: 'var(--background-color)',
+                  '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' }
+                }}
               />
             </Grid>
             
@@ -15640,7 +16131,11 @@ const OrderManagement: React.FC = () => {
                 fullWidth
                 size="small"
                 InputProps={{ readOnly: true }}
-                sx={{ backgroundColor: '#f5f5f5' }}
+                sx={{ 
+                  backgroundColor: 'var(--background-color)',
+                  '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' }
+                }}
               />
             </Grid>
             
@@ -15651,7 +16146,11 @@ const OrderManagement: React.FC = () => {
                 fullWidth
                 size="small"
                 InputProps={{ readOnly: true }}
-                sx={{ backgroundColor: '#f5f5f5' }}
+                sx={{ 
+                  backgroundColor: 'var(--background-color)',
+                  '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' }
+                }}
               />
             </Grid>
             
@@ -15662,7 +16161,11 @@ const OrderManagement: React.FC = () => {
                 fullWidth
                 size="small"
                 InputProps={{ readOnly: true }}
-                sx={{ backgroundColor: '#f5f5f5' }}
+                sx={{ 
+                  backgroundColor: 'var(--background-color)',
+                  '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' }
+                }}
               />
             </Grid>
             
@@ -15675,11 +16178,18 @@ const OrderManagement: React.FC = () => {
                 fullWidth
                 size="small"
                 required
+                sx={{
+                  '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-color)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary-color)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary-color)' },
+                  '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' }
+                }}
               />
             </Grid>
             
             <Grid item xs={12}>
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#000' }}>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'var(--text-color)' }}>
                 제품선택
               </Typography>
               <FormControl fullWidth size="small">
@@ -15693,9 +16203,7 @@ const OrderManagement: React.FC = () => {
                   }))}
                   renderValue={(selected) => selected.join(', ')}
                   sx={{
-                    '& .MuiSelect-select': {
-                      color: 'var(--text-primary-color)',
-                    },
+                    '& .MuiSelect-select': { color: 'var(--text-color)' },
                     '& .MuiOutlinedInput-notchedOutline': {
                       borderColor: 'var(--border-color)',
                     },
@@ -15708,7 +16216,7 @@ const OrderManagement: React.FC = () => {
                   }}
                 >
                   {selectedOrderForAS?.rows?.filter((row: any) => row.type === 'product').map((row: any) => (
-                    <MenuItem key={row.id} value={row.productName} sx={{ color: 'var(--text-primary-color)' }}>
+                    <MenuItem key={row.id} value={row.productName} sx={{ color: 'var(--text-color)' }}>
                       {row.productName}
                     </MenuItem>
                   ))}
@@ -15728,9 +16236,7 @@ const OrderManagement: React.FC = () => {
                     }
                   }}
                   sx={{
-                    '& .MuiSelect-select': {
-                      color: 'var(--text-primary-color)',
-                    },
+                    '& .MuiSelect-select': { color: 'var(--text-color)' },
                     '& .MuiOutlinedInput-notchedOutline': {
                       borderColor: 'var(--border-color)',
                     },
@@ -15742,9 +16248,9 @@ const OrderManagement: React.FC = () => {
                     },
                   }}
                 >
-                  <MenuItem value="거래처AS" sx={{ color: 'var(--text-primary-color)' }}>거래처AS</MenuItem>
-                  <MenuItem value="판매자AS" sx={{ color: 'var(--text-primary-color)' }}>판매자AS</MenuItem>
-                  <MenuItem value="고객직접" sx={{ color: 'var(--text-primary-color)' }}>고객직접</MenuItem>
+                  <MenuItem value="거래처AS" sx={{ color: 'var(--text-color)' }}>거래처AS</MenuItem>
+                  <MenuItem value="판매자AS" sx={{ color: 'var(--text-color)' }}>판매자AS</MenuItem>
+                  <MenuItem value="고객직접" sx={{ color: 'var(--text-color)' }}>고객직접</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -15758,6 +16264,13 @@ const OrderManagement: React.FC = () => {
                 size="small"
                 multiline
                 rows={2}
+                sx={{
+                  '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-color)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary-color)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary-color)' },
+                  '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' }
+                }}
               />
             </Grid>
             
@@ -15770,6 +16283,13 @@ const OrderManagement: React.FC = () => {
                 size="small"
                 multiline
                 rows={2}
+                sx={{
+                  '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-color)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary-color)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary-color)' },
+                  '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' }
+                }}
               />
             </Grid>
             
@@ -15784,6 +16304,13 @@ const OrderManagement: React.FC = () => {
                 InputProps={{
                   endAdornment: <Typography variant="body2">원</Typography>,
                 }}
+                sx={{
+                  '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-color)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary-color)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary-color)' },
+                  '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' }
+                }}
               />
             </Grid>
             
@@ -15796,6 +16323,13 @@ const OrderManagement: React.FC = () => {
                 size="small"
                 multiline
                 rows={3}
+                sx={{
+                  '& .MuiInputBase-input': { color: 'var(--text-color)' },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-color)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary-color)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary-color)' },
+                  '& .MuiInputLabel-root': { color: 'var(--text-secondary-color)' }
+                }}
               />
             </Grid>
           </Grid>
@@ -17028,6 +17562,16 @@ const OrderManagement: React.FC = () => {
                           width: { xs: '20%', sm: '25%' },
                           minWidth: { xs: '100px', sm: '120px' }
                         }}>세부내용</TableCell>
+                         <TableCell sx={{ 
+                          border: '1px solid #95a5a6', 
+                          textAlign: 'center',
+                          fontWeight: 'bold',
+                          fontSize: { xs: '6.8pt', sm: '7.8pt' },
+                          py: { xs: 1, sm: 1.5 },
+                          color: 'white',
+                          width: { xs: '10%', sm: '10%' },
+                          minWidth: { xs: '40px', sm: '60px' }
+                         }}>가로</TableCell>
                         <TableCell sx={{ 
                           border: '1px solid #95a5a6', 
                           textAlign: 'center',
@@ -17037,17 +17581,7 @@ const OrderManagement: React.FC = () => {
                           color: 'white',
                           width: { xs: '10%', sm: '10%' },
                           minWidth: { xs: '40px', sm: '60px' }
-                        }}>가로</TableCell>
-                        <TableCell sx={{ 
-                          border: '1px solid #95a5a6', 
-                          textAlign: 'center',
-                          fontWeight: 'bold',
-                          fontSize: { xs: '6.8pt', sm: '7.8pt' },
-                          py: { xs: 1, sm: 1.5 },
-                          color: 'white',
-                          width: { xs: '10%', sm: '10%' },
-                          minWidth: { xs: '40px', sm: '60px' }
-                        }}>세로</TableCell>
+                         }}>세로</TableCell>
                         <TableCell sx={{ 
                           border: '1px solid #95a5a6', 
                           textAlign: 'center',
@@ -17137,7 +17671,7 @@ const OrderManagement: React.FC = () => {
                             }}>
                               {item.details || '-'}
                             </TableCell>
-                            <TableCell sx={{ 
+                             <TableCell sx={{ 
                               border: '1px solid #bdc3c7', 
                               textAlign: 'center',
                               fontSize: { xs: '8pt', sm: '9pt' },
@@ -17146,6 +17680,7 @@ const OrderManagement: React.FC = () => {
                               width: { xs: '10%', sm: '10%' }
                             }}>
                               {(() => {
+                                if ((item.productType || '').includes('커튼')) return '-';
                                 const width = item.widthMM || item.productionWidth;
                                 return width ? Number(width).toLocaleString() : '-';
                               })()}
@@ -17159,6 +17694,7 @@ const OrderManagement: React.FC = () => {
                               width: { xs: '10%', sm: '10%' }
                             }}>
                               {(() => {
+                                if ((item.productType || '').includes('커튼')) return '-';
                                 const height = item.heightMM || item.productionHeight;
                                 return height ? Number(height).toLocaleString() : '-';
                               })()}
@@ -17581,8 +18117,8 @@ const OrderManagement: React.FC = () => {
                                     <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; width: 12%; word-break: break-word;">${item.space || item.spaceCustom || '-'}</td>
                                     <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; font-family: monospace; width: 12%; word-break: break-all;">${item.productCode || '-'}</td>
                                     <td style="border: 1px solid #bdc3c7; text-align: left; font-size: 9pt; padding: 4mm; width: 25%; word-break: break-word; white-space: normal; line-height: 1.3;">${item.details || item.productName || '-'}</td>
-                                    <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; font-weight: 600; width: 12%;">${item.widthMM || item.productionWidth || '-'}</td>
-                                    <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; font-weight: 600; width: 12%;">${item.heightMM || item.productionHeight || '-'}</td>
+                                    <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; font-weight: 600; width: 12%;">${(item.productType || '').includes('커튼') ? '-' : (item.widthMM || item.productionWidth || '-')}</td>
+                                    <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; font-weight: 600; width: 12%;">${(item.productType || '').includes('커튼') ? '-' : (item.heightMM || item.productionHeight || '-')}</td>
                                     <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; width: 8%;">${item.lineDir || '-'}</td>
                                     <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; width: 6%;">${item.lineLen || '-'}</td>
                                   </tr>
@@ -17745,8 +18281,8 @@ const OrderManagement: React.FC = () => {
                                     <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; width: 12%; word-break: break-word;">${item.space || item.spaceCustom || '-'}</td>
                                     <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; font-family: monospace; width: 12%; word-break: break-all;">${item.productCode || '-'}</td>
                                     <td style="border: 1px solid #bdc3c7; text-align: left; font-size: 9pt; padding: 4mm; width: 25%; word-break: break-word; white-space: normal; line-height: 1.3;">${item.details || item.productName || '-'}</td>
-                                    <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; font-weight: 600; width: 12%;">${item.widthMM || item.productionWidth || '-'}</td>
-                                    <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; font-weight: 600; width: 12%;">${item.heightMM || item.productionHeight || '-'}</td>
+                                    <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; font-weight: 600; width: 12%;">${(item.productType || '').includes('커튼') ? '-' : (item.widthMM || item.productionWidth || '-')}</td>
+                                    <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; font-weight: 600; width: 12%;">${(item.productType || '').includes('커튼') ? '-' : (item.heightMM || item.productionHeight || '-')}</td>
                                     <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; width: 8%;">${item.lineDir || '-'}</td>
                                     <td style="border: 1px solid #bdc3c7; text-align: center; font-size: 9pt; padding: 4mm; width: 6%;">${item.lineLen || '-'}</td>
                                   </tr>

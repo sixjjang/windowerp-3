@@ -3040,6 +3040,7 @@ const EstimateManagement: React.FC = () => {
       showProducts: true,
       showTotalAmount: true,
       showDiscountedAmount: false,
+      showFinalizedAmount: false,
       showDiscountAmount: true,
       showDiscountRate: true,
       showMargin: true,
@@ -3072,6 +3073,7 @@ const EstimateManagement: React.FC = () => {
       'products',
       'totalAmount',
       'discountedAmount',
+      'finalizedAmount',
       'discountAmount',
       'discountRate',
       'margin',
@@ -6006,6 +6008,18 @@ const EstimateManagement: React.FC = () => {
   // HunterDouglas 버튼 토글
   const handleToggleDiscount = () => setShowDiscount(v => !v);
 
+  // 할인 값이 존재하면 자동으로 할인 영역 표시 강제
+  useEffect(() => {
+    const hasAnyDiscount = Boolean(
+      (discountAmount && Number(discountAmount) > 0) ||
+      (discountRate && Number(discountRate) > 0) ||
+      (discountedTotalInput && Number(discountedTotalInput) > 0)
+    );
+    if (hasAnyDiscount && !showDiscount) {
+      setShowDiscount(true);
+    }
+  }, [discountAmount, discountRate, discountedTotalInput, showDiscount]);
+
   // 할인 후 금액 계산
   const discountAmountNumber = Number(discountAmount);
   const discountedTotal =
@@ -6710,14 +6724,80 @@ const EstimateManagement: React.FC = () => {
     }
   };
 
-  // 계약서 날짜 변경 핸들러
+  // 로컬 Date → 'YYYY-MM-DDTHH:mm' (datetime-local용)
+  const formatLocalDatetimeValue = (d: Date): string => {
+    const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  // 10분 단위로 반올림
+  const roundToNearest10Minutes = (date: Date): Date => {
+    const d = new Date(date.getTime());
+    const minutes = d.getMinutes();
+    const rounded = Math.round(minutes / 10) * 10;
+    if (rounded === 60) {
+      d.setHours(d.getHours() + 1, 0, 0, 0);
+    } else {
+      d.setMinutes(rounded, 0, 0);
+    }
+    return d;
+  };
+
+  // 기존 ISO 혹은 로컬 입력값에서 날짜 파트 추출 (로컬 기준)
+  const extractLocalParts = (value?: string) => {
+    if (!value) {
+      const now = new Date();
+      const h = now.getHours();
+      const ampm: '오전' | '오후' = h < 12 ? '오전' : '오후';
+      const hour12 = ((h + 11) % 12) + 1;
+      const minute = Math.floor(now.getMinutes() / 10) * 10;
+      return {
+        date: formatLocalDatetimeValue(now).slice(0, 10),
+        hour12: hour12.toString().padStart(2, '0'),
+        minute: minute.toString().padStart(2, '0'),
+        ampm,
+      };
+    }
+    const d = new Date(value);
+    const ampm: '오전' | '오후' = d.getHours() < 12 ? '오전' : '오후';
+    const hour24 = d.getHours();
+    const hour12 = ((hour24 + 11) % 12) + 1;
+    const minute = d.getMinutes();
+    return {
+      date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+      hour12: String(hour12).padStart(2, '0'),
+      minute: String(Math.floor(minute / 10) * 10).padStart(2, '0'),
+      ampm,
+    };
+  };
+
+  const buildLocalValue = (
+    base: string | undefined,
+    overrides: Partial<{ date: string; hour12: string; minute: string; ampm: '오전' | '오후' }>
+  ): string => {
+    const parts = extractLocalParts(base);
+    const p = { ...parts, ...overrides };
+    let hour = parseInt(p.hour12 || '12', 10);
+    if (p.ampm === '오후' && hour !== 12) hour += 12;
+    if (p.ampm === '오전' && hour === 12) hour = 0;
+    const minuteNum = parseInt(p.minute || '0', 10);
+    const localStr = `${p.date}T${String(hour).padStart(2, '0')}:${String(minuteNum).padStart(2, '0')}`;
+    return localStr;
+  };
+
+  // 계약서 날짜 변경 핸들러 (연/월/일/시/10분 단위)
   const handleContractDateChange = (contractId: number, field: 'measurementDate' | 'constructionDate', value: string) => {
     try {
+      // 입력값을 Date로 변환(로컬 타임존 가정) 후 10분 단위 반올림
+      const localDate = value ? new Date(value) : null;
+      const roundedDate = localDate ? roundToNearest10Minutes(localDate) : null;
+      const isoString = roundedDate ? roundedDate.toISOString() : '';
+
       // 현재 견적의 계약서 목록 업데이트
       setContractsForCurrentEstimate((prev: any[]) => 
         prev.map((c: any) => 
           c.id === contractId 
-            ? { ...c, [field]: value ? `${value}T00:00:00.000Z` : '' }
+            ? { ...c, [field]: isoString }
             : c
         )
       );
@@ -6726,10 +6806,32 @@ const EstimateManagement: React.FC = () => {
       const savedContracts = JSON.parse(localStorage.getItem('contracts') || '[]');
       const updatedContracts = savedContracts.map((c: any) => 
         c.id === contractId 
-          ? { ...c, [field]: value ? `${value}T00:00:00.000Z` : '', updatedAt: new Date().toISOString() }
+          ? { ...c, [field]: isoString, updatedAt: new Date().toISOString() }
           : c
       );
       localStorage.setItem('contracts', JSON.stringify(updatedContracts));
+
+      // 주문관리의 고객정보에도 동기화 (해당 계약과 연결된 주문서가 있으면 업데이트)
+      try {
+        const orders = JSON.parse(localStorage.getItem('orders') || '[]');
+        const contract = updatedContracts.find((c: any) => c.id === contractId);
+        if (contract) {
+          const updatedOrders = orders.map((o: any) => {
+            if (o.contractId === contract.id) {
+              if (field === 'measurementDate') {
+                return { ...o, measurementDate: isoString };
+              }
+              if (field === 'constructionDate') {
+                return { ...o, installationDate: isoString };
+              }
+            }
+            return o;
+          });
+          localStorage.setItem('orders', JSON.stringify(updatedOrders));
+        }
+      } catch (syncErr) {
+        console.warn('주문관리 동기화 실패(무시):', syncErr);
+      }
     } catch (error) {
       console.error('계약서 날짜 변경 실패:', error);
       alert('날짜 변경 중 오류가 발생했습니다.');
@@ -7898,6 +8000,7 @@ const EstimateManagement: React.FC = () => {
       'products',
       'totalAmount',
       'discountedAmount',
+      'finalizedAmount',
       'discountAmount',
       'discountRate',
       'margin',
@@ -7924,6 +8027,7 @@ const EstimateManagement: React.FC = () => {
     products: '포함제품',
     totalAmount: '총금액',
     discountedAmount: '할인후금액',
+    finalizedAmount: '확정금액',
     discountAmount: '할인금액',
     discountRate: '할인율(%)',
     margin: '마진',
@@ -12329,15 +12433,15 @@ const EstimateManagement: React.FC = () => {
                                                 autoFocus
                                                 sx={{
                                                   '& .MuiInputBase-input': {
-                                                    color: '#000000 !important',
+                                                    color: 'var(--text-color) !important',
                                                   },
                                                   '& .MuiSelect-select': {
-                                                    color: '#000000 !important',
+                                                    color: 'var(--text-color) !important',
                                                   }
                                                 }}
                                               >
                                                 {curtainTypeOptions.map((option) => (
-                                                  <MenuItem key={option} value={option} sx={{ color: '#000000 !important' }}>
+                                                  <MenuItem key={option} value={option} sx={{ color: 'var(--text-color) !important' }}>
                                                     {option}
                                                   </MenuItem>
                                                 ))}
@@ -12375,15 +12479,15 @@ const EstimateManagement: React.FC = () => {
                                                 autoFocus
                                                 sx={{
                                                   '& .MuiInputBase-input': {
-                                                    color: '#000000 !important',
+                                                    color: 'var(--text-color) !important',
                                                   },
                                                   '& .MuiSelect-select': {
-                                                    color: '#000000 !important',
+                                                    color: 'var(--text-color) !important',
                                                   }
                                                 }}
                                               >
                                                 {pleatTypeOptions.map((option) => (
-                                                  <MenuItem key={option} value={option} sx={{ color: '#000000 !important' }}>
+                                                  <MenuItem key={option} value={option} sx={{ color: 'var(--text-color) !important' }}>
                                                     {option}
                                                   </MenuItem>
                                                 ))}
@@ -12421,15 +12525,15 @@ const EstimateManagement: React.FC = () => {
                                                 autoFocus
                                                 sx={{
                                                   '& .MuiInputBase-input': {
-                                                    color: '#000000 !important',
+                                                    color: 'var(--text-color) !important',
                                                   },
                                                   '& .MuiSelect-select': {
-                                                    color: '#000000 !important',
+                                                    color: 'var(--text-color) !important',
                                                   }
                                                 }}
                                               >
                                                 {lineDirectionOptions.map((option) => (
-                                                  <MenuItem key={option} value={option} sx={{ color: '#000000 !important' }}>
+                                                  <MenuItem key={option} value={option} sx={{ color: 'var(--text-color) !important' }}>
                                                     {option}
                                                   </MenuItem>
                                                 ))}
@@ -12451,15 +12555,15 @@ const EstimateManagement: React.FC = () => {
                                                   autoFocus
                                                   sx={{
                                                     '& .MuiInputBase-input': {
-                                                      color: '#000000 !important',
+                                                      color: 'var(--text-color) !important',
                                                     },
                                                     '& .MuiSelect-select': {
-                                                      color: '#000000 !important',
+                                                      color: 'var(--text-color) !important',
                                                     }
                                                   }}
                                                 >
                                                   {lineLengthOptions.map((option) => (
-                                                    <MenuItem key={option} value={option} sx={{ color: '#000000 !important' }}>
+                                                    <MenuItem key={option} value={option} sx={{ color: 'var(--text-color) !important' }}>
                                                       {option}
                                                     </MenuItem>
                                                   ))}
@@ -12591,7 +12695,7 @@ const EstimateManagement: React.FC = () => {
                                                             `${calculateInputWidth(editingValue, 50, 120)}px !important`,
                                                   fontSize: 'inherit',
                                                   '& .MuiInputBase-input': {
-                                                    color: '#000000 !important',
+                                                    color: 'var(--text-color) !important',
                                                     padding: '2px 4px !important',
                                                     width: field.key === 'widthMM' || field.key === 'heightMM' ? 
                                                       `${calculateInputWidth(editingValue, 40, 80)}px !important` :
@@ -13059,12 +13163,12 @@ const EstimateManagement: React.FC = () => {
                         }
                       })}
                   {/* 합계 행 */}
-                  <TableRow sx={{ backgroundColor: '#e3f2fd', fontWeight: 'bold' }}>
-                    {isBulkEditMode && <TableCell sx={{ fontSize: 'calc(1em + 1px)', fontWeight: 'bold' }}></TableCell>}
-                    <TableCell sx={{ fontSize: 'calc(1em + 1px)', fontWeight: 'bold' }}>합계</TableCell>
+                  <TableRow sx={{ backgroundColor: 'var(--hover-color)', fontWeight: 'bold' }}>
+                    {isBulkEditMode && <TableCell sx={{ fontSize: 'calc(1em + 1px)', fontWeight: 'bold', color: 'var(--text-color)' }}></TableCell>}
+                    <TableCell sx={{ fontSize: 'calc(1em + 1px)', fontWeight: 'bold', color: 'var(--text-color)' }}>합계</TableCell>
                     {FILTER_FIELDS.map(field => 
                       columnVisibility[field.key] && (
-                        <TableCell key={field.key} sx={{ fontSize: 'calc(1em + 1px)', fontWeight: 'bold' }}>
+                        <TableCell key={field.key} sx={{ fontSize: 'calc(1em + 1px)', fontWeight: 'bold', color: 'var(--text-color)' }}>
                           {field.key === 'area' ? 
                             estimates[activeTab]?.rows?.reduce((sum, row) => {
                               // 겉커튼과 속커튼은 면적 계산에서 제외
@@ -13086,7 +13190,7 @@ const EstimateManagement: React.FC = () => {
                         </TableCell>
                       )
                     )}
-                    <TableCell sx={{ fontSize: 'calc(1em + 1px)', fontWeight: 'bold' }}></TableCell>
+                    <TableCell sx={{ fontSize: 'calc(1em + 1px)', fontWeight: 'bold', color: 'var(--text-color)' }}></TableCell>
                   </TableRow>
                     </TableBody>
                   </Table>
@@ -13178,7 +13282,7 @@ const EstimateManagement: React.FC = () => {
                 alignItems: 'center',
               }}
             >
-              <span style={{ color: '#000000', marginRight: 32 }}>
+              <span style={{ color: 'var(--text-color)', marginRight: 32 }}>
                 소비자금액(VAT포함): {sumTotalPrice.toLocaleString()} 원
               </span>
               <Button
@@ -13200,7 +13304,7 @@ const EstimateManagement: React.FC = () => {
                 HunterDouglas
               </Button>
               {discountAmountNumber > 0 && (
-                <span style={{ color: '#1e3a8a', marginRight: 32 }}>
+                <span style={{ color: 'var(--text-color)', marginRight: 32 }}>
                   할인후금액(VAT포함): {discountedTotal?.toLocaleString()} 원
                 </span>
               )}
@@ -13398,24 +13502,73 @@ const EstimateManagement: React.FC = () => {
                           <Typography variant="body2" sx={{ color: 'var(--text-color)', fontSize: '0.95rem' }}>할인후금액: {(c.discountedAmount || 0).toLocaleString()}원</Typography>
                           <Typography variant="body2" sx={{ color: 'var(--text-color)', fontSize: '0.95rem' }}>계약금: {(c.depositAmount || 0).toLocaleString()}원 / 잔금: {(c.remainingAmount || 0).toLocaleString()}원</Typography>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                            <Typography variant="body2" sx={{ color: 'var(--text-color)', fontSize: '0.9rem', minWidth: '60px' }}>
+                          <Typography variant="body2" sx={{ color: 'var(--text-color)', fontSize: '0.9rem', minWidth: '60px' }}>
                               실측일자:
                             </Typography>
+                            {/* 커스텀 10분 단위 시간 선택 UI */}
                             <input
                               type="date"
-                              value={c.measurementDate ? c.measurementDate.split('T')[0] : ''}
-                              onChange={(e) => handleContractDateChange(c.id, 'measurementDate', e.target.value)}
+                              value={c.measurementDate ? formatLocalDatetimeValue(new Date(c.measurementDate)).slice(0,10) : ''}
+                              onChange={(e) => handleContractDateChange(c.id, 'measurementDate', buildLocalValue(c.measurementDate, { date: e.target.value }))}
                               style={{
                                 fontSize: '0.9rem',
                                 padding: '4px 8px',
                                 border: '1px solid var(--border-color)',
                                 borderRadius: 3,
                                 background: 'var(--surface-color)',
-                                color: 'var(--text-color)',
-                                width: '130px',
-                                minWidth: '130px'
+                                color: 'var(--text-color)'
                               }}
                             />
+                            <select
+                              value={extractLocalParts(c.measurementDate || undefined).ampm}
+                              onChange={(e) => handleContractDateChange(c.id, 'measurementDate', buildLocalValue(c.measurementDate, { ampm: e.target.value as any }))}
+                              style={{
+                                fontSize: '0.9rem',
+                                padding: '4px 6px',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: 3,
+                                background: 'var(--surface-color)',
+                                color: 'var(--text-color)',
+                                marginLeft: 6
+                              }}
+                            >
+                              <option value="오전">오전</option>
+                              <option value="오후">오후</option>
+                            </select>
+                            <select
+                              value={extractLocalParts(c.measurementDate || undefined).hour12}
+                              onChange={(e) => handleContractDateChange(c.id, 'measurementDate', buildLocalValue(c.measurementDate, { hour12: e.target.value }))}
+                              style={{
+                                fontSize: '0.9rem',
+                                padding: '4px 6px',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: 3,
+                                background: 'var(--surface-color)',
+                                color: 'var(--text-color)',
+                                marginLeft: 6
+                              }}
+                            >
+                              {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(h => (
+                                <option key={h} value={h}>{h}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={extractLocalParts(c.measurementDate || undefined).minute}
+                              onChange={(e) => handleContractDateChange(c.id, 'measurementDate', buildLocalValue(c.measurementDate, { minute: e.target.value }))}
+                              style={{
+                                fontSize: '0.9rem',
+                                padding: '4px 6px',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: 3,
+                                background: 'var(--surface-color)',
+                                color: 'var(--text-color)',
+                                marginLeft: 6
+                              }}
+                            >
+                              {['00','10','20','30','40','50'].map(m => (
+                                <option key={m} value={m}>{m}</option>
+                              ))}
+                            </select>
                           </Box>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
                             <Typography variant="body2" sx={{ color: 'var(--text-color)', fontSize: '0.9rem', minWidth: '60px' }}>
@@ -13423,19 +13576,67 @@ const EstimateManagement: React.FC = () => {
                             </Typography>
                             <input
                               type="date"
-                              value={c.constructionDate ? c.constructionDate.split('T')[0] : ''}
-                              onChange={(e) => handleContractDateChange(c.id, 'constructionDate', e.target.value)}
+                              value={c.constructionDate ? formatLocalDatetimeValue(new Date(c.constructionDate)).slice(0,10) : ''}
+                              onChange={(e) => handleContractDateChange(c.id, 'constructionDate', buildLocalValue(c.constructionDate, { date: e.target.value }))}
                               style={{
                                 fontSize: '0.9rem',
                                 padding: '4px 8px',
                                 border: '1px solid var(--border-color)',
                                 borderRadius: 3,
                                 background: 'var(--surface-color)',
-                                color: 'var(--text-color)',
-                                width: '130px',
-                                minWidth: '130px'
+                                color: 'var(--text-color)'
                               }}
                             />
+                            <select
+                              value={extractLocalParts(c.constructionDate || undefined).ampm}
+                              onChange={(e) => handleContractDateChange(c.id, 'constructionDate', buildLocalValue(c.constructionDate, { ampm: e.target.value as any }))}
+                              style={{
+                                fontSize: '0.9rem',
+                                padding: '4px 6px',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: 3,
+                                background: 'var(--surface-color)',
+                                color: 'var(--text-color)',
+                                marginLeft: 6
+                              }}
+                            >
+                              <option value="오전">오전</option>
+                              <option value="오후">오후</option>
+                            </select>
+                            <select
+                              value={extractLocalParts(c.constructionDate || undefined).hour12}
+                              onChange={(e) => handleContractDateChange(c.id, 'constructionDate', buildLocalValue(c.constructionDate, { hour12: e.target.value }))}
+                              style={{
+                                fontSize: '0.9rem',
+                                padding: '4px 6px',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: 3,
+                                background: 'var(--surface-color)',
+                                color: 'var(--text-color)',
+                                marginLeft: 6
+                              }}
+                            >
+                              {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(h => (
+                                <option key={h} value={h}>{h}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={extractLocalParts(c.constructionDate || undefined).minute}
+                              onChange={(e) => handleContractDateChange(c.id, 'constructionDate', buildLocalValue(c.constructionDate, { minute: e.target.value }))}
+                              style={{
+                                fontSize: '0.9rem',
+                                padding: '4px 6px',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: 3,
+                                background: 'var(--surface-color)',
+                                color: 'var(--text-color)',
+                                marginLeft: 6
+                              }}
+                            >
+                              {['00','10','20','30','40','50'].map(m => (
+                                <option key={m} value={m}>{m}</option>
+                              ))}
+                            </select>
                           </Box>
                         </CardContent>
                       </Card>
@@ -13469,20 +13670,34 @@ const EstimateManagement: React.FC = () => {
                   vertical: 'top',
                   horizontal: 'left',
                 }}
+                PaperProps={{
+                  sx: {
+                    backgroundColor: 'var(--surface-color)',
+                    color: 'var(--text-color)',
+                    border: '1px solid var(--border-color)',
+                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+                    '& .MuiMenuItem-root': {
+                      color: 'var(--text-color)',
+                      '&:hover': {
+                        backgroundColor: 'var(--hover-color)',
+                      },
+                    },
+                  },
+                }}
               >
-                <MenuItem onClick={() => handleOutputOption('print')}>
+                <MenuItem onClick={() => handleOutputOption('print')} sx={{ color: 'var(--text-color)' }}>
                   <PrintIcon sx={{ mr: 1, fontSize: 20 }} />
                   프린트
                 </MenuItem>
-                <MenuItem onClick={() => handleOutputOption('pdf')}>
+                <MenuItem onClick={() => handleOutputOption('pdf')} sx={{ color: 'var(--text-color)' }}>
                   <PictureAsPdfIcon sx={{ mr: 1, fontSize: 20 }} />
                   PDF
                 </MenuItem>
-                <MenuItem onClick={() => handleOutputOption('jpg')}>
+                <MenuItem onClick={() => handleOutputOption('jpg')} sx={{ color: 'var(--text-color)' }}>
                   <ImageIcon sx={{ mr: 1, fontSize: 20 }} />
                   JPG
                 </MenuItem>
-                <MenuItem onClick={() => handleOutputOption('share')}>
+                <MenuItem onClick={() => handleOutputOption('share')} sx={{ color: 'var(--text-color)' }}>
                   <ShareIcon sx={{ mr: 1, fontSize: 20 }} />
                   공유
                 </MenuItem>
@@ -14081,6 +14296,13 @@ const EstimateManagement: React.FC = () => {
                           할인후금액
                         </TableCell>
                       )}
+                      {estimateListDisplay.showFinalizedAmount && (
+                        <TableCell
+                          sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
+                        >
+                          확정금액
+                        </TableCell>
+                      )}
                       {estimateListDisplay.showDiscountAmount && (
                         <TableCell
                           sx={{ color: 'var(--text-secondary-color)', borderColor: 'var(--border-color)' }}
@@ -14413,6 +14635,25 @@ const EstimateManagement: React.FC = () => {
                                 }}
                               >
                                 {discountedAmount.toLocaleString()} 원
+                              </TableCell>
+                            )}
+                            {estimateListDisplay.showFinalizedAmount && (
+                              <TableCell
+                                sx={{
+                                  color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
+                                  borderColor: 'var(--border-color)',
+                                  fontSize: 'calc(1em + 1px)',
+                                  fontWeight: isOrderCompleted || isFinal ? 'bold' : 'normal',
+                                  textShadow: isOrderCompleted ? 'none' : 'none',
+                                  '&:hover': {
+                                    color: isOrderCompleted ? '#ffffff' : 'var(--text-color)',
+                                    textShadow: isOrderCompleted ? 'none' : 'none',
+                                  },
+                                }}
+                              >
+                                {Number(est.finalizedAmount || 0) > 0
+                                  ? Number(est.finalizedAmount || 0).toLocaleString() + ' 원'
+                                  : '-'}
                               </TableCell>
                             )}
                             {estimateListDisplay.showDiscountAmount && (

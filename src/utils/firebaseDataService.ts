@@ -7,6 +7,7 @@ import {
   deleteDoc, 
   getDocs, 
   getDoc, 
+  setDoc,
   query, 
   orderBy, 
   where,
@@ -1382,6 +1383,39 @@ export const taxInvoiceService = {
 
 // 사용자 관리 데이터 서비스
 export const userService = {
+  // 사용자별 설정 불러오기
+  async getUserSettings(userId: string) {
+    try {
+      const settingsRef = doc(db, 'userSettings', userId);
+      const snapshot = await getDoc(settingsRef);
+      if (snapshot.exists()) {
+        return { id: snapshot.id, ...snapshot.data() } as any;
+      }
+      return null;
+    } catch (error) {
+      console.error('사용자 설정 가져오기 실패:', error);
+      return null;
+    }
+  },
+
+  // 사용자별 설정 저장/병합
+  async saveUserSettings(userId: string, settings: any) {
+    try {
+      const settingsRef = doc(db, 'userSettings', userId);
+      const existing = await getDoc(settingsRef);
+      const payload = {
+        ...(existing.exists() ? existing.data() : {}),
+        ...settings,
+        updatedAt: serverTimestamp(),
+        ...(existing.exists() ? {} : { createdAt: serverTimestamp() })
+      };
+      await setDoc(settingsRef, payload, { merge: true });
+      return userId;
+    } catch (error) {
+      console.error('사용자 설정 저장 실패:', error);
+      throw error;
+    }
+  },
   // 사용자 목록 가져오기
   async getUsers() {
     try {
