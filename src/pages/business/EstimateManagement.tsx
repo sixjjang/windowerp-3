@@ -3387,7 +3387,7 @@ const EstimateManagement: React.FC = () => {
     );
   });
 
-  // 저장된 견적서 불러오기 (Firebase에서)
+  // 저장된 견적서 불러오기 (Firebase 전용)
   const loadSavedEstimates = async () => {
     try {
       console.log('Firebase에서 견적서 로드 시작');
@@ -3395,96 +3395,40 @@ const EstimateManagement: React.FC = () => {
       if (process.env.NODE_ENV === 'development') {
         console.log('Firebase에서 견적서 로드 완료:', firebaseEstimates.length, '개');
       }
-      
-      // localStorage에서 기존 데이터 로드
-      const savedData = localStorage.getItem('saved_estimates');
-      const localEstimates = savedData ? JSON.parse(savedData) : [];
-      
-      // 삭제된 견적서 목록 로드
-      const deletedEstimatesData = localStorage.getItem('deleted_estimates');
-      const deletedEstimates = deletedEstimatesData ? JSON.parse(deletedEstimatesData) : [];
-      console.log('삭제된 견적서 목록:', deletedEstimates);
-      
-      // 삭제된 견적서를 제외한 Firebase 데이터 필터링
-      const filteredFirebaseEstimates = firebaseEstimates.filter((firebaseEst: any) => {
-        const isDeleted = deletedEstimates.includes(firebaseEst.estimateNo);
-        if (isDeleted) {
-          console.log('삭제된 견적서 제외:', firebaseEst.estimateNo);
-        }
-        return !isDeleted;
-      });
-      
-      console.log('삭제된 견적서 제외 후 Firebase 견적서 수:', filteredFirebaseEstimates.length, '개');
-      
-      // 중복 제거 로직: estimateNo 기준으로 중복 제거
-      const mergedEstimates = [...localEstimates];
-      
-      filteredFirebaseEstimates.forEach((firebaseEst: any) => {
-        const existingIndex = mergedEstimates.findIndex(
-          (localEst: any) => localEst.estimateNo === firebaseEst.estimateNo
-        );
-        
-        if (existingIndex >= 0) {
-          // 기존 데이터가 있으면 Firebase 데이터로 업데이트 (더 최신)
-          mergedEstimates[existingIndex] = firebaseEst;
-          console.log('중복 견적서 업데이트:', firebaseEst.estimateNo);
-        } else {
-          // 새로운 데이터 추가
-          mergedEstimates.push(firebaseEst);
-        }
-      });
-      
-      // 중복 제거된 데이터를 localStorage에 저장
-      localStorage.setItem('saved_estimates', JSON.stringify(mergedEstimates));
-      console.log('중복 제거 후 총 견적서 수:', mergedEstimates.length, '개');
-      
-      return mergedEstimates;
+      return firebaseEstimates;
     } catch (error) {
       console.error('Firebase에서 견적서 로드 오류:', error);
-      // Firebase 실패 시 localStorage에서 로드 (fallback)
-      try {
-        const savedData = localStorage.getItem('saved_estimates');
-        const estimates = savedData ? JSON.parse(savedData) : [];
-        console.log('localStorage에서 견적서 로드 (fallback):', estimates.length, '개');
-        return estimates;
-      } catch (localError) {
-        console.error('localStorage에서 견적서 로드 오류:', localError);
-        return [];
-      }
+      return [];
     }
   };
 
   // 저장된 견적서 필터링
   const [savedEstimates, setSavedEstimates] = useState<any[]>([]);
   
-  // 견적서와 옵션 데이터 순차 로드
+  // Firebase 실시간 구독 + 옵션 데이터 로드
   useEffect(() => {
-    const loadDataSequentially = async () => {
+    console.log('=== Firebase 실시간 구독 시작 ===');
+    const unsubscribe = estimateService.subscribeToEstimates((estimates: any[]) => {
+      const cleaned = removeDuplicateEstimates(estimates);
+      setSavedEstimates(cleaned);
+    });
+
+    // 옵션 데이터 1회 로드
+    (async () => {
       try {
-        // 1. 먼저 견적서 로드
-        console.log('=== 데이터 로드 시작 ===');
-        const estimates = await loadSavedEstimates();
-        
-        // 2. 중복 데이터 정리
-        const cleanedEstimates = removeDuplicateEstimates(estimates);
-        setSavedEstimates(cleanedEstimates);
-        
-        // 3. 정리된 데이터를 localStorage에 저장
-        localStorage.setItem('saved_estimates', JSON.stringify(cleanedEstimates));
-        
-        // 4. 견적서 로드 완료 후 옵션 데이터 로드
-        console.log('견적서 로드 완료, 옵션 데이터 로드 시작');
         const options = await loadOptionsFromFirebase();
         setOptionData(options);
         setOptionDataLoaded(true);
-        console.log('=== 모든 데이터 로드 완료 ===');
       } catch (error) {
-        console.error('데이터 로드 중 오류:', error);
+        console.error('옵션 데이터 로드 실패:', error);
       }
+    })();
+
+    return () => {
+      console.log('=== Firebase 실시간 구독 해제 ===');
+      unsubscribe?.();
     };
-    
-    loadDataSequentially();
-  }, []); // 컴포넌트 마운트 시 한 번만 실행
+  }, []);
   const filteredSavedEstimates = savedEstimates.filter((estimate: any) => {
     const s = estimateSearch.trim().toLowerCase();
     if (!s) return true;
@@ -6882,20 +6826,19 @@ const EstimateManagement: React.FC = () => {
           const existingEstimate = await estimateService.getEstimateByNumber(currentEstimate.estimateNo);
           
           if (existingEstimate) {
-            // 기존 견적서가 있으면 업데이트
-            console.log('기존 견적서 발견, 업데이트 진행:', existingEstimate.id);
-            await estimateService.updateEstimate(existingEstimate.id, estimateToSave);
+            // 기존 견적서가 있으면 업데이트 (문서 ID 문자열 사용)
+            const targetId = (existingEstimate as any).firebaseId || existingEstimate.id;
+            console.log('기존 견적서 발견, 업데이트 진행:', targetId);
+            await estimateService.updateEstimate(String(targetId), estimateToSave);
             console.log('Firebase 견적서 업데이트 완료');
             isUpdated = true;
-            
-            // 업데이트된 ID 정보 반영 (문자열 ID를 숫자로 변환)
-            const firebaseId = typeof existingEstimate.id === 'string' ? parseInt(existingEstimate.id) || Date.now() : existingEstimate.id;
+
+            // 상태 반영: 문서 ID 문자열 유지
+            const firebaseId = String(targetId);
             if (existingIndex >= 0) {
-              estimateToSave.id = firebaseId;
-              savedEstimates[existingIndex] = estimateToSave;
+              savedEstimates[existingIndex] = { ...savedEstimates[existingIndex], ...estimateToSave, id: firebaseId, firebaseId };
             } else {
-              estimateToSave.id = firebaseId;
-              savedEstimates[savedEstimates.length - 1] = estimateToSave;
+              savedEstimates[savedEstimates.length - 1] = { ...estimateToSave, id: firebaseId, firebaseId } as any;
             }
           } else {
             // 기존 견적서가 없으면 새로 저장
@@ -6905,18 +6848,14 @@ const EstimateManagement: React.FC = () => {
             
             // 저장된 ID 반영
             if (savedEstimate) {
-              const firebaseId = typeof savedEstimate === 'string' ? parseInt(savedEstimate) || Date.now() : savedEstimate;
+              const firebaseId = String(savedEstimate);
               if (existingIndex >= 0) {
-                savedEstimates[existingIndex].id = firebaseId;
+                savedEstimates[existingIndex] = { ...savedEstimates[existingIndex], id: firebaseId, firebaseId };
               } else {
-                estimateToSave.id = firebaseId;
-                savedEstimates[savedEstimates.length - 1] = estimateToSave;
+                savedEstimates[savedEstimates.length - 1] = { ...estimateToSave, id: firebaseId, firebaseId } as any;
               }
             }
           }
-          
-          // localStorage 업데이트
-          localStorage.setItem('saved_estimates', JSON.stringify(savedEstimates));
           
         } catch (error) {
           console.error('Firebase 저장/업데이트 실패:', error);
@@ -14721,41 +14660,15 @@ const EstimateManagement: React.FC = () => {
                                         console.log('견적서 ID 타입:', typeof est.id);
                                         console.log('견적서 ID 값:', est.id);
 
-                                        // Firestore 문서 ID 확인 (est.id가 숫자인 경우 실제 문서 ID를 찾아야 함)
-                                        let firestoreId = est.id;
-                                        
-                                        // est.id가 숫자인 경우, 실제 Firestore 문서 ID를 찾기 위해 견적번호로 검색
-                                        if (typeof est.id === 'number') {
-                                          console.log('숫자 ID 감지, 실제 Firestore 문서 ID를 찾는 중...');
-                                          console.log('견적번호로 검색:', est.estimateNo);
-                                          console.log('현재 저장된 견적서 목록:', savedEstimates.map(e => ({ id: e.id, estimateNo: e.estimateNo, idType: typeof e.id })));
-                                          
-                                          // 현재 저장된 견적서 목록에서 동일한 견적번호를 가진 견적서 찾기
-                                          const matchingEstimates = savedEstimates.filter(e => 
-                                            e.estimateNo === est.estimateNo
-                                          );
-                                          
-                                          console.log('동일한 견적번호를 가진 견적서들:', matchingEstimates);
-                                          
-                                          // Firestore 문서 ID를 가진 견적서 찾기 (더 정확한 조건)
-                                          const matchingEstimate = matchingEstimates.find(e => 
-                                            typeof e.id === 'string' && 
-                                            e.id.length > 10 && // Firestore 문서 ID는 보통 20자 이상
-                                            !e.id.includes('-') && // 견적번호가 아닌 실제 문서 ID
-                                            !e.id.match(/^[A-Z]\d{8}-\d{3}-\d{2}$/) // 견적번호 패턴이 아닌 것
-                                          );
-                                          
-                                          if (matchingEstimate) {
-                                            firestoreId = matchingEstimate.id;
-                                            console.log('실제 Firestore 문서 ID 찾음:', firestoreId);
-                                          } else {
-                                            console.log('Firestore 문서 ID를 찾을 수 없어 견적번호로 삭제를 시도합니다:', est.estimateNo);
-                                            firestoreId = est.estimateNo;
-                                          }
+                                        // 문서 ID 결정 로직: firebaseId 또는 id(문서 ID로 통일됨) 우선, 없으면 estimateNo 폴백
+                                        let firestoreId: string = ((est as any).firebaseId as string) ?? (typeof est.id === 'string' ? est.id : '');
+                                        if (!firestoreId) {
+                                          console.log('문서 ID를 찾지 못해 estimateNo로 폴백합니다:', est.estimateNo);
+                                          firestoreId = est.estimateNo as string;
                                         }
 
                                         // Firebase 서버에서 견적서 삭제 (실제 Firestore 문서 ID 사용)
-                                        const response = await fetch(`${API_BASE}/estimates/${encodeURIComponent(firestoreId)}`, {
+                                        const response = await fetch(`${API_BASE}/estimates/${encodeURIComponent(String(firestoreId))}`, {
                                           method: 'DELETE',
                                           headers: {
                                             'Content-Type': 'application/json',
@@ -14774,27 +14687,14 @@ const EstimateManagement: React.FC = () => {
                                           
                                           // localStorage에서 견적서 삭제 (정확히 해당 견적서만)
                                           const updatedSavedEstimates =
-                                            savedEstimates.filter(
-                                              (e: any) => e.id !== firestoreId && e.estimateNo !== est.estimateNo
-                                            );
+                                            savedEstimates.filter((e: any) => {
+                                              const fid = (e as any).firebaseId || (typeof e.id === 'string' ? e.id : undefined);
+                                              return fid !== firestoreId && e.estimateNo !== est.estimateNo;
+                                            });
                                           
                                           console.log('삭제 후 견적서 개수:', updatedSavedEstimates.length);
                                           console.log('삭제 완료 - 견적서 번호:', est.estimateNo);
                                           
-                                          localStorage.setItem(
-                                            'saved_estimates',
-                                            JSON.stringify(updatedSavedEstimates)
-                                          );
-
-                                          // 삭제된 견적서를 추적 목록에 추가
-                                          const deletedEstimatesData = localStorage.getItem('deleted_estimates');
-                                          const deletedEstimates = deletedEstimatesData ? JSON.parse(deletedEstimatesData) : [];
-                                          if (!deletedEstimates.includes(est.estimateNo)) {
-                                            deletedEstimates.push(est.estimateNo);
-                                            localStorage.setItem('deleted_estimates', JSON.stringify(deletedEstimates));
-                                            console.log('삭제된 견적서 추적 목록에 추가:', est.estimateNo);
-                                          }
-
                                           // 상태 업데이트 (즉시 반영)
                                           setSavedEstimates(updatedSavedEstimates);
 
@@ -14803,70 +14703,12 @@ const EstimateManagement: React.FC = () => {
                                         } else {
                                           const errorText = await response.text();
                                           console.error('Firebase 삭제 실패:', response.status, response.statusText, errorText);
-                                          
-                                          // Firebase 삭제 실패 시 사용자에게 선택권 제공
-                                          const shouldDeleteLocally = window.confirm(
-                                            '서버에서 견적서 삭제에 실패했습니다. 로컬에서만 삭제하시겠습니까?\n\n' +
-                                            '로컬에서만 삭제하면 나중에 다시 동기화될 수 있습니다.'
-                                          );
-                                          
-                                          if (shouldDeleteLocally) {
-                                            // 로컬에서만 삭제
-                                            const updatedSavedEstimates = savedEstimates.filter(
-                                              (e: any) => e.id !== firestoreId && e.estimateNo !== est.estimateNo
-                                            );
-                                            
-                                            localStorage.setItem(
-                                              'saved_estimates',
-                                              JSON.stringify(updatedSavedEstimates)
-                                            );
-                                            
-                                            // 삭제된 견적서를 추적 목록에 추가
-                                            const deletedEstimatesData = localStorage.getItem('deleted_estimates');
-                                            const deletedEstimates = deletedEstimatesData ? JSON.parse(deletedEstimatesData) : [];
-                                            if (!deletedEstimates.includes(est.estimateNo)) {
-                                              deletedEstimates.push(est.estimateNo);
-                                              localStorage.setItem('deleted_estimates', JSON.stringify(deletedEstimates));
-                                              console.log('삭제된 견적서 추적 목록에 추가 (로컬 삭제):', est.estimateNo);
-                                            }
-                                            
-                                            setSavedEstimates(updatedSavedEstimates);
-                                            alert('로컬에서 견적서가 삭제되었습니다. 서버 동기화는 나중에 다시 시도해주세요.');
-                                          }
+                                          alert('서버에서 견적서 삭제에 실패했습니다. 잠시 후 다시 시도해주세요.');
                                           return;
                                         }
                                       } catch (error) {
                                         console.error('견적서 삭제 중 오류:', error);
-                                        
-                                        // 네트워크 오류 등으로 인한 삭제 실패 시 사용자에게 선택권 제공
-                                        const shouldDeleteLocally = window.confirm(
-                                          '견적서 삭제 중 오류가 발생했습니다. 로컬에서만 삭제하시겠습니까?\n\n' +
-                                          '로컬에서만 삭제하면 나중에 다시 동기화될 수 있습니다.'
-                                        );
-                                        
-                                        if (shouldDeleteLocally) {
-                                          // 로컬에서만 삭제
-                                          const updatedSavedEstimates = savedEstimates.filter(
-                                            (e: any) => e.id !== est.id && e.estimateNo !== est.estimateNo
-                                          );
-                                          
-                                          localStorage.setItem(
-                                            'saved_estimates',
-                                            JSON.stringify(updatedSavedEstimates)
-                                          );
-                                          
-                                          // 삭제된 견적서를 추적 목록에 추가
-                                          const deletedEstimatesData = localStorage.getItem('deleted_estimates');
-                                          const deletedEstimates = deletedEstimatesData ? JSON.parse(deletedEstimatesData) : [];
-                                          if (!deletedEstimates.includes(est.estimateNo)) {
-                                            deletedEstimates.push(est.estimateNo);
-                                            localStorage.setItem('deleted_estimates', JSON.stringify(deletedEstimates));
-                                            console.log('삭제된 견적서 추적 목록에 추가 (오류 시 로컬 삭제):', est.estimateNo);
-                                          }
-                                          
-                                          setSavedEstimates(updatedSavedEstimates);
-                                          alert('로컬에서 견적서가 삭제되었습니다. 서버 동기화는 나중에 다시 시도해주세요.');
-                                        }
+                                        alert('견적서 삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
                                       }
                                     }
                                   }}

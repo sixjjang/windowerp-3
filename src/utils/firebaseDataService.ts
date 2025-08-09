@@ -138,9 +138,15 @@ export const estimateService = {
   // 견적서 목록 가져오기
   async getEstimates() {
     try {
-      // Firebase Functions를 통해 견적서 목록 조회
-      const result = await callFirebaseFunction('getEstimates', {}, 'GET');
-      return result;
+      // Firestore에서 직접 조회하여 문서 ID 보존 (firebaseId) 및 id 충돌 방지
+      const estimatesRef = collection(db, 'estimates');
+      const q = query(estimatesRef, orderBy('savedAt', 'desc'));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map((doc) => {
+        const data = doc.data();
+        // 데이터 내부에 id 필드가 있어도 최종 id는 Firestore 문서 ID로 통일
+        return { ...data, firebaseId: doc.id, id: doc.id } as any;
+      });
     } catch (error) {
       console.error('견적서 목록 가져오기 실패:', error);
       throw error;
@@ -152,10 +158,11 @@ export const estimateService = {
     const estimatesRef = collection(db, 'estimates');
     const q = query(estimatesRef, orderBy('savedAt', 'desc'));
     return onSnapshot(q, (snapshot) => {
-      const estimates = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const estimates = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        // 구독에서도 firebaseId와 id는 항상 문서 ID가 되도록 고정
+        return { ...data, firebaseId: doc.id, id: doc.id } as any;
+      });
       callback(estimates);
     });
   },
@@ -190,10 +197,58 @@ export const estimateService = {
         throw new Error('유효하지 않은 견적서 ID입니다.');
       }
 
-      console.log('Firebase Functions를 통한 견적서 수정 시작:', estimateIdString, estimateData);
+      // 런타임 가드: 숫자/짧은 ID/의심스러운 ID가 들어오면 estimateNo로 문서 ID 재해결
+      let finalEstimateId = estimateIdString;
+      const looksNumeric = /^\d+$/.test(estimateIdString);
+      const looksTooShort = estimateIdString.length < 12; // Firestore ID는 보통 20자 내외
+      const looksLikeEstimateNo = /^[A-Z]\d{8}-\d{3}$/.test(estimateIdString) || /^[A-Z]\d{8}-\d{3}-\d{2}$/.test(estimateIdString);
+
+      if (looksNumeric || looksTooShort || looksLikeEstimateNo) {
+        try {
+          const estimatesRef = collection(db, 'estimates');
+          // 1) 정확 일치 우선
+          let q = query(estimatesRef, where('estimateNo', '==', estimateData?.estimateNo));
+          let snapshot = await getDocs(q);
+          // 2) 기본 견적번호 매칭
+          if (snapshot.empty && typeof estimateData?.estimateNo === 'string' && estimateData.estimateNo.includes('-')) {
+            const baseEstimateNo = estimateData.estimateNo.split('-').slice(0, 2).join('-');
+            q = query(estimatesRef, where('estimateNo', '==', baseEstimateNo));
+            snapshot = await getDocs(q);
+          }
+          // 3) 부분 매칭(prefix)
+          if (snapshot.empty && typeof estimateData?.estimateNo === 'string' && estimateData.estimateNo.includes('-')) {
+            const baseEstimateNo = estimateData.estimateNo.split('-')[0] + '-' + estimateData.estimateNo.split('-')[1];
+            q = query(
+              estimatesRef,
+              where('estimateNo', '>=', baseEstimateNo),
+              where('estimateNo', '<=', baseEstimateNo + '\uf8ff')
+            );
+            snapshot = await getDocs(q);
+          }
+          if (!snapshot.empty) {
+            // 최신(updatedAt/createdAt) 문서 선택
+            let latestDoc = snapshot.docs[0];
+            let latestUpdatedAt = latestDoc.data().updatedAt || latestDoc.data().createdAt || new Date(0);
+            snapshot.docs.forEach((d) => {
+              const data = d.data();
+              const updatedAt = data.updatedAt || data.createdAt || new Date(0);
+              if (updatedAt > latestUpdatedAt) {
+                latestDoc = d;
+                latestUpdatedAt = updatedAt;
+              }
+            });
+            finalEstimateId = latestDoc.id;
+            console.log('런타임 가드: estimateNo로 문서 ID 재해결 성공 →', finalEstimateId);
+          }
+        } catch (resolveErr) {
+          console.warn('런타임 가드: 문서 ID 재해결 실패(무시하고 기존 ID 사용):', resolveErr);
+        }
+      }
+
+      console.log('Firebase Functions를 통한 견적서 수정 시작:', finalEstimateId, estimateData);
       
       // Firebase Functions를 통해 수정
-      const result = await callFirebaseFunction(`updateEstimate/${estimateIdString}`, estimateData, 'PUT');
+      const result = await callFirebaseFunction(`updateEstimate/${encodeURIComponent(finalEstimateId)}`, estimateData, 'PUT');
       
       console.log('Firebase Functions를 통한 견적서 수정 성공:', result);
       return result;
@@ -264,7 +319,8 @@ export const estimateService = {
       if (!snapshot.empty) {
         const doc = snapshot.docs[0];
         console.log('정확한 견적번호 매칭 성공:', estimateNo, '문서 ID:', doc.id);
-        return { id: doc.id, ...doc.data() };
+        const data = doc.data();
+        return { ...data, firebaseId: doc.id, id: doc.id } as any;
       }
       
       // 2. 기본 견적번호 매칭 (수정 버전 제거)
@@ -278,7 +334,8 @@ export const estimateService = {
         if (!snapshot.empty) {
           const doc = snapshot.docs[0];
           console.log('기본 견적번호 매칭 성공:', baseEstimateNo, '문서 ID:', doc.id);
-          return { id: doc.id, ...doc.data() };
+          const data = doc.data();
+          return { ...data, firebaseId: doc.id, id: doc.id } as any;
         }
       }
       
@@ -309,7 +366,8 @@ export const estimateService = {
           });
           
           console.log('부분 견적번호 매칭 성공:', baseEstimateNo, '문서 ID:', latestDoc.id);
-          return { id: latestDoc.id, ...latestDoc.data() };
+          const latestData = latestDoc.data();
+          return { ...latestData, firebaseId: latestDoc.id, id: latestDoc.id } as any;
         }
       }
       
