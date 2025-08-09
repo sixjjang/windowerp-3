@@ -6702,66 +6702,75 @@ const OrderManagement: React.FC = () => {
   const [longPressTarget, setLongPressTarget] = useState<{rowIndex: number, row: any} | null>(null);
 
   // 모바일 터치 시작 핸들러 (제품 행용)
-  const handleTouchStart = (rowIndex: number, row: any) => {
+  const handleTouchStart = (rowIndex: number, row: any, ev?: React.TouchEvent) => {
+    const touch = ev?.touches?.[0];
+    const startX = touch?.clientX ?? undefined;
+    const startY = touch?.clientY ?? undefined;
     const timer = setTimeout(() => {
       console.log('모바일 길게 누르기 감지:', row);
       
       // 블라인드 제품인 경우 나누기 메뉴를 포함한 컨텍스트 메뉴 표시
       if (row.productType === '블라인드' && row.type === 'product') {
         setContextMenu({
-          mouseX: 50, // 모바일에서는 화면 중앙에 표시
-          mouseY: 50,
+          mouseX: typeof startX === 'number' ? startX : 50,
+          mouseY: typeof startY === 'number' ? startY : 50,
           order: orders[activeTab],
           selectedRow: row
         });
       } else {
         // 기존 행 컨텍스트 메뉴
         setRowContextMenu({
-          mouseX: 50, // 모바일에서는 화면 중앙에 표시
-          mouseY: 50,
+          mouseX: typeof startX === 'number' ? startX : 50,
+          mouseY: typeof startY === 'number' ? startY : 50,
           rowIndex: rowIndex,
           row: row,
         });
       }
       
       setLongPressTarget(null);
-    }, 500); // 500ms로 길게 누르는 시간 단축
+    }, 800); // 길게 누르기 임계시간 증가(모바일 UX 개선)
     
     setLongPressTimer(timer);
     setLongPressTarget({rowIndex, row});
   };
 
   // 모바일 터치 시작 핸들러 (저장된 주문서용)
-  const handleSavedOrderTouchStart = (order: any) => {
+  const handleSavedOrderTouchStart = (order: any, ev?: React.TouchEvent) => {
+    const touch = ev?.touches?.[0];
+    const startX = touch?.clientX ?? undefined;
+    const startY = touch?.clientY ?? undefined;
     const timer = setTimeout(() => {
       console.log('모바일 길게 누르기 감지 (저장된 주문서):', order);
       
       setContextMenu({
-        mouseX: 50, // 모바일에서는 화면 중앙에 표시
-        mouseY: 50,
+        mouseX: typeof startX === 'number' ? startX : 50,
+        mouseY: typeof startY === 'number' ? startY : 50,
         order: order,
       });
       
       setLongPressTarget(null);
-    }, 500); // 500ms로 길게 누르는 시간 단축
+    }, 800);
     
     setLongPressTimer(timer);
     setLongPressTarget({rowIndex: -1, row: order});
   };
 
   // 모바일 터치 시작 핸들러 (주문서 탭용)
-  const handleTabTouchStart = (orderIndex: number) => {
+  const handleTabTouchStart = (orderIndex: number, ev?: React.TouchEvent) => {
+    const touch = ev?.touches?.[0];
+    const startX = touch?.clientX ?? undefined;
+    const startY = touch?.clientY ?? undefined;
     const timer = setTimeout(() => {
       console.log('모바일 길게 누르기 감지 (주문서 탭):', orderIndex);
       
       setTabContextMenu({
-        mouseX: 50, // 모바일에서는 화면 중앙에 표시
-        mouseY: 50,
+        mouseX: typeof startX === 'number' ? startX : 50,
+        mouseY: typeof startY === 'number' ? startY : 50,
         orderIndex: orderIndex,
       });
       
       setLongPressTarget(null);
-    }, 500); // 500ms로 길게 누르는 시간 단축
+    }, 800);
     
     setLongPressTimer(timer);
     setLongPressTarget({rowIndex: -2, row: {orderIndex}}); // -2는 주문서 탭을 의미
@@ -8583,7 +8592,7 @@ const OrderManagement: React.FC = () => {
                       key={order.id} 
                       label={`주문서-${order.estimateNo}`}
                       onContextMenu={(e) => orderIndex >= 0 && handleTabContextMenu(e, orderIndex)}
-                      onTouchStart={() => orderIndex >= 0 && handleTabTouchStart(orderIndex)}
+                      onTouchStart={(e) => orderIndex >= 0 && handleTabTouchStart(orderIndex, e)}
                       onTouchEnd={handleTouchEnd}
                       sx={{
                         textTransform: 'none',
@@ -9566,7 +9575,7 @@ const OrderManagement: React.FC = () => {
                       }}
                       onClick={() => handleRowClick(index)}
                       onContextMenu={(e) => handleRowContextMenu(e, index, row)}
-                      onTouchStart={() => handleTouchStart(index, row)}
+                      onTouchStart={(e) => handleTouchStart(index, row, e)}
                       onTouchEnd={handleTouchEnd}
                     >
                       {isBulkEditMode && (
@@ -11548,7 +11557,7 @@ const OrderManagement: React.FC = () => {
                       <TableRow 
                         key={order.id}
                         onContextMenu={(e) => handleSavedOrderContextMenu(e, order)}
-                        onTouchStart={() => handleSavedOrderTouchStart(order)}
+                        onTouchStart={(e) => handleSavedOrderTouchStart(order, e)}
                         onTouchEnd={handleTouchEnd}
                         onDoubleClick={() => handleLoadSavedOrder(order)}
                         sx={{ 

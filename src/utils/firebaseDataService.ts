@@ -536,10 +536,10 @@ export const orderService = {
       const ordersRef = collection(db, 'orders');
       const q = query(ordersRef, orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      return snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return { ...data, firebaseId: doc.id, id: doc.id } as any;
+      });
     } catch (error) {
       console.error('주문서 목록 가져오기 실패:', error);
       throw error;
@@ -551,10 +551,10 @@ export const orderService = {
     const ordersRef = collection(db, 'orders');
     const q = query(ordersRef, orderBy('createdAt', 'desc'));
     return onSnapshot(q, (snapshot) => {
-      const orders = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const orders = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return { ...data, firebaseId: doc.id, id: doc.id } as any;
+      });
       callback(orders);
     });
   },
@@ -649,10 +649,31 @@ export const orderService = {
   // 주문서 업데이트 (Firebase Functions를 통한 업데이트)
   async updateOrder(orderId: string, orderData: any) {
     try {
-      console.log('Firebase Functions를 통한 주문서 업데이트 시작:', { orderId, orderData });
+      // 런타임 가드: 숫자/짧은/의심스러운 ID면 orderNo로 문서 ID 재해결
+      let finalOrderId = String(orderId);
+      const looksNumeric = /^\d+$/.test(finalOrderId);
+      const looksTooShort = finalOrderId.length < 12;
+      if (looksNumeric || looksTooShort) {
+        try {
+          const ordersRef = collection(db, 'orders');
+          // orderNo 정확 일치 시도
+          if (orderData?.orderNo) {
+            const q = query(ordersRef, where('orderNo', '==', orderData.orderNo));
+            const snapshot = await getDocs(q);
+            if (!snapshot.empty) {
+              finalOrderId = snapshot.docs[0].id;
+              console.log('런타임 가드(주문): orderNo로 문서 ID 재해결 성공 →', finalOrderId);
+            }
+          }
+        } catch (e) {
+          console.warn('런타임 가드(주문): 문서 ID 재해결 실패(무시):', e);
+        }
+      }
+
+      console.log('Firebase Functions를 통한 주문서 업데이트 시작:', { orderId: finalOrderId, orderData });
       
       // Firebase Functions를 통해 업데이트
-      const result = await callFirebaseFunction('updateOrder', { orderId, ...orderData });
+      const result = await callFirebaseFunction('updateOrder', { orderId: finalOrderId, ...orderData });
       
       console.log('Firebase Functions를 통한 주문서 업데이트 성공:', result);
       return result;

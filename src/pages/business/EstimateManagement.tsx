@@ -5233,21 +5233,36 @@ const EstimateManagement: React.FC = () => {
     // 실시간 금액 계산 (견적서와 동일한 로직 적용)
     if (['salePrice', 'purchaseCost', 'quantity', 'widthCount', 'area', 'largePlainPrice', 'largePlainCost'].includes(field)) {
       // 면적 계산 (겉커튼은 면적 계산하지 않음)
-      let calculatedArea = newEditRow.area || 0;
-      if (newEditRow.productType === '커튼') {
-        if (newEditRow.curtainType === '속커튼') {
-          if (newEditRow.pleatType === '민자') {
-            const pleatMultiplier = Number(newEditRow.pleatMultiplier?.replace('배', '')) || 1.4;
-            calculatedArea = (newEditRow.widthMM / 1000) * pleatMultiplier || 0;
-          } else if (newEditRow.pleatType === '나비') {
-            calculatedArea = newEditRow.widthMM / 1000 || 0;
+      let calculatedArea = Number(newEditRow.area) || 0;
+
+      // 블라인드에서 사용자가 면적을 직접 입력한 경우(field === 'area')에는 재계산으로 덮어쓰지 않음
+      const isManualAreaForBlind = field === 'area' && newEditRow.productType === '블라인드';
+
+      if (!isManualAreaForBlind) {
+        if (newEditRow.productType === '커튼') {
+          if (newEditRow.curtainType === '속커튼') {
+            if (newEditRow.pleatType === '민자') {
+              const pleatMultiplier = Number(newEditRow.pleatMultiplier?.replace('배', '')) || 1.4;
+              calculatedArea = (newEditRow.widthMM / 1000) * pleatMultiplier || 0;
+            } else if (newEditRow.pleatType === '나비') {
+              calculatedArea = newEditRow.widthMM / 1000 || 0;
+            }
+          } else {
+            // 겉커튼은 면적 계산하지 않음
+            calculatedArea = 0;
           }
         } else {
-          // 겉커튼은 면적 계산하지 않음
-          calculatedArea = 0;
+          calculatedArea = (newEditRow.widthMM * newEditRow.heightMM) / 1000000 || 0;
         }
       } else {
-        calculatedArea = (newEditRow.widthMM * newEditRow.heightMM) / 1000000 || 0;
+        // 사용자 입력 면적에 최소 주문 면적(minOrderQty)이 있는 경우 보정
+        const product = productOptions.find(p => p.productCode === newEditRow.productCode);
+        if (product && product.minOrderQty) {
+          const minOrderQty = Number(product.minOrderQty) || 0;
+          if (minOrderQty > 0 && calculatedArea < minOrderQty) {
+            calculatedArea = minOrderQty;
+          }
+        }
       }
       newEditRow.area = calculatedArea;
 
